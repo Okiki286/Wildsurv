@@ -86,6 +86,13 @@ namespace WildernessSurvival.Gameplay.Structures
         [ListDrawerSettings(IsReadOnly = true, ShowPaging = false)]
         private List<WorkerController> assignedHeroes = new List<WorkerController>();
 
+        // [MODIFICATION 1] Worker Instances for UI Assignment System
+        [BoxGroup("Workers/Assigned")]
+        [ReadOnly]
+        [ShowInInspector]
+        [ListDrawerSettings(IsReadOnly = true, ShowPaging = false)]
+        private List<Workers.WorkerInstance> assignedWorkerInstances = new List<Workers.WorkerInstance>();
+
         [BoxGroup("Workers/Stats")]
         [ReadOnly]
         [ShowInInspector]
@@ -158,6 +165,9 @@ namespace WildernessSurvival.Gameplay.Structures
         public bool IsOperational => isOperational;
         public int WorkerCount => workerCount;
         public List<WorkerController> AssignedWorkers => assignedWorkers;
+
+        // [MODIFICATION 2] Added Property
+        public int AssignedWorkerInstanceCount => assignedWorkerInstances.Count;
 
         // ============================================
         // UNITY LIFECYCLE
@@ -745,6 +755,94 @@ namespace WildernessSurvival.Gameplay.Structures
             if (currentVFX != null)
             {
                 Destroy(currentVFX);
+            }
+        }
+
+        // [MODIFICATION 3] Added Worker Instance Management Methods
+        // ============================================
+        // WORKER INSTANCE MANAGEMENT (for UI Assignment)
+        // ============================================
+
+        /// <summary>
+        /// Verifica se c'è uno slot worker libero
+        /// </summary>
+        public bool HasFreeWorkerSlot()
+        {
+            if (structureData == null) return false;
+            return assignedWorkerInstances.Count < structureData.WorkerSlots;
+        }
+
+        /// <summary>
+        /// Aggiunge un WorkerInstance a questa struttura
+        /// </summary>
+        public void AddWorkerInstance(Workers.WorkerInstance worker)
+        {
+            if (worker == null) return;
+            if (!HasFreeWorkerSlot()) return;
+            if (assignedWorkerInstances.Contains(worker)) return;
+
+            assignedWorkerInstances.Add(worker);
+            workerCount = assignedWorkers.Count + assignedWorkerInstances.Count;
+
+            // Ricalcola produzione con nuovo bonus
+            CalculateProductionRate();
+
+            Debug.Log($"<color=cyan>[Structure]</color> {structureData.DisplayName} now has {assignedWorkerInstances.Count} worker instances");
+        }
+
+        /// <summary>
+        /// Rimuove un WorkerInstance da questa struttura
+        /// </summary>
+        public void RemoveWorkerInstance(Workers.WorkerInstance worker)
+        {
+            if (worker == null) return;
+            assignedWorkerInstances.Remove(worker);
+            workerCount = assignedWorkers.Count + assignedWorkerInstances.Count;
+
+            // Ricalcola produzione
+            CalculateProductionRate();
+
+            Debug.Log($"<color=cyan>[Structure]</color> {structureData.DisplayName} now has {assignedWorkerInstances.Count} worker instances");
+        }
+
+        /// <summary>
+        /// Ottiene tutti i WorkerInstance assegnati
+        /// </summary>
+        public List<Workers.WorkerInstance> GetAssignedWorkerInstances()
+        {
+            return new List<Workers.WorkerInstance>(assignedWorkerInstances);
+        }
+
+        /// <summary>
+        /// Calcola il bonus totale dei worker instance assegnati
+        /// </summary>
+        public float GetTotalWorkerBonus()
+        {
+            float totalBonus = 0f;
+            foreach (var worker in assignedWorkerInstances)
+            {
+                if (worker != null && worker.Data != null)
+                {
+                    totalBonus += worker.GetCurrentBonus();
+                }
+            }
+            return totalBonus;
+        }
+
+        /// <summary>
+        /// Chiamato quando si clicca sulla struttura (per aprire UI assignment)
+        /// </summary>
+        public void OnClick()
+        {
+            // Apre il panel di assegnazione worker
+            if (UI.WorkerAssignmentUI.Instance != null)
+            {
+                UI.WorkerAssignmentUI.Instance.OpenForStructure(this);
+                Debug.Log($"<color=green>[Structure]</color> Opened worker assignment UI for {structureData.DisplayName}");
+            }
+            else
+            {
+                Debug.LogWarning("[Structure] WorkerAssignmentUI not found in scene!");
             }
         }
 

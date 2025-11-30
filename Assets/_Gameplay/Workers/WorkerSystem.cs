@@ -61,6 +61,18 @@ namespace WildernessSurvival.Gameplay.Workers
         [ListDrawerSettings(IsReadOnly = true, ShowPaging = false)]
         private List<WorkerController> idleWorkers = new List<WorkerController>();
 
+        // ============================================
+        // WORKER INSTANCES (for UI Assignment System)
+        // ============================================
+
+        [TitleGroup("Worker Instances")]
+        [BoxGroup("Worker Instances/List")]
+        [ReadOnly]
+        [ShowInInspector]
+        [ListDrawerSettings(IsReadOnly = true, ShowPaging = false, ShowIndexLabels = true)]
+        [InfoBox("WorkerInstance = dati logici per UI assignment. Possono avere WorkerController fisico opzionale.")]
+        private List<WorkerInstance> allWorkerInstances = new List<WorkerInstance>();
+
         [BoxGroup("Runtime State/Stats")]
         [ReadOnly]
         [ShowInInspector]
@@ -86,6 +98,11 @@ namespace WildernessSurvival.Gameplay.Workers
         public int IdleWorkers => idleWorkers.Count;
         public int AssignedWorkers => assignedWorkerCount;
         public List<WorkerController> AllWorkers => allWorkers;
+
+        // Worker Instance properties
+        public int WorkerInstanceCount => allWorkerInstances.Count;
+        public int AvailableWorkerCount => allWorkerInstances.Count(w => !w.IsAssigned);
+        public int AssignedInstanceCount => allWorkerInstances.Count(w => w.IsAssigned);
 
         // ============================================
         // UNITY LIFECYCLE
@@ -161,6 +178,27 @@ namespace WildernessSurvival.Gameplay.Workers
             }
 
             Debug.Log($"<color=green>[WorkerSystem]</color> Spawned {startingWorkerCount} starting workers");
+
+            // Crea anche WorkerInstance per ciascuno (dual-system)
+            CreateWorkerInstancesForPhysicalWorkers();
+        }
+
+        /// <summary>
+        /// Crea WorkerInstance per tutti i WorkerController fisici esistenti
+        /// </summary>
+        private void CreateWorkerInstancesForPhysicalWorkers()
+        {
+            foreach (var controller in allWorkers)
+            {
+                if (controller == null || controller.Data == null) continue;
+
+                // Crea WorkerInstance collegato
+                WorkerInstance instance = new WorkerInstance(controller.Data, controller.Data.DisplayName);
+                instance.PhysicalWorker = controller;
+                allWorkerInstances.Add(instance);
+            }
+
+            Debug.Log($"<color=cyan>[WorkerSystem]</color> Created {allWorkerInstances.Count} WorkerInstances");
         }
 
         // ============================================
@@ -301,6 +339,111 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         // ============================================
+        // WORKER INSTANCE MANAGEMENT (for UI Assignment)
+        // ============================================
+
+        /// <summary>
+        /// Crea un nuovo WorkerInstance (virtuale, senza rappresentazione fisica)
+        /// </summary>
+        public WorkerInstance CreateWorkerInstance(WorkerData data, string customName = null)
+        {
+            if (data == null)
+            {
+                Debug.LogError("[WorkerSystem] Cannot create WorkerInstance with null data");
+                return null;
+            }
+
+            WorkerInstance instance = new WorkerInstance(data, customName);
+            allWorkerInstances.Add(instance);
+
+            Debug.Log($"<color=green>[WorkerSystem]</color> Created virtual WorkerInstance: {instance.CustomName}");
+            return instance;
+        }
+
+        /// <summary>
+        /// Ottiene tutti i worker disponibili (non assegnati)
+        /// </summary>
+        public List<WorkerInstance> GetAvailableWorkers()
+        {
+            return allWorkerInstances.Where(w => !w.IsAssigned).ToList();
+        }
+
+        /// <summary>
+        /// Ottiene tutti i worker assegnati
+        /// </summary>
+        public List<WorkerInstance> GetAssignedWorkers()
+        {
+            return allWorkerInstances.Where(w => w.IsAssigned).ToList();
+        }
+
+        /// <summary>
+        /// Ottiene worker assegnati a una struttura specifica
+        /// </summary>
+        public List<WorkerInstance> GetWorkersAtStructure(Structures.StructureController structure)
+        {
+            if (structure == null) return new List<WorkerInstance>();
+            return allWorkerInstances.Where(w => w.AssignedStructure == structure).ToList();
+        }
+
+        /// <summary>
+        /// Assegna un WorkerInstance a una struttura
+        /// </summary>
+        public bool AssignWorker(WorkerInstance worker, Structures.StructureController structure)
+        {
+            if (worker == null || structure == null)
+            {
+                Debug.LogWarning("[WorkerSystem] AssignWorker: null worker or structure");
+                return false;
+            }
+
+            if (worker.IsAssigned)
+            {
+                Debug.LogWarning($"[WorkerSystem] Worker {worker.CustomName} is already assigned");
+                return false;
+            }
+
+            if (!structure.HasFreeWorkerSlot())
+            {
+                Debug.LogWarning($"[WorkerSystem] Structure {structure.Data.DisplayName} has no free slots");
+                return false;
+            }
+
+            // Assegna worker
+            if (worker.AssignTo(structure))
+            {
+                structure.AddWorkerInstance(worker);
+                Debug.Log($"<color=green>[WorkerSystem]</color> Assigned {worker.CustomName} to {structure.Data.DisplayName}");
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Rimuove un WorkerInstance da una struttura
+        /// </summary>
+        public void UnassignWorker(WorkerInstance worker)
+        {
+            if (worker == null) return;
+
+            if (worker.IsAssigned)
+            {
+                Structures.StructureController structure = worker.AssignedStructure;
+                structure?.RemoveWorkerInstance(worker);
+                worker.Unassign();
+                Debug.Log($"<color=yellow>[WorkerSystem]</color> Unassigned {worker.CustomName}");
+            }
+        }
+
+        /// <summary>
+        /// Ottiene tutti i WorkerInstance
+        /// </summary>
+        public List<WorkerInstance> GetAllWorkerInstances()
+        {
+            return new List<WorkerInstance>(allWorkerInstances);
+        }
+
+        // ============================================
         // UTILITY
         // ============================================
 
@@ -366,7 +509,10 @@ namespace WildernessSurvival.Gameplay.Workers
             Debug.Log($"=== WORKER SYSTEM STATS ===\n" +
                 $"Total Workers: {totalWorkerCount}\n" +
                 $"Idle: {idleWorkers.Count}\n" +
-                $"Assigned: {assignedWorkerCount}");
+                $"Assigned: {assignedWorkerCount}\n" +
+                $"\nWorker Instances: {allWorkerInstances.Count}\n" +
+                $"Available: {AvailableWorkerCount}\n" +
+                $"Assigned Instances: {AssignedInstanceCount}");
         }
 
         [ButtonGroup("Debug Actions/Row2")]
