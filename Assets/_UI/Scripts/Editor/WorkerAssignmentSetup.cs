@@ -46,7 +46,7 @@ namespace WildernessSurvival.Editor
         // 1. CREATE PREFABS
         // ============================================
 
-        [TitleGroup("1. Prefab Generation")]
+        [TitleGroup("Prefab Generation")]
         [Button("Create UI Prefabs", ButtonSizes.Large), GUIColor(0.4f, 0.8f, 0.4f)]
         public void CreatePrefabs()
         {
@@ -193,7 +193,12 @@ namespace WildernessSurvival.Editor
 
             // Ideal Match
             GameObject idealObj = CreateChildPanel(root, "IdealMatch", Color.clear);
-            Image idealBorder = idealObj.AddComponent<Image>(); // Just reusing panel as border holder
+            RectTransform idealRT = idealObj.GetComponent<RectTransform>();
+            idealRT.anchorMin = Vector2.zero;
+            idealRT.anchorMax = Vector2.one;
+            idealRT.sizeDelta = Vector2.zero;
+
+            Image idealBorder = idealObj.GetComponent<Image>(); // Just reusing panel as border holder
             idealBorder.type = Image.Type.Sliced;
             idealBorder.color = Color.green;
             idealObj.SetActive(false);
@@ -220,50 +225,125 @@ namespace WildernessSurvival.Editor
 
         private void CreateWorkerAssignmentPanelPrefab(GameObject slotPrefab, GameObject availablePrefab)
         {
-            // Root Panel
+            // Root Panel - Fullscreen with anchors
             GameObject root = new GameObject("WorkerAssignmentPanel");
             RectTransform rootRT = root.AddComponent<RectTransform>();
-            rootRT.sizeDelta = new Vector2(800, 600);
-            
-            // Main Panel (Visual)
-            GameObject panel = CreateChildPanel(root, "Panel", new Color(0.1f, 0.1f, 0.15f, 0.95f));
+            rootRT.anchorMin = Vector2.zero;
+            rootRT.anchorMax = Vector2.one;
+            rootRT.sizeDelta = Vector2.zero; // Stretch to fill
             
             // Component
             WorkerAssignmentUI ui = root.AddComponent<WorkerAssignmentUI>();
 
+            // Main Panel (Visual) - Centered 900x700
+            GameObject panel = CreateChildPanel(root, "Panel", new Color(0.1f, 0.1f, 0.15f, 0.95f));
+            RectTransform panelRT = panel.GetComponent<RectTransform>();
+            panelRT.anchorMin = new Vector2(0.5f, 0.5f);
+            panelRT.anchorMax = new Vector2(0.5f, 0.5f);
+            panelRT.pivot = new Vector2(0.5f, 0.5f);
+            panelRT.sizeDelta = new Vector2(900, 700);
+            panelRT.anchoredPosition = Vector2.zero;
+
             // Header
-            GameObject headerObj = CreateChildText(panel, "Header", "Worker Assignment", 24);
-            headerObj.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, 270);
+            GameObject headerObj = CreateChildText(panel, "Header", "Worker Assignment", 28);
+            RectTransform headerRT = headerObj.GetComponent<RectTransform>();
+            headerRT.anchorMin = new Vector2(0.5f, 1);
+            headerRT.anchorMax = new Vector2(0.5f, 1);
+            headerRT.pivot = new Vector2(0.5f, 1);
+            headerRT.anchoredPosition = new Vector2(0, -20);
+            headerRT.sizeDelta = new Vector2(800, 40);
 
             // Structure Info
             GameObject structInfo = CreateChildPanel(panel, "StructureInfo", Color.clear);
+            RectTransform structInfoRT = structInfo.GetComponent<RectTransform>();
+            structInfoRT.anchorMin = new Vector2(0.5f, 1);
+            structInfoRT.anchorMax = new Vector2(0.5f, 1);
+            structInfoRT.pivot = new Vector2(0.5f, 1);
+            structInfoRT.anchoredPosition = new Vector2(0, -70);
+            structInfoRT.sizeDelta = new Vector2(800, 60);
+
             GameObject sIcon = CreateChildImage(structInfo, "Icon", Color.white);
+            sIcon.GetComponent<RectTransform>().sizeDelta = new Vector2(50, 50);
             GameObject sName = CreateChildText(structInfo, "Name", "Structure Name", 20);
             GameObject sStats = CreateChildText(structInfo, "Stats", "HP: 100/100", 14);
 
+            // Slots Header
+            GameObject slotsHeader = CreateChildText(panel, "SlotsHeader", "Assigned Workers", 18);
+            RectTransform slotsHeaderRT = slotsHeader.GetComponent<RectTransform>();
+            slotsHeaderRT.anchorMin = new Vector2(0, 1);
+            slotsHeaderRT.anchorMax = new Vector2(0, 1);
+            slotsHeaderRT.pivot = new Vector2(0, 1);
+            slotsHeaderRT.anchoredPosition = new Vector2(50, -150);
+            slotsHeaderRT.sizeDelta = new Vector2(400, 30);
+            slotsHeader.GetComponent<TextMeshProUGUI>().alignment = TextAlignmentOptions.Left;
+
             // Slots Container
             GameObject slotsCont = CreateChildPanel(panel, "SlotsContainer", Color.clear);
+            RectTransform slotsRT = slotsCont.GetComponent<RectTransform>();
+            slotsRT.anchorMin = new Vector2(0, 1);
+            slotsRT.anchorMax = new Vector2(0, 1);
+            slotsRT.pivot = new Vector2(0, 1);
+            slotsRT.anchoredPosition = new Vector2(50, -190);
+            slotsRT.sizeDelta = new Vector2(800, 150);
+            
             HorizontalLayoutGroup slotsLayout = slotsCont.AddComponent<HorizontalLayoutGroup>();
             slotsLayout.childControlWidth = false;
             slotsLayout.childControlHeight = false;
             slotsLayout.spacing = 10;
-            GameObject slotsHeader = CreateChildText(panel, "SlotsHeader", "Assigned Workers", 18);
+            slotsLayout.childAlignment = TextAnchor.MiddleLeft;
+
+            // Available Header
+            GameObject availCount = CreateChildText(panel, "AvailableCount", "Available Workers (0)", 18);
+            RectTransform availCountRT = availCount.GetComponent<RectTransform>();
+            availCountRT.anchorMin = new Vector2(0, 1);
+            availCountRT.anchorMax = new Vector2(0, 1);
+            availCountRT.pivot = new Vector2(0, 1);
+            availCountRT.anchoredPosition = new Vector2(50, -360);
+            availCountRT.sizeDelta = new Vector2(400, 30);
+            availCount.GetComponent<TextMeshProUGUI>().alignment = TextAlignmentOptions.Left;
 
             // Available Container
             GameObject availCont = CreateChildPanel(panel, "AvailableContainer", Color.clear);
+            RectTransform availRT = availCont.GetComponent<RectTransform>();
+            availRT.anchorMin = new Vector2(0, 0);
+            availRT.anchorMax = new Vector2(1, 1);
+            availRT.pivot = new Vector2(0.5f, 1);
+            availRT.anchoredPosition = new Vector2(0, -400);
+            availRT.sizeDelta = new Vector2(-100, -450);
+            
             GridLayoutGroup grid = availCont.AddComponent<GridLayoutGroup>();
-            grid.cellSize = new Vector2(200, 60);
-            grid.spacing = new Vector2(10, 10);
-            GameObject availCount = CreateChildText(panel, "AvailableCount", "Available Workers (0)", 18);
+            grid.cellSize = new Vector2(380, 70);
+            grid.spacing = new Vector2(15, 15);
+            grid.startAxis = GridLayoutGroup.Axis.Horizontal;
+            grid.childAlignment = TextAnchor.UpperLeft;
 
             // Production Info
-            GameObject prodPanel = CreateChildPanel(panel, "ProductionInfo", new Color(0,0,0,0.3f));
+            GameObject prodPanel = CreateChildPanel(panel, "ProductionInfo", new Color(0,0,0,0.4f));
+            RectTransform prodRT = prodPanel.GetComponent<RectTransform>();
+            prodRT.anchorMin = new Vector2(0.5f, 0);
+            prodRT.anchorMax = new Vector2(0.5f, 0);
+            prodRT.pivot = new Vector2(0.5f, 0);
+            prodRT.anchoredPosition = new Vector2(0, 60);
+            prodRT.sizeDelta = new Vector2(800, 50);
+
             GameObject baseProd = CreateChildText(prodPanel, "Base", "Base: 10", 14);
+            baseProd.GetComponent<RectTransform>().anchoredPosition = new Vector2(-200, 0);
             GameObject bonusProd = CreateChildText(prodPanel, "Bonus", "Bonus: +0%", 14);
+            bonusProd.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, 0);
             GameObject totalProd = CreateChildText(prodPanel, "Total", "Total: 10", 16);
+            totalProd.GetComponent<RectTransform>().anchoredPosition = new Vector2(200, 0);
 
             // Close Button
             GameObject closeBtn = CreateChildButton(panel, "CloseBtn", "Close");
+            RectTransform closeBtnRT = closeBtn.GetComponent<RectTransform>();
+            closeBtnRT.anchorMin = new Vector2(0.5f, 0);
+            closeBtnRT.anchorMax = new Vector2(0.5f, 0);
+            closeBtnRT.pivot = new Vector2(0.5f, 0);
+            closeBtnRT.anchoredPosition = new Vector2(0, 10);
+            closeBtnRT.sizeDelta = new Vector2(200, 40);
+            
+            // IMPORTANT: Panel starts hidden
+            panel.SetActive(false);
             
             // Assign References
             SerializedObject so = new SerializedObject(ui);
@@ -298,7 +378,7 @@ namespace WildernessSurvival.Editor
         // 2. CREATE DATA
         // ============================================
 
-        [TitleGroup("2. Data Generation")]
+        [TitleGroup("Data Generation")]
         [Button("Create Example Worker Data", ButtonSizes.Large), GUIColor(0.4f, 0.6f, 0.8f)]
         public void CreateExampleWorkerData()
         {
@@ -341,7 +421,7 @@ namespace WildernessSurvival.Editor
         // 3. SETUP SCENE
         // ============================================
 
-        [TitleGroup("3. Scene Setup")]
+        [TitleGroup("Scene Setup")]
         [Button("Setup Scene UI", ButtonSizes.Large), GUIColor(0.8f, 0.6f, 0.4f)]
         public void SetupScene()
         {
@@ -390,7 +470,7 @@ namespace WildernessSurvival.Editor
         // 4. SETUP WORKER SYSTEM
         // ============================================
 
-        [TitleGroup("4. System Setup")]
+        [TitleGroup("System Setup")]
         [Button("Setup Worker System", ButtonSizes.Large), GUIColor(0.8f, 0.4f, 0.6f)]
         public void SetupWorkerSystem()
         {
@@ -432,6 +512,67 @@ namespace WildernessSurvival.Editor
             so.ApplyModifiedProperties();
             
             Debug.Log($"<color=green>[WorkerAssignmentSetup]</color> WorkerSystem configured with {dataList.Count} worker types!");
+        }
+
+        // ============================================
+        // 5. SETUP STRUCTURE CLICK HANDLERS
+        // ============================================
+
+        [TitleGroup("Structure Setup")]
+        [Button("Add Click Handlers to Structures", ButtonSizes.Large), GUIColor(0.6f, 0.8f, 0.4f)]
+        [InfoBox("Finds all StructureController objects in the scene and adds BoxCollider + StructureClickHandler if missing.")]
+        public void SetupStructureClickHandlers()
+        {
+            StructureController[] structures = FindObjectsByType<StructureController>(FindObjectsSortMode.None);
+            
+            if (structures.Length == 0)
+            {
+                Debug.LogWarning("[WorkerAssignmentSetup] No StructureController objects found in scene!");
+                return;
+            }
+
+            int addedColliders = 0;
+            int addedHandlers = 0;
+
+            foreach (StructureController structure in structures)
+            {
+                GameObject obj = structure.gameObject;
+
+                // Check if has any collider
+                Collider existingCollider = obj.GetComponent<Collider>();
+                if (existingCollider == null)
+                {
+                    // Add BoxCollider
+                    BoxCollider boxCollider = obj.AddComponent<BoxCollider>();
+                    
+                    // Try to auto-size based on renderer
+                    Renderer renderer = obj.GetComponentInChildren<Renderer>();
+                    if (renderer != null)
+                    {
+                        boxCollider.center = renderer.bounds.center - obj.transform.position;
+                        boxCollider.size = renderer.bounds.size;
+                    }
+                    else
+                    {
+                        // Default size
+                        boxCollider.size = new Vector3(2, 2, 2);
+                    }
+
+                    addedColliders++;
+                    Debug.Log($"<color=yellow>[WorkerAssignmentSetup]</color> Added BoxCollider to {obj.name}");
+                }
+
+                // Check if has StructureClickHandler
+                StructureClickHandler existingHandler = obj.GetComponent<StructureClickHandler>();
+                if (existingHandler == null)
+                {
+                    obj.AddComponent<StructureClickHandler>();
+                    addedHandlers++;
+                    Debug.Log($"<color=yellow>[WorkerAssignmentSetup]</color> Added StructureClickHandler to {obj.name}");
+                }
+            }
+
+            Debug.Log($"<color=green>[WorkerAssignmentSetup]</color> Setup complete! Found {structures.Length} structures. Added {addedColliders} colliders and {addedHandlers} click handlers.");
         }
 
         // ============================================
