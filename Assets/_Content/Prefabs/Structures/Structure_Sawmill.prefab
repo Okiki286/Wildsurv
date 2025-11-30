@@ -10,6 +10,8 @@ GameObject:
   m_Component:
   - component: {fileID: 2589259048888126310}
   - component: {fileID: 5373487643407089790}
+  - component: {fileID: 1054085412293432845}
+  - component: {fileID: 3514365065993012785}
   m_Layer: 0
   m_Name: Structure_Sawmill
   m_TagString: Untagged
@@ -48,6 +50,39 @@ MonoBehaviour:
   structureData: {fileID: 11400000, guid: 811bc85d6e0797d4a8cafdb864617741, type: 2}
   visualRoot: {fileID: 6414669399810881659}
   vfxSpawnPoint: {fileID: 0}
+--- !u!65 &1054085412293432845
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6308903815699075732}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 2, y: 1, z: 2}
+  m_Center: {x: 4.97, y: 0, z: 0}
+--- !u!114 &3514365065993012785
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6308903815699075732}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 036cce96320b0ff4499342c0d69b77db, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &8838918100330638182
 GameObject:
   m_ObjectHideFlags: 0

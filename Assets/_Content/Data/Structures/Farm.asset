@@ -29,7 +29,7 @@ MonoBehaviour:
   workerSlots: 2
   heroSlots: 0
   allowedRoles: 1
-  producesResourceId: 
+  producesResourceId: food
   baseProductionRate: 5
   attackDamage: 10
   attackInterval: 1
