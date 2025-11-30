@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ff36601d6c93a8b4eaf1eb5f8ca4e718, type: 3}
+  m_Name: VillagerData
+  m_EditorClassIdentifier: 
+  workerId: villager_basic
+  displayName: Villager
+  portrait: {fileID: 0}
+  prefab: {fileID: 7476436839136349142, guid: eb943c3b0012d7b43b7cdc17c36c1761, type: 3}
+  description: 
+  workerType: 0
+  defaultRole: 1
+  baseHealth: 100
+  baseArmor: 5
+  movementSpeed: 3.5
+  productivityMultiplier: 1
+  buildSpeedMultiplier: 1
+  roleAffinities: []
+  attackDamage: 10
+  attackInterval: 1.5
+  attackRange: 2
+  maxStamina: 100
+  staminaDrainRate: 5
+  staminaRegenRate: 10

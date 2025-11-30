@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2a3f1af8cd6fce540a45987d31d5778b, type: 3}
+  m_Name: Shard
+  m_EditorClassIdentifier: 
+  resourceId: shard
+  icon: {fileID: 0}
+  displayName: Crystal Shard
+  uiColor: {r: 0.39215687, g: 0.7058824, b: 1, a: 1}
+  description: Rare material from stones
+  tier: 1
+  rarity: 0
+  baseValue: 10
+  baseProductionPerMinute: 1
+  workerBonusPercent: 30
+  heroBonusPercent: 60
+  maxStorage: 500
+  currentStoragePreview: 0
+  gatherMethods: 
+  isCraftable: 0
+  craftRequirements: []
+  previewWorkers: 1
+  previewHeroes: 0
+  productionPreviewText: "\U0001F4CA Produzione: 1.3/min"

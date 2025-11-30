@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2a54512261aa3f642877e8951353f71b, type: 3}
+  m_Name: Enemy Definition
+  m_EditorClassIdentifier: 
+  enemyId: 
+  displayName: 
+  icon: {fileID: 0}
+  prefab: {fileID: 0}
+  description: 
+  enemyType: 0
+  tier: 1
+  rarity: 0
+  isBoss: 0
+  baseHealth: 100
+  armor: 0
+  moveSpeed: 3
+  attackDamage: 10
+  attackInterval: 1.5
+  attackRange: 1.5
+  targetPriority: 0
+  aggroRange: 10
+  canBurrow: 0
+  burrowDuration: 2
+  isRanged: 0
+  projectilePrefab: {fileID: 0}
+  abilities: []
+  weaknesses: 0
+  resistances: 0
+  baseShardDrop: 5
+  baseXP: 10
+  lootTable: []
+  healthScaling: 1.1
+  damageScaling: 1.05
+  spawnSound: {fileID: 0}
+  attackSound: {fileID: 0}
+  deathSound: {fileID: 0}
+  spawnVFX: {fileID: 0}
+  hitVFX: {fileID: 0}
+  deathVFX: {fileID: 0}
