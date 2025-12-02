@@ -2,17 +2,33 @@
 using Sirenix.OdinInspector;
 using System.Collections.Generic;
 using WildernessSurvival.Gameplay.Structures;
+using System.Linq; // Necessario per Last()
 
 namespace WildernessSurvival.Gameplay.Workers
 {
     /// <summary>
     /// Sistema centrale per la gestione dei worker.
-    /// Implementa il pattern "Manager Loop" per ottimizzare le performance su mobile.
-    /// Gestisce il tick di produzione e il movimento dei worker fisici.
+    /// FIX: Aggiunto spawn iniziale e debug tools.
     /// </summary>
     public class WorkerSystem : MonoBehaviour
     {
         public static WorkerSystem Instance { get; private set; }
+
+        // ============================================
+        // CONFIGURAZIONE SPAWN
+        // ============================================
+        [TitleGroup("Starting Workers")]
+        [SerializeField]
+        [InfoBox("Trascina qui i WorkerData (es. Builder, Gatherer) da Assets/_Gameplay/Workers/Data", InfoMessageType.Info)]
+        private List<WorkerData> availableWorkerTypes = new List<WorkerData>();
+
+        [SerializeField]
+        [Range(1, 10)]
+        private int startingWorkerCount = 3;
+
+        // ============================================
+        // RUNTIME LISTS
+        // ============================================
 
         [TitleGroup("Runtime Lists")]
         [ShowInInspector, ReadOnly]
@@ -24,7 +40,7 @@ namespace WildernessSurvival.Gameplay.Workers
         // Liste per la gestione logica (WorkerInstance)
         [ShowInInspector, ReadOnly]
         private List<WorkerInstance> allWorkerInstances = new List<WorkerInstance>();
-        
+
         [ShowInInspector, ReadOnly]
         private List<WorkerInstance> availableWorkers = new List<WorkerInstance>();
 
@@ -39,10 +55,20 @@ namespace WildernessSurvival.Gameplay.Workers
         public int AvailableWorkerCount => availableWorkers.Count;
         public int AssignedInstanceCount => assignedWorkers.Count;
 
+        // ============================================
+        // LIFECYCLE
+        // ============================================
+
         private void Awake()
         {
             if (Instance == null) Instance = this;
             else Destroy(gameObject);
+        }
+
+        private void Start()
+        {
+            // Spawn dei worker iniziali al primo frame
+            SpawnStartingWorkers();
         }
 
         private void Update()
@@ -52,7 +78,6 @@ namespace WildernessSurvival.Gameplay.Workers
             float dt = Time.deltaTime;
 
             // 1. Production Tick Loop
-            // Itera su tutte le strutture attive per calcolare la produzione
             for (int i = activeStructures.Count - 1; i >= 0; i--)
             {
                 var structure = activeStructures[i];
@@ -60,15 +85,13 @@ namespace WildernessSurvival.Gameplay.Workers
                 {
                     structure.TickProduction(dt);
                 }
-                else
+                else if (structure == null)
                 {
-                    // Rimuovi se null o distrutta (lazy cleanup)
-                    if (structure == null) activeStructures.RemoveAt(i);
+                    activeStructures.RemoveAt(i);
                 }
             }
 
             // 2. Worker Movement/Anim Loop
-            // Itera su tutti i worker fisici per aggiornare movimento e animazioni
             for (int i = physicalWorkers.Count - 1; i >= 0; i--)
             {
                 var worker = physicalWorkers[i];
@@ -84,8 +107,29 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         // ============================================
-        // WORKER INSTANCE MANAGEMENT
+        // SPAWN LOGIC
         // ============================================
+
+        private void SpawnStartingWorkers()
+        {
+            if (availableWorkerTypes == null || availableWorkerTypes.Count == 0)
+            {
+                Debug.LogError("❌ [WorkerSystem] Nessun WorkerData assegnato in 'Available Worker Types'! Non posso spawnare worker.");
+                return;
+            }
+
+            Debug.Log($"<color=cyan>[WorkerSystem]</color> Spawning {startingWorkerCount} starting workers...");
+
+            for (int i = 0; i < startingWorkerCount; i++)
+            {
+                // Prendi un tipo a caso o ciclico
+                var typeToSpawn = availableWorkerTypes[i % availableWorkerTypes.Count];
+                if (typeToSpawn != null)
+                {
+                    CreateWorkerInstance(typeToSpawn);
+                }
+            }
+        }
 
         public WorkerInstance CreateWorkerInstance(WorkerData data)
         {
@@ -95,79 +139,76 @@ namespace WildernessSurvival.Gameplay.Workers
             allWorkerInstances.Add(newWorker);
             availableWorkers.Add(newWorker);
 
-            // **FIX**: Instantiate the physical prefab GameObject
+            // Spawn Fisico
             if (data.Prefab != null)
             {
-                GameObject workerObj = Instantiate(data.Prefab);
+                // Posizione di spawn casuale attorno al centro (o un punto di spawn specifico)
+                Vector3 spawnPos = GetRandomSpawnPosition();
+
+                GameObject workerObj = Instantiate(data.Prefab, spawnPos, Quaternion.identity);
+                workerObj.name = $"Worker_{data.DisplayName}_{newWorker.InstanceId.Substring(0, 4)}";
+
                 WorkerController controller = workerObj.GetComponent<WorkerController>();
-                
+
                 if (controller != null)
                 {
-                    // Link the physical controller to the instance
                     newWorker.PhysicalWorker = controller;
-                    
-                    // Register the physical worker in the system
                     RegisterWorker(controller);
-                    
-                    Debug.Log($"<color=green>[WorkerSystem]</color> Spawned physical worker: {data.DisplayName} at {workerObj.transform.position}");
+                    Debug.Log($"<color=green>[WorkerSystem]</color> Spawned {data.DisplayName} at {spawnPos}");
                 }
                 else
                 {
-                    Debug.LogError($"<color=red>[WorkerSystem]</color> Prefab {data.Prefab.name} has no WorkerController component!");
-                    Destroy(workerObj);
+                    Debug.LogError($"<color=red>[WorkerSystem]</color> Prefab {data.Prefab.name} missing WorkerController!");
                 }
             }
             else
             {
-                Debug.LogWarning($"<color=yellow>[WorkerSystem]</color> WorkerData '{data.DisplayName}' has no prefab assigned. Creating virtual worker.");
+                Debug.LogWarning($"<color=yellow>[WorkerSystem]</color> {data.DisplayName} has no prefab. Virtual worker created.");
             }
 
             return newWorker;
         }
 
-        public List<WorkerInstance> GetAvailableWorkers()
+        private Vector3 GetRandomSpawnPosition()
         {
-            return new List<WorkerInstance>(availableWorkers);
+            // Cerca un punto valido sul NavMesh vicino all'origine (0,0,0)
+            // Se hai un "Bonfire" o "Base", potresti voler usare la sua posizione
+            Vector3 center = Vector3.zero;
+            Vector3 randomPoint = center + Random.insideUnitSphere * 5f;
+            randomPoint.y = 0; // Assumi terreno piatto per ora
+
+            UnityEngine.AI.NavMeshHit hit;
+            if (UnityEngine.AI.NavMesh.SamplePosition(randomPoint, out hit, 5.0f, UnityEngine.AI.NavMesh.AllAreas))
+            {
+                return hit.position;
+            }
+            return center;
         }
 
-        public List<WorkerInstance> GetAssignedWorkers()
-        {
-            return new List<WorkerInstance>(assignedWorkers);
-        }
+        // ============================================
+        // WORKER MANAGEMENT
+        // ============================================
+
+        public List<WorkerInstance> GetAvailableWorkers() => new List<WorkerInstance>(availableWorkers);
+        public List<WorkerInstance> GetAssignedWorkers() => new List<WorkerInstance>(assignedWorkers);
 
         public List<WorkerInstance> GetWorkersAtStructure(StructureController structure)
         {
-            List<WorkerInstance> result = new List<WorkerInstance>();
-            foreach (var worker in assignedWorkers)
-            {
-                if (worker.AssignedStructure == structure)
-                {
-                    result.Add(worker);
-                }
-            }
-            return result;
+            return assignedWorkers.FindAll(w => w.AssignedStructure == structure);
         }
 
         public bool AssignWorker(WorkerInstance worker, StructureController structure)
         {
             if (worker == null || structure == null) return false;
-            
-            if (worker.IsAssigned)
-            {
-                UnassignWorker(worker);
-            }
 
-            // Usa il metodo che accetta WorkerInstance
+            if (worker.IsAssigned) UnassignWorker(worker);
+
             if (structure.AssignWorker(worker))
             {
                 availableWorkers.Remove(worker);
-                if (!assignedWorkers.Contains(worker))
-                {
-                    assignedWorkers.Add(worker);
-                }
+                if (!assignedWorkers.Contains(worker)) assignedWorkers.Add(worker);
                 return true;
             }
-
             return false;
         }
 
@@ -175,88 +216,69 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (worker == null) return;
 
-            StructureController structure = worker.AssignedStructure;
-            if (structure != null)
+            if (worker.AssignedStructure != null)
             {
-                // Usa il metodo che accetta WorkerInstance
-                structure.RemoveWorker(worker);
+                worker.AssignedStructure.RemoveWorker(worker);
             }
             else
             {
-                // Fallback se la struttura è null ma il worker pensa di essere assegnato
                 worker.Unassign();
             }
 
             assignedWorkers.Remove(worker);
-            if (!availableWorkers.Contains(worker))
-            {
-                availableWorkers.Add(worker);
-            }
+            if (!availableWorkers.Contains(worker)) availableWorkers.Add(worker);
         }
 
         // ============================================
-        // REGISTRATION API (Physical Objects)
+        // REGISTRATION API
         // ============================================
 
         public void RegisterStructure(StructureController structure)
         {
-            if (structure != null && !activeStructures.Contains(structure))
-            {
-                activeStructures.Add(structure);
-            }
+            if (structure != null && !activeStructures.Contains(structure)) activeStructures.Add(structure);
         }
 
         public void UnregisterStructure(StructureController structure)
         {
-            if (activeStructures.Contains(structure))
-            {
-                activeStructures.Remove(structure);
-            }
+            if (activeStructures.Contains(structure)) activeStructures.Remove(structure);
         }
 
         public void RegisterWorker(WorkerController worker)
         {
-            if (worker != null && !physicalWorkers.Contains(worker))
-            {
-                physicalWorkers.Add(worker);
-            }
+            if (worker != null && !physicalWorkers.Contains(worker)) physicalWorkers.Add(worker);
         }
 
         public void UnregisterWorker(WorkerController worker)
         {
-            if (physicalWorkers.Contains(worker))
-            {
-                physicalWorkers.Remove(worker);
-            }
+            if (physicalWorkers.Contains(worker)) physicalWorkers.Remove(worker);
         }
 
         // ============================================
-        // EDITOR TOOLS
+        // DEBUG TOOLS
         // ============================================
 
-#if UNITY_EDITOR
         [TitleGroup("Editor Tools")]
-        [Button("Find All Actors in Scene", ButtonSizes.Large)]
-        [GUIColor(0.5f, 1f, 0.5f)]
+        [Button("Spawn Random Worker", ButtonSizes.Large), GUIColor(0.4f, 0.8f, 1f)]
+        private void DebugSpawnRandom()
+        {
+            if (availableWorkerTypes.Count > 0)
+            {
+                var randomType = availableWorkerTypes[Random.Range(0, availableWorkerTypes.Count)];
+                CreateWorkerInstance(randomType);
+            }
+            else
+            {
+                Debug.LogError("No worker types configured!");
+            }
+        }
+
+#if UNITY_EDITOR
+        [Button("Find All Actors in Scene", ButtonSizes.Medium)]
         private void FindAllActors()
         {
-            // Trova Strutture
-            activeStructures.Clear();
-            var structures = FindObjectsByType<StructureController>(FindObjectsSortMode.None);
-            foreach (var s in structures)
-            {
-                if (s.enabled) activeStructures.Add(s);
-            }
-            Debug.Log($"[WorkerSystem] Found {activeStructures.Count} active structures.");
-
-            // Trova Worker
-            physicalWorkers.Clear();
-            var workers = FindObjectsByType<WorkerController>(FindObjectsSortMode.None);
-            foreach (var w in workers)
-            {
-                if (w.enabled) physicalWorkers.Add(w);
-            }
-            Debug.Log($"[WorkerSystem] Found {physicalWorkers.Count} physical workers.");
+            activeStructures = new List<StructureController>(FindObjectsByType<StructureController>(FindObjectsSortMode.None));
+            physicalWorkers = new List<WorkerController>(FindObjectsByType<WorkerController>(FindObjectsSortMode.None));
+            Debug.Log($"Found {activeStructures.Count} structures and {physicalWorkers.Count} workers.");
         }
 #endif
     }

@@ -665,6 +665,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5bbb6d15ccff12648bbae84dcffb35e2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  availableWorkerTypes:
+  - {fileID: 11400000, guid: 5ff67a874ed78f249b566257178f3a37, type: 2}
+  - {fileID: 11400000, guid: 5ff67a874ed78f249b566257178f3a37, type: 2}
+  - {fileID: 11400000, guid: 3cd74048cb52a214783ea22fa18f8979, type: 2}
+  startingWorkerCount: 3
   paused: 0
 --- !u!4 &233608731
 Transform:

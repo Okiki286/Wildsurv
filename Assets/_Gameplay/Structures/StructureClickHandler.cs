@@ -36,7 +36,11 @@ namespace WildernessSurvival.Gameplay.Structures
 
             if (structureController != null)
             {
-                structureController.OnClick();
+                // Open worker assignment UI directly via singleton
+                if (WildernessSurvival.UI.WorkerAssignmentUI.Instance != null)
+                {
+                    WildernessSurvival.UI.WorkerAssignmentUI.Instance.OpenForStructure(structureController);
+                }
             }
         }
 

@@ -278,7 +278,7 @@ namespace WildernessSurvival.UI
             if (currentStructure == null || structureStatsText == null) return;
 
             var data = currentStructure.Data;
-            int assignedCount = currentStructure.AssignedWorkerInstanceCount;
+            int assignedCount = currentStructure.WorkerCount;
             int maxSlots = data.WorkerSlots;
 
             string stats = $"HP: {currentStructure.CurrentHealth}/{data.MaxHealth}\n";
@@ -303,8 +303,7 @@ namespace WildernessSurvival.UI
             }
 
             int totalSlots = currentStructure.Data.WorkerSlots;
-            var assignedWorkers = WorkerSystem.Instance?.GetWorkersAtStructure(currentStructure) 
-                                  ?? new List<WorkerInstance>();
+            var assignedWorkers = currentStructure.GetAssignedWorkerInstances();
 
             // Create UI slot for each worker slot
             for (int i = 0; i < totalSlots; i++)
@@ -389,7 +388,14 @@ namespace WildernessSurvival.UI
             productionPanel.SetActive(true);
 
             float baseRate = data.BaseProductionRate;
-            float bonusMultiplier = currentStructure.GetTotalWorkerBonus();
+            
+            // Calculate worker bonus locally
+            float bonusMultiplier = 0f;
+            foreach (var w in currentStructure.GetAssignedWorkerInstances())
+            {
+                bonusMultiplier += w.GetProductionBonus(currentStructure.Data);
+            }
+            
             float bonusPercent = bonusMultiplier * 100f;
             float totalRate = baseRate * (1f + bonusMultiplier);
 
