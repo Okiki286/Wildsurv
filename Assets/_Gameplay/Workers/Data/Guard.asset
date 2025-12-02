@@ -15,7 +15,7 @@ MonoBehaviour:
   workerId: guard
   displayName: Guard
   portrait: {fileID: 0}
-  prefab: {fileID: 0}
+  prefab: {fileID: 8608382026145210704, guid: d5d7d566d54ed984495e318b40995ddc, type: 3}
   icon: {fileID: 0}
   description: 
   workerType: 0

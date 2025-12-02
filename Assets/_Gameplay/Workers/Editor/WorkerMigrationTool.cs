@@ -265,7 +265,145 @@ namespace WildernessSurvival.Editor
         }
 
         // ============================================
-        // 2. ENVIRONMENT SETUP
+        // 3. DATA LINKING
+        // ============================================
+
+        [TitleGroup("Data Linking")]
+        [InfoBox("Assegna automaticamente il prefab Worker_Base_Mobile a tutti i WorkerData ScriptableObjects nel progetto.", InfoMessageType.Info)]
+        
+        [BoxGroup("Data Linking/Settings")]
+        [AssetsOnly]
+        [LabelText("Custom Prefab Override (Optional)")]
+        [Tooltip("Se assegnato, usa questo prefab invece del default Worker_Base_Mobile")]
+        [SerializeField]
+        private GameObject customPrefabOverride;
+
+        [BoxGroup("Data Linking/Actions")]
+        [Button("Force Assign Mobile Prefab To All WorkerData", ButtonSizes.Large)]
+        [GUIColor(1f, 0.6f, 0.4f)]
+        private void ForceAssignMobilePrefabToAll()
+        {
+            // Step 1: Carica il Golden Sample Prefab
+            GameObject mobilePrefab = customPrefabOverride;
+            
+            if (mobilePrefab == null)
+            {
+                // Carica il prefab di default
+                string defaultPrefabPath = "Assets/_Gameplay/Workers/Prefabs/Worker_Base_Mobile.prefab";
+                mobilePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(defaultPrefabPath);
+                
+                if (mobilePrefab == null)
+                {
+                    Debug.LogError($"<color=red>[WorkerMigrationTool]</color> ERRORE: Il prefab '{defaultPrefabPath}' non è stato trovato!\n" +
+                        "Assicurati che Worker_Base_Mobile.prefab esista o assegna un Custom Prefab Override.");
+                    return;
+                }
+                
+                Debug.Log($"<color=cyan>[WorkerMigrationTool]</color> Loaded default prefab: {defaultPrefabPath}");
+            }
+            else
+            {
+                Debug.Log($"<color=cyan>[WorkerMigrationTool]</color> Using custom prefab override: {customPrefabOverride.name}");
+            }
+
+            // Step 2: Trova tutti i WorkerData ScriptableObjects
+            string[] guids = AssetDatabase.FindAssets("t:WildernessSurvival.Gameplay.Workers.WorkerData");
+            
+            if (guids.Length == 0)
+            {
+                Debug.LogWarning("<color=yellow>[WorkerMigrationTool]</color> Nessun WorkerData trovato nel progetto!");
+                return;
+            }
+
+            // Step 3: Assegnazione di Massa
+            int assignedCount = 0;
+            
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                Gameplay.Workers.WorkerData data = AssetDatabase.LoadAssetAtPath<Gameplay.Workers.WorkerData>(path);
+                
+                if (data == null)
+                {
+                    Debug.LogWarning($"<color=yellow>[WorkerMigrationTool]</color> Failed to load WorkerData at {path}");
+                    continue;
+                }
+
+                // Usa reflection per assegnare il campo privato
+                var prefabField = typeof(Gameplay.Workers.WorkerData).GetField("prefab", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                
+                if (prefabField != null)
+                {
+                    prefabField.SetValue(data, mobilePrefab);
+                    
+                    // Marca come dirty per salvare
+                    EditorUtility.SetDirty(data);
+                    
+                    assignedCount++;
+                    Debug.Log($"<color=green>[WorkerMigrationTool]</color> Assigned mobile prefab to: {data.name}");
+                }
+                else
+                {
+                    Debug.LogError($"<color=red>[WorkerMigrationTool]</color> Could not find prefab field in WorkerData!");
+                }
+            }
+
+            // Step 4: Salva tutte le modifiche
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            // Step 5: Log Finale
+            Debug.Log($"<color=green>✅ [WorkerMigrationTool]</color> Assigned Mobile Prefab to <b>{assignedCount}</b> WorkerData profiles.");
+        }
+
+        [BoxGroup("Data Linking/Actions")]
+        [Button("Verify WorkerData Prefab Links", ButtonSizes.Medium)]
+        [GUIColor(0.8f, 0.8f, 0.4f)]
+        private void VerifyWorkerDataPrefabLinks()
+        {
+            string[] guids = AssetDatabase.FindAssets("t:WildernessSurvival.Gameplay.Workers.WorkerData");
+            
+            int totalData = 0;
+            int withPrefab = 0;
+            int withNavMesh = 0;
+            int withoutPrefab = 0;
+
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                Gameplay.Workers.WorkerData data = AssetDatabase.LoadAssetAtPath<Gameplay.Workers.WorkerData>(path);
+                
+                if (data == null) continue;
+                
+                totalData++;
+                
+                if (data.Prefab != null)
+                {
+                    withPrefab++;
+                    
+                    // Check if prefab has NavMeshAgent
+                    if (data.Prefab.GetComponent<NavMeshAgent>() != null)
+                    {
+                        withNavMesh++;
+                    }
+                }
+                else
+                {
+                    withoutPrefab++;
+                    Debug.LogWarning($"<color=orange>[WorkerMigrationTool]</color> WorkerData without prefab: {data.name}", data);
+                }
+            }
+
+            Debug.Log($"<color=cyan>[WorkerMigrationTool]</color> WorkerData Verification Results:\n" +
+                $"Total WorkerData: {totalData}\n" +
+                $"With Prefab Assigned: {withPrefab}\n" +
+                $"With NavMeshAgent: {withNavMesh}\n" +
+                $"Without Prefab: {withoutPrefab}");
+        }
+
+        // ============================================
+        // 4. ENVIRONMENT SETUP
         // ============================================
 
         [TitleGroup("Environment Setup")]

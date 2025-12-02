@@ -95,6 +95,33 @@ namespace WildernessSurvival.Gameplay.Workers
             allWorkerInstances.Add(newWorker);
             availableWorkers.Add(newWorker);
 
+            // **FIX**: Instantiate the physical prefab GameObject
+            if (data.Prefab != null)
+            {
+                GameObject workerObj = Instantiate(data.Prefab);
+                WorkerController controller = workerObj.GetComponent<WorkerController>();
+                
+                if (controller != null)
+                {
+                    // Link the physical controller to the instance
+                    newWorker.PhysicalWorker = controller;
+                    
+                    // Register the physical worker in the system
+                    RegisterWorker(controller);
+                    
+                    Debug.Log($"<color=green>[WorkerSystem]</color> Spawned physical worker: {data.DisplayName} at {workerObj.transform.position}");
+                }
+                else
+                {
+                    Debug.LogError($"<color=red>[WorkerSystem]</color> Prefab {data.Prefab.name} has no WorkerController component!");
+                    Destroy(workerObj);
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"<color=yellow>[WorkerSystem]</color> WorkerData '{data.DisplayName}' has no prefab assigned. Creating virtual worker.");
+            }
+
             return newWorker;
         }
 

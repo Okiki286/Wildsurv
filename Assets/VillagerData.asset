@@ -15,10 +15,12 @@ MonoBehaviour:
   workerId: villager_basic
   displayName: Villager
   portrait: {fileID: 0}
-  prefab: {fileID: 7476436839136349142, guid: eb943c3b0012d7b43b7cdc17c36c1761, type: 3}
+  prefab: {fileID: 8608382026145210704, guid: d5d7d566d54ed984495e318b40995ddc, type: 3}
+  icon: {fileID: 0}
   description: 
   workerType: 0
   defaultRole: 1
+  roleColor: {r: 0.4, g: 0.7, b: 0.3, a: 1}
   baseHealth: 100
   baseArmor: 5
   movementSpeed: 3.5
