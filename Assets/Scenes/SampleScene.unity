@@ -118,7 +118,7 @@ NavMeshSettings:
     preserveTilesOutsideBounds: 0
     debug:
       m_Flags: 0
-  m_NavMeshData: {fileID: 0}
+  m_NavMeshData: {fileID: 23800000, guid: 7ccfd8ae41110224f8d18e917db5b8b2, type: 2}
 --- !u!1 &15616618
 GameObject:
   m_ObjectHideFlags: 0
@@ -1475,8 +1475,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cb470fa4d453b34c827e310e8abccc9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  dayNightSystem: {fileID: 0}
-  resourceSystem: {fileID: 0}
+  dayNightSystem: {fileID: 1381636101}
+  resourceSystem: {fileID: 815354644}
   targetFrameRate: 60
   disableVSync: 1
   onGameInitialized: {fileID: 0}
@@ -2472,7 +2472,7 @@ GameObject:
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
+  m_StaticEditorFlags: 8
   m_IsActive: 1
 --- !u!23 &708023227
 MeshRenderer:
@@ -3041,6 +3041,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 4350001349649051671, guid: ef94952c73678d24ea69a1654e8291a7, type: 3}
+      propertyPath: m_StaticEditorFlags
+      value: 8
+      objectReference: {fileID: 0}
     - target: {fileID: 4976688776154926535, guid: ef94952c73678d24ea69a1654e8291a7, type: 3}
       propertyPath: m_LocalPosition.x
       value: 2.0490026
@@ -3736,7 +3740,7 @@ GameObject:
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
+  m_StaticEditorFlags: 8
   m_IsActive: 1
 --- !u!65 &1311752019
 BoxCollider:
@@ -5183,6 +5187,14 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 141661570649531389, guid: eb943c3b0012d7b43b7cdc17c36c1761, type: 3}
+      propertyPath: data
+      value: 
+      objectReference: {fileID: 11400000, guid: 5ff67a874ed78f249b566257178f3a37, type: 2}
+    - target: {fileID: 7198142660213340108, guid: eb943c3b0012d7b43b7cdc17c36c1761, type: 3}
+      propertyPath: m_StaticEditorFlags
+      value: 8
+      objectReference: {fileID: 0}
     - target: {fileID: 7476436839136349142, guid: eb943c3b0012d7b43b7cdc17c36c1761, type: 3}
       propertyPath: m_Name
       value: Worker_Villager

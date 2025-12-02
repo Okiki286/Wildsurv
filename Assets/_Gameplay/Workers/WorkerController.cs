@@ -88,6 +88,9 @@ namespace WildernessSurvival.Gameplay.Workers
         private void UpdateAnimations()
         {
             if (animator == null) return;
+            
+            // Check if animator has a controller assigned (prevents warning spam)
+            if (animator.runtimeAnimatorController == null) return;
 
             float speed = agent.velocity.magnitude;
             animator.SetFloat("Speed", speed);
