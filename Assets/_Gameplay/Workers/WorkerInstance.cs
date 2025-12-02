@@ -16,24 +16,19 @@ namespace WildernessSurvival.Gameplay.Workers
         // DATA
         // ============================================
 
-        [ShowInInspector]
-        [ReadOnly]
+        [ShowInInspector, ReadOnly]
         public string InstanceId { get; private set; }
 
-        [ShowInInspector]
-        [ReadOnly]
+        [ShowInInspector, ReadOnly]
         public WorkerData Data { get; private set; }
 
-        [ShowInInspector]
-        [ReadOnly]
+        [ShowInInspector, ReadOnly]
         public string CustomName { get; private set; }
 
-        [ShowInInspector]
-        [ReadOnly]
+        [ShowInInspector, ReadOnly]
         public StructureController AssignedStructure { get; private set; }
 
-        [ShowInInspector]
-        [ReadOnly]
+        [ShowInInspector, ReadOnly]
         public WorkerState CurrentState { get; private set; }
 
         // ============================================
@@ -44,8 +39,7 @@ namespace WildernessSurvival.Gameplay.Workers
         /// Riferimento opzionale al WorkerController fisico in scena.
         /// Può essere null per worker "virtuali" (solo dati/UI).
         /// </summary>
-        [ShowInInspector]
-        [ReadOnly]
+        [ShowInInspector, ReadOnly]
         public WorkerController PhysicalWorker { get; set; }
 
         // ============================================
@@ -79,123 +73,106 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         // ============================================
+        // LOGIC & CALCULATIONS
+        // ============================================
+
+        /// <summary>
+        /// Calcola il bonus di produzione per una specifica struttura.
+        /// </summary>
+        public float GetProductionBonus(StructureData structure)
+        {
+            if (Data == null || structure == null) return 0f;
+
+            // Base bonus from productivity multiplier (e.g. 1.2 -> +0.2)
+            float bonus = Data.ProductivityMultiplier - 1f;
+
+            // Bitmask check per ruolo
+            bool isRoleAllowed = (structure.AllowedRoles & Data.DefaultRole) != 0;
+
+            if (isRoleAllowed)
+            {
+                // Aggiungi bonus specifico del ruolo
+                bonus += Data.GetRoleBonus(Data.DefaultRole);
+            }
+            else
+            {
+                // Penalità se il ruolo non è adatto (opzionale, o semplicemente niente bonus extra)
+                // bonus -= 0.5f; 
+            }
+
+            return bonus;
+        }
+
+        // ============================================
+        // UI HELPERS (Fix CS1061 Errors)
+        // ============================================
+
+        /// <summary>
+        /// Calcola il bonus attuale. Se assegnato, usa la struttura corrente.
+        /// </summary>
+        public float GetCurrentBonus()
+        {
+            if (AssignedStructure == null || Data == null) return 0f;
+            return GetProductionBonus(AssignedStructure.Data);
+        }
+
+        /// <summary>
+        /// Verifica se il worker è un match ideale per la struttura assegnata.
+        /// </summary>
+        public bool IsIdealMatch()
+        {
+            if (AssignedStructure == null || Data == null) return false;
+            // Verifica bitmask o uguaglianza diretta
+            return (AssignedStructure.Data.AllowedRoles & Data.DefaultRole) != 0;
+        }
+
+        // Overload per la UI che controlla "would serve be ideal?"
+        public bool IsIdealMatchFor(StructureData structureData)
+        {
+            if (structureData == null || Data == null) return false;
+            return (structureData.AllowedRoles & Data.DefaultRole) != 0;
+        }
+
+        // ============================================
         // ASSIGNMENT
         // ============================================
 
         /// <summary>
-        /// Assegna questo worker a una struttura
+        /// Assegna questo worker a una struttura.
+        /// Gestisce sia la logica dati che il movimento fisico (se presente).
         /// </summary>
-        public bool AssignTo(StructureController structure)
+        public void AssignTo(StructureController structure)
         {
-            if (structure == null)
-            {
-                Debug.LogWarning($"[Worker {CustomName}] Cannot assign to null structure");
-                return false;
-            }
-
-            if (IsAssigned)
-            {
-                Debug.LogWarning($"[Worker {CustomName}] Already assigned to {AssignedStructure.Data.DisplayName}. Unassign first.");
-                return false;
-            }
-
-            if (!structure.HasFreeWorkerSlot())
-            {
-                Debug.LogWarning($"[Worker {CustomName}] Structure {structure.Data.DisplayName} has no free slots");
-                return false;
-            }
+            if (structure == null) return;
 
             AssignedStructure = structure;
-            CurrentState = WorkerState.Working;
+            CurrentState = WorkerState.MovingToWork;
 
-            // Se ha rappresentazione fisica, muovilo verso la struttura
+            // Se esiste una rappresentazione fisica, muovila
             if (PhysicalWorker != null)
             {
-                // TODO: Implementare movimento verso struttura
-                // PhysicalWorker.MoveTo(structure.transform.position);
-                Debug.Log($"<color=cyan>[Worker]</color> {CustomName} physical worker moving to structure");
-            }
-
-            Debug.Log($"<color=green>[Worker]</color> {CustomName} assigned to {structure.Data.DisplayName}");
-            return true;
-        }
-
-        /// <summary>
-        /// Rimuove questo worker dalla struttura assegnata
-        /// </summary>
-        public void Unassign()
-        {
-            if (AssignedStructure != null)
-            {
-                Debug.Log($"<color=yellow>[Worker]</color> {CustomName} unassigned from {AssignedStructure.Data.DisplayName}");
-            }
-
-            AssignedStructure = null;
-            CurrentState = WorkerState.Idle;
-
-            // Se ha rappresentazione fisica, fermalo
-            if (PhysicalWorker != null)
-            {
-                // TODO: Implementare ritorno a idle
-                Debug.Log($"<color=cyan>[Worker]</color> {CustomName} physical worker returning to idle");
-            }
-        }
-
-        /// <summary>
-        /// Calcola il bonus che questo worker dà alla struttura assegnata
-        /// </summary>
-        public float GetCurrentBonus()
-        {
-            if (!IsAssigned || Data == null || AssignedStructure == null)
-            {
-                return 0f;
-            }
-            return Data.GetBonusForStructure(AssignedStructure.Data);
-        }
-
-        /// <summary>
-        /// Verifica se questo worker è ideale per la struttura assegnata
-        /// </summary>
-        public bool IsIdealMatch()
-        {
-            if (!IsAssigned || Data == null || AssignedStructure == null)
-            {
-                return false;
-            }
-            return Data.IsIdealForStructure(AssignedStructure.Data);
-        }
-
-        // ============================================
-        // STATE MANAGEMENT
-        // ============================================
-
-        public void SetState(WorkerState newState)
-        {
-            if (CurrentState != newState)
-            {
-                Debug.Log($"[Worker {CustomName}] State: {CurrentState} -> {newState}");
-                CurrentState = newState;
-
-                // Sincronizza con physical worker se presente
-                if (PhysicalWorker != null)
-                {
-                    // TODO: Sincronizzare stato con WorkerController
-                }
-            }
-        }
-
-        /// <summary>
-        /// Aggiorna lo stato basato sulle condizioni correnti
-        /// </summary>
-        public void UpdateState()
-        {
-            if (IsAssigned)
-            {
-                CurrentState = WorkerState.Working;
+                PhysicalWorker.CommandMoveTo(structure.transform.position);
             }
             else
             {
-                CurrentState = WorkerState.Idle;
+                // Se virtuale, passa direttamente a working
+                CurrentState = WorkerState.Working;
+            }
+        }
+
+        /// <summary>
+        /// Rimuove l'assegnazione dalla struttura corrente.
+        /// </summary>
+        public void Unassign()
+        {
+            AssignedStructure = null;
+            CurrentState = WorkerState.Idle;
+            
+            // Ferma il worker fisico
+            if (PhysicalWorker != null)
+            {
+                // Stop movement (move to current position)
+                PhysicalWorker.CommandMoveTo(PhysicalWorker.transform.position);
             }
         }
 
@@ -208,35 +185,6 @@ namespace WildernessSurvival.Gameplay.Workers
             string status = IsAssigned ? $"Working at {AssignedStructure.Data.DisplayName}" : "Idle";
             string physical = HasPhysicalRepresentation ? " [Physical]" : " [Virtual]";
             return $"{CustomName} ({Data?.DefaultRole}){physical} - {status}";
-        }
-
-        /// <summary>
-        /// Ottiene una descrizione dettagliata per UI/debug
-        /// </summary>
-        public string GetDetailedDescription()
-        {
-            if (Data == null) return "Invalid Worker";
-
-            string desc = $"<b>{CustomName}</b>\n";
-            desc += $"Role: {Data.DefaultRole}\n";
-            desc += $"State: {CurrentState}\n";
-
-            if (IsAssigned)
-            {
-                desc += $"Assigned to: {AssignedStructure.Data.DisplayName}\n";
-                desc += $"Bonus: +{GetCurrentBonus() * 100f:F0}%";
-
-                if (IsIdealMatch())
-                {
-                    desc += " (Ideal Match!)";
-                }
-            }
-            else
-            {
-                desc += "Available for assignment";
-            }
-
-            return desc;
         }
     }
 }

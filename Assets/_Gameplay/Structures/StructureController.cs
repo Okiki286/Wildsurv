@@ -300,7 +300,7 @@ namespace WildernessSurvival.Gameplay.Structures
                 case StructureState.Operating:
                     isOperational = true;
                     ApplyNormalVisuals();
-                    CalculateProductionRate();
+                    RecalculateProduction();
                     break;
 
                 case StructureState.Damaged:
@@ -418,7 +418,7 @@ namespace WildernessSurvival.Gameplay.Structures
         // ============================================
 
         /// <summary>
-        /// Assegna un worker a questa struttura
+        /// Assegna un worker a questa struttura (Legacy/Physical)
         /// </summary>
         public bool AssignWorker(WorkerController worker, bool isHero = false)
         {
@@ -446,14 +446,14 @@ namespace WildernessSurvival.Gameplay.Structures
             }
 
             workerCount = assignedWorkers.Count + assignedHeroes.Count;
-            CalculateProductionRate();
+            RecalculateProduction();
 
             Debug.Log($"<color=orange>[Structure]</color> {worker.Data.DisplayName} assigned to {structureData.DisplayName}");
             return true;
         }
 
         /// <summary>
-        /// Rimuovi worker da questa struttura
+        /// Rimuovi worker da questa struttura (Legacy/Physical)
         /// </summary>
         public void UnassignWorker(WorkerController worker)
         {
@@ -463,7 +463,7 @@ namespace WildernessSurvival.Gameplay.Structures
             assignedHeroes.Remove(worker);
             workerCount = assignedWorkers.Count + assignedHeroes.Count;
 
-            CalculateProductionRate();
+            RecalculateProduction();
 
             Debug.Log($"<color=orange>[Structure]</color> {worker.Data.DisplayName} unassigned from {structureData.DisplayName}");
         }
@@ -471,29 +471,18 @@ namespace WildernessSurvival.Gameplay.Structures
         /// <summary>
         /// Calcola bonus produttività da worker assegnati
         /// </summary>
-        private void CalculateProductionRate()
+        public void RecalculateProduction()
         {
             if (structureData.Category != StructureCategory.Resource) return;
 
             totalProductivityBonus = 1f;
 
-            // Bonus da worker
-            foreach (var worker in assignedWorkers)
+            // Bonus da worker instances
+            foreach (var instance in assignedWorkerInstances)
             {
-                if (worker != null && worker.IsAlive)
+                if (instance != null)
                 {
-                    float workerBonus = worker.GetEffectiveProductivity();
-                    float roleBonus = worker.Data.GetRoleBonus(worker.AssignedRole);
-                    totalProductivityBonus += workerBonus * roleBonus * 0.1f; // +10% per worker con bonus ruolo
-                }
-            }
-
-            // Bonus da hero
-            foreach (var hero in assignedHeroes)
-            {
-                if (hero != null && hero.IsAlive)
-                {
-                    totalProductivityBonus += 0.5f; // +50% per hero
+                     totalProductivityBonus += instance.GetProductionBonus(structureData);
                 }
             }
 
@@ -686,7 +675,7 @@ namespace WildernessSurvival.Gameplay.Structures
             maxHealth = structureData.MaxHealth * currentLevel; // Scala HP con livello
             currentHealth = maxHealth; // Ripristina full HP
 
-            CalculateProductionRate();
+            RecalculateProduction();
 
             Debug.Log($"<color=green>[Structure]</color> {structureData.DisplayName} upgraded to level {currentLevel}!");
             SpawnVFX("completion");
@@ -775,34 +764,45 @@ namespace WildernessSurvival.Gameplay.Structures
         /// <summary>
         /// Aggiunge un WorkerInstance a questa struttura
         /// </summary>
-        public void AddWorkerInstance(Workers.WorkerInstance worker)
+        public bool AssignWorker(Workers.WorkerInstance worker)
         {
-            if (worker == null) return;
-            if (!HasFreeWorkerSlot()) return;
-            if (assignedWorkerInstances.Contains(worker)) return;
+            if (worker == null) return false;
+            if (!HasFreeWorkerSlot()) return false;
+            if (assignedWorkerInstances.Contains(worker)) return false;
 
             assignedWorkerInstances.Add(worker);
             workerCount = assignedWorkers.Count + assignedWorkerInstances.Count;
 
+            // Link bidirezionale
+            worker.AssignTo(this);
+
             // Ricalcola produzione con nuovo bonus
-            CalculateProductionRate();
+            RecalculateProduction();
 
             Debug.Log($"<color=cyan>[Structure]</color> {structureData.DisplayName} now has {assignedWorkerInstances.Count} worker instances");
+            return true;
         }
 
         /// <summary>
         /// Rimuove un WorkerInstance da questa struttura
         /// </summary>
-        public void RemoveWorkerInstance(Workers.WorkerInstance worker)
+        public void RemoveWorker(Workers.WorkerInstance worker)
         {
             if (worker == null) return;
-            assignedWorkerInstances.Remove(worker);
-            workerCount = assignedWorkers.Count + assignedWorkerInstances.Count;
+            
+            if (assignedWorkerInstances.Contains(worker))
+            {
+                assignedWorkerInstances.Remove(worker);
+                workerCount = assignedWorkers.Count + assignedWorkerInstances.Count;
 
-            // Ricalcola produzione
-            CalculateProductionRate();
+                // Unlink bidirezionale
+                worker.Unassign();
 
-            Debug.Log($"<color=cyan>[Structure]</color> {structureData.DisplayName} now has {assignedWorkerInstances.Count} worker instances");
+                // Ricalcola produzione
+                RecalculateProduction();
+
+                Debug.Log($"<color=cyan>[Structure]</color> {structureData.DisplayName} now has {assignedWorkerInstances.Count} worker instances");
+            }
         }
 
         /// <summary>

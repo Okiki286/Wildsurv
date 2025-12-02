@@ -561,11 +561,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 159505322}
   m_CullTransparentMesh: 1
---- !u!1 &176058282 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 7476436839136349142, guid: eb943c3b0012d7b43b7cdc17c36c1761, type: 3}
-  m_PrefabInstance: {fileID: 176268636859211283}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1 &217691240
 GameObject:
   m_ObjectHideFlags: 0
@@ -670,13 +665,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5bbb6d15ccff12648bbae84dcffb35e2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  availableWorkers:
-  - {fileID: 11400000, guid: 5ff67a874ed78f249b566257178f3a37, type: 2}
-  - {fileID: 11400000, guid: 3cd74048cb52a214783ea22fa18f8979, type: 2}
-  - {fileID: 11400000, guid: 2718fe9b5c1427744a8f23c5e789ed71, type: 2}
-  startingWorkerCount: 5
-  spawnPoint: {fileID: 322509609}
-  fallbackWorkerPrefab: {fileID: 176058282}
+  paused: 0
 --- !u!4 &233608731
 Transform:
   m_ObjectHideFlags: 0
