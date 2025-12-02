@@ -241,8 +241,19 @@ namespace WildernessSurvival.Gameplay.Structures
             collider.center = new Vector3(0f, 1.5f, 0f);
             collider.isTrigger = false; // Collider solido per overlap
 
-            // Registra
+            // Registra in StructureSystem
             RegisterStructure(controller);
+
+            // 🔧 FIX: Registra esplicitamente in WorkerSystem per auto-assignment
+            if (WorkerSystem.Instance != null)
+            {
+                WorkerSystem.Instance.RegisterStructure(controller);
+                Debug.Log($"<color=green>[StructureSystem]</color> ✅ Registered structure with WorkerSystem");
+            }
+            else
+            {
+                Debug.LogWarning($"<color=yellow>[StructureSystem]</color> ⚠️ WorkerSystem not found, structure won't be auto-assigned workers");
+            }
 
             Debug.Log($"<color=orange>[StructureSystem]</color> Spawned {data.DisplayName} at {snappedPos}");
             return controller;
@@ -399,17 +410,15 @@ namespace WildernessSurvival.Gameplay.Structures
         /// </summary>
         public bool ValidatePlacement(StructureData data, Vector3 position)
         {
-            // 1. Verifica terreno
+            // 1. Verifica terreno (BLOCKING)
             if (!IsGroundValid(position, data.GridSize))
             {
                 return false;
             }
 
-            // 2. Verifica overlap con altre strutture
-            if (HasOverlap(position, data.GridSize))
-            {
-                return false;
-            }
+            // 2. Verifica overlap con altre strutture (NON-BLOCKING)
+            // Overlap è ora solo un warning, non impedisce il piazzamento
+            HasOverlap(position, data.GridSize); // Log warning se overlap presente
 
             // 3. Verifica risorse (gestito esternamente da BuildMode)
             return true;
@@ -443,7 +452,8 @@ namespace WildernessSurvival.Gameplay.Structures
         }
 
         /// <summary>
-        /// Verifica overlap con altre strutture
+        /// Verifica overlap con altre strutture (NON-BLOCKING)
+        /// Logga warnings ma permette comunque il piazzamento
         /// </summary>
         private bool HasOverlap(Vector3 position, Vector2Int gridSize)
         {
@@ -457,19 +467,22 @@ namespace WildernessSurvival.Gameplay.Structures
             int layerMask = ~groundLayer; // Inverte mask per escludere Ground
             Collider[] colliders = Physics.OverlapBox(boxCenter, boxSize / 2f, Quaternion.identity, layerMask);
 
-            // Solo log quando trova overlap
+            // Log warning se trova overlap, ma NON blocca il piazzamento
+            bool hasAnyOverlap = false;
             foreach (var col in colliders)
             {
                 // Controlla se è una struttura
                 var structure = col.GetComponent<StructureController>();
                 if (structure != null)
                 {
-                    // Log solo se overlap trovato
-                    Debug.LogWarning($"<color=red>[StructureSystem]</color> ❌ Overlap detected with {structure.Data.DisplayName}");
-                    return true;
+                    // ⚠️ WARNING: overlap rilevato ma non bloccante
+                    Debug.LogWarning($"<color=yellow>[StructureSystem]</color> ⚠️ Overlap detected with {structure.Data.DisplayName} (placement allowed)");
+                    hasAnyOverlap = true;
                 }
             }
 
+            // Ritorna sempre false per permettere il piazzamento
+            // (Il valore di ritorno non viene più usato per bloccare in ValidatePlacement)
             return false;
         }
 

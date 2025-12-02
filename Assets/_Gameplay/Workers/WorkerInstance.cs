@@ -117,6 +117,24 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         /// <summary>
+        /// Calcola il bonus di costruzione per questo worker.
+        /// I Builder ottengono il loro BuildSpeedMultiplier, altri ottengono 1.0f.
+        /// </summary>
+        public float GetConstructionBonus()
+        {
+            if (Data == null) return 1.0f;
+            
+            // Se è un Builder, restituisci il moltiplicatore di costruzione
+            if (Data.DefaultRole == WildernessSurvival.Gameplay.Structures.WorkerRole.Builder)
+            {
+                return Data.BuildSpeedMultiplier;
+            }
+            
+            // Altrimenti, velocità normale
+            return 1.0f;
+        }
+
+        /// <summary>
         /// Verifica se il worker è un match ideale per la struttura assegnata.
         /// </summary>
         public bool IsIdealMatch()

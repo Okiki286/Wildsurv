@@ -144,6 +144,9 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private List<WorkerController> buildersAssigned = new List<WorkerController>();
 
+        // [NEW] Current build speed from assigned workers
+        private float currentBuildSpeed = 1f;
+
         // ============================================
         // VFX & VISUALS
         // ============================================
@@ -375,8 +378,44 @@ namespace WildernessSurvival.Gameplay.Structures
             // Rilascia builder
             ReleaseAllBuilders();
 
+            // [IMPORTANT] Ora che la struttura è operativa, ricalcola la produzione
+            RecalculateProduction();
+
             // Notifica StructureSystem
             // StructureSystem.Instance?.OnStructureCompleted(this);
+        }
+
+        /// <summary>
+        /// Tick di costruzione chiamato da WorkerSystem.
+        /// Avanza il progresso basandosi su currentBuildSpeed.
+        /// </summary>
+        public void TickConstruction(float deltaTime)
+        {
+            if (buildProgress >= 1f) return;
+            if (currentState != StructureState.Building) return;
+
+            // Se non ha worker assegnati e richiede builder, pausa costruzione
+            if (structureData.RequiresBuilder && assignedWorkerInstances.Count == 0)
+            {
+                return;
+            }
+
+            // Ricalcola velocità costruzione ogni tick (per aggiornamenti dinamici)
+            RecalculateBuildSpeed();
+
+            // Calcola progresso
+            // Formula: progress += (currentBuildSpeed / buildTime) * dt
+            float progressDelta = (currentBuildSpeed / structureData.BuildTime) * deltaTime;
+            buildProgress += progressDelta;
+
+            // Aggiorna tempo rimanente
+            buildTimeRemaining = Mathf.Max(0, structureData.BuildTime * (1f - buildProgress) / currentBuildSpeed);
+
+            // Completa costruzione se raggiunto 100%
+            if (buildProgress >= 1f)
+            {
+                CompleteConstruction();
+            }
         }
 
         /// <summary>
@@ -490,6 +529,25 @@ namespace WildernessSurvival.Gameplay.Structures
             currentProductionRate = structureData.GetProductionAtLevel(currentLevel) * totalProductivityBonus;
 
             Debug.Log($"<color=cyan>[Structure]</color> {structureData.DisplayName} production rate: {currentProductionRate:F1}/min (bonus: {totalProductivityBonus:F2}x)");
+        }
+
+        /// <summary>
+        /// Calcola velocità di costruzione da worker Builder assegnati
+        /// </summary>
+        public void RecalculateBuildSpeed()
+        {
+            currentBuildSpeed = 1f;
+
+            // Somma i bonus di costruzione da tutti i worker instance assegnati
+            foreach (var instance in assignedWorkerInstances)
+            {
+                if (instance != null)
+                {
+                    currentBuildSpeed += (instance.GetConstructionBonus() - 1f);
+                }
+            }
+
+            Debug.Log($"<color=orange>[Structure]</color> {structureData.DisplayName} build speed: {currentBuildSpeed:F2}x ({assignedWorkerInstances.Count} workers)");
         }
 
         // ============================================
@@ -776,8 +834,15 @@ namespace WildernessSurvival.Gameplay.Structures
             // Link bidirezionale
             worker.AssignTo(this);
 
-            // Ricalcola produzione con nuovo bonus
-            RecalculateProduction();
+            // Ricalcola produzione o costruzione a seconda dello stato
+            if (currentState == StructureState.Operating)
+            {
+                RecalculateProduction();
+            }
+            else if (currentState == StructureState.Building)
+            {
+                RecalculateBuildSpeed();
+            }
 
             Debug.Log($"<color=cyan>[Structure]</color> {structureData.DisplayName} now has {assignedWorkerInstances.Count} worker instances");
             return true;
@@ -798,8 +863,15 @@ namespace WildernessSurvival.Gameplay.Structures
                 // Unlink bidirezionale
                 worker.Unassign();
 
-                // Ricalcola produzione
-                RecalculateProduction();
+                // Ricalcola produzione o costruzione a seconda dello stato
+                if (currentState == StructureState.Operating)
+                {
+                    RecalculateProduction();
+                }
+                else if (currentState == StructureState.Building)
+                {
+                    RecalculateBuildSpeed();
+                }
 
                 Debug.Log($"<color=cyan>[Structure]</color> {structureData.DisplayName} now has {assignedWorkerInstances.Count} worker instances");
             }

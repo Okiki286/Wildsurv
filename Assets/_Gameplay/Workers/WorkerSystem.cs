@@ -2,13 +2,13 @@
 using Sirenix.OdinInspector;
 using System.Collections.Generic;
 using WildernessSurvival.Gameplay.Structures;
-using System.Linq; // Necessario per Last()
+using System.Linq; // Necessario per Linq
 
 namespace WildernessSurvival.Gameplay.Workers
 {
     /// <summary>
     /// Sistema centrale per la gestione dei worker.
-    /// FIX: Aggiunto spawn iniziale e debug tools.
+    /// Include Debugging avanzato per Auto-Assignment.
     /// </summary>
     public class WorkerSystem : MonoBehaviour
     {
@@ -50,6 +50,23 @@ namespace WildernessSurvival.Gameplay.Workers
         [TitleGroup("Global Settings")]
         [SerializeField] private bool paused = false;
 
+        [TitleGroup("Debug Settings")]
+        [SerializeField]
+        [Tooltip("Abilita log dettagliati per il sistema di auto-assegnazione")]
+        private bool debugAutoAssign = true;
+
+        // ============================================
+        // AUTO-ASSIGNMENT (FOREMAN)
+        // ============================================
+
+        [TitleGroup("Auto-Assignment")]
+        [SerializeField]
+        [PropertyRange(0.5f, 5f)]
+        [Tooltip("Intervallo in secondi per controllare auto-assegnazioni Builder")]
+        private float autoAssignInterval = 1.0f;
+
+        private float autoAssignTimer = 0f;
+
         // Properties
         public int WorkerInstanceCount => allWorkerInstances.Count;
         public int AvailableWorkerCount => availableWorkers.Count;
@@ -77,15 +94,24 @@ namespace WildernessSurvival.Gameplay.Workers
 
             float dt = Time.deltaTime;
 
-            // 1. Production Tick Loop
+            // 1. Structure Tick Loop (Construction + Production)
             for (int i = activeStructures.Count - 1; i >= 0; i--)
             {
                 var structure = activeStructures[i];
-                if (structure != null && structure.IsOperational)
+                if (structure != null)
                 {
-                    structure.TickProduction(dt);
+                    // Se in costruzione, chiama TickConstruction
+                    if (structure.State == StructureState.Building)
+                    {
+                        structure.TickConstruction(dt);
+                    }
+                    // Se operativa, chiama TickProduction
+                    else if (structure.State == StructureState.Operating)
+                    {
+                        structure.TickProduction(dt);
+                    }
                 }
-                else if (structure == null)
+                else
                 {
                     activeStructures.RemoveAt(i);
                 }
@@ -103,6 +129,14 @@ namespace WildernessSurvival.Gameplay.Workers
                 {
                     physicalWorkers.RemoveAt(i);
                 }
+            }
+
+            // 3. Auto-Assignment Loop (Foreman)
+            autoAssignTimer += dt;
+            if (autoAssignTimer >= autoAssignInterval)
+            {
+                autoAssignTimer = 0f;
+                CheckAutoAssignments();
             }
         }
 
@@ -142,7 +176,7 @@ namespace WildernessSurvival.Gameplay.Workers
             // Spawn Fisico
             if (data.Prefab != null)
             {
-                // Posizione di spawn casuale attorno al centro (o un punto di spawn specifico)
+                // Posizione di spawn casuale attorno al centro
                 Vector3 spawnPos = GetRandomSpawnPosition();
 
                 GameObject workerObj = Instantiate(data.Prefab, spawnPos, Quaternion.identity);
@@ -171,11 +205,9 @@ namespace WildernessSurvival.Gameplay.Workers
 
         private Vector3 GetRandomSpawnPosition()
         {
-            // Cerca un punto valido sul NavMesh vicino all'origine (0,0,0)
-            // Se hai un "Bonfire" o "Base", potresti voler usare la sua posizione
             Vector3 center = Vector3.zero;
             Vector3 randomPoint = center + Random.insideUnitSphere * 5f;
-            randomPoint.y = 0; // Assumi terreno piatto per ora
+            randomPoint.y = 0;
 
             UnityEngine.AI.NavMeshHit hit;
             if (UnityEngine.AI.NavMesh.SamplePosition(randomPoint, out hit, 5.0f, UnityEngine.AI.NavMesh.AllAreas))
@@ -227,6 +259,84 @@ namespace WildernessSurvival.Gameplay.Workers
 
             assignedWorkers.Remove(worker);
             if (!availableWorkers.Contains(worker)) availableWorkers.Add(worker);
+        }
+
+        // ============================================
+        // AUTO-ASSIGNMENT LOGIC (DEBUGGED)
+        // ============================================
+
+        /// <summary>
+        /// Controlla e assegna automaticamente Builder disponibili a strutture in costruzione.
+        /// Chiamato periodicamente dal loop Update.
+        /// </summary>
+        private void CheckAutoAssignments()
+        {
+            // 1. Trova strutture prioritarie: State == Building E ha slot liberi
+            var buildingStructures = activeStructures
+                .Where(s => s != null && s.State == StructureState.Building && s.HasFreeWorkerSlot())
+                .ToList();
+
+            // 2. Trova worker disponibili: non assegnati E ruolo Builder
+            var availableBuilders = availableWorkers
+                .Where(w => w != null &&
+                            w.AssignedStructure == null &&
+                            w.Data != null &&
+                            w.Data.DefaultRole == WorkerRole.Builder)
+                .ToList();
+
+            // LOG DIAGNOSTICO INIZIALE
+            if (debugAutoAssign)
+            {
+                Debug.Log($"<color=orange>[WorkerSystem]</color> Checking Auto-Assign... " +
+                          $"Found <b>{buildingStructures.Count}</b> structures needing workers, " +
+                          $"<b>{availableBuilders.Count}</b> idle builders.");
+            }
+
+            if (buildingStructures.Count == 0 || availableBuilders.Count == 0) return;
+
+            if (debugAutoAssign) Debug.Log("<color=orange>[WorkerSystem]</color> Attempting match...");
+
+            // 3. Match: Assegna builder a strutture
+            int assignmentCount = 0;
+
+            foreach (var structure in buildingStructures)
+            {
+                // Se non ci sono più builder disponibili, esci
+                if (availableBuilders.Count == 0) break;
+
+                // Controlla se la struttura ha ancora slot liberi
+                while (structure.HasFreeWorkerSlot() && availableBuilders.Count > 0)
+                {
+                    var builder = availableBuilders[0];
+                    availableBuilders.RemoveAt(0);
+
+                    // Tenta l'assegnazione
+                    bool success = AssignWorker(builder, structure);
+
+                    if (success)
+                    {
+                        assignmentCount++;
+                        if (debugAutoAssign)
+                        {
+                            Debug.Log($"<color=green>[WorkerSystem]</color> SUCCESS: Auto-assigned {builder.CustomName} to {structure.name}");
+                        }
+                    }
+                    else
+                    {
+                        // LOG DI FALLIMENTO CRITICO
+                        if (debugAutoAssign)
+                        {
+                            Debug.LogWarning($"<color=red>[WorkerSystem]</color> FAILED to assign worker {builder.CustomName} to {structure.name} via logic! " +
+                                             $"Check StructureController.AssignWorker() conditions (Max workers reached? Resource check?).");
+                        }
+                    }
+                }
+            }
+
+            if (assignmentCount > 0 && debugAutoAssign)
+            {
+                Debug.Log($"<color=green>[WorkerSystem]</color> Cycle Complete: Auto-assigned {assignmentCount} builders this tick.");
+            }
         }
 
         // ============================================

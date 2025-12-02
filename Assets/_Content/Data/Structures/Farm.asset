@@ -24,7 +24,7 @@ MonoBehaviour:
   buildCosts:
   - resourceId: warmwood
     amount: 60
-  buildTime: 5
+  buildTime: 10
   requiresBuilder: 1
   workerSlots: 2
   heroSlots: 0
