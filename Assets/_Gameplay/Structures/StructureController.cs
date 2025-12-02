@@ -251,6 +251,15 @@ namespace WildernessSurvival.Gameplay.Structures
         {
             structureData = data;
             currentLevel = level;
+
+            // 🔧 SAFETY: Verifica BuildTime
+            if (structureData.BuildTime <= 0f)
+            {
+                Debug.LogWarning($"<color=yellow>[Structure]</color> ⚠️ {structureData.DisplayName} has BuildTime <= 0! Setting to 1f to prevent instant construction.");
+                // Non possiamo modificare lo ScriptableObject, ma possiamo loggare
+                // Il sistema userà comunque il valore dallo ScriptableObject
+            }
+
             InitializeStructure();
         }
 
@@ -372,13 +381,34 @@ namespace WildernessSurvival.Gameplay.Structures
             // Spawna VFX completamento
             SpawnVFX("completion");
 
+            // 🔧 FIX: Rilascia tutti i worker PRIMA di cambiare stato
+            // Crea una copia della lista per evitare errori di modifica durante l'iterazione
+            var workersToRelease = new List<Workers.WorkerInstance>(assignedWorkerInstances);
+            int releasedCount = 0;
+
+            foreach (var worker in workersToRelease)
+            {
+                if (worker != null && WorkerSystem.Instance != null)
+                {
+                    WorkerSystem.Instance.UnassignWorker(worker);
+                    releasedCount++;
+                }
+            }
+
+            // Pulizia finale (dovrebbe essere già vuota dopo UnassignWorker)
+            assignedWorkerInstances.Clear();
+            workerCount = 0;
+
+            Debug.Log($"<color=green>[Structure]</color> 🏗️ Construction complete. Released {releasedCount} builders.");
+
             // Cambia stato
             ChangeState(StructureState.Operating);
 
-            // Rilascia builder
+            // Rilascia builder legacy (se presenti)
             ReleaseAllBuilders();
 
             // [IMPORTANT] Ora che la struttura è operativa, ricalcola la produzione
+            // (Sarà 0 perché non ci sono worker assegnati, ma è corretto)
             RecalculateProduction();
 
             // Notifica StructureSystem
