@@ -1,150 +1,170 @@
 using UnityEngine;
 using Sirenix.OdinInspector;
+using System;
 using WildernessSurvival.Gameplay.Structures;
 
 namespace WildernessSurvival.Gameplay.Workers
 {
-    /// <summary>
-    /// Istanza runtime di un worker nel gioco.
-    /// Rappresenta i DATI e la LOGICA di assignment di un worker.
-    /// Può avere un WorkerController fisico opzionale per rappresentazione in scena.
-    /// </summary>
-    [System.Serializable]
+    [Serializable]
     public class WorkerInstance
     {
         // ============================================
-        // DATA
+        // IDENTITY
         // ============================================
 
         [ShowInInspector, ReadOnly]
         public string InstanceId { get; private set; }
 
         [ShowInInspector, ReadOnly]
-        public WorkerData Data { get; private set; }
+        public string CustomName { get; set; }
 
         [ShowInInspector, ReadOnly]
-        public string CustomName { get; private set; }
+        public WorkerData Data { get; private set; }
+
+        // ============================================
+        // ASSIGNMENT STATE
+        // ============================================
 
         [ShowInInspector, ReadOnly]
         public StructureController AssignedStructure { get; private set; }
 
         [ShowInInspector, ReadOnly]
-        public WorkerState CurrentState { get; private set; }
+        public bool IsAssigned => AssignedStructure != null;
+
+        [ShowInInspector, ReadOnly]
+        public WorkerState CurrentState { get; private set; } = WorkerState.Idle;
+
+        [ShowInInspector, ReadOnly]
+        public bool IsAtWorksite { get; set; } = false;
 
         // ============================================
-        // DUAL-SYSTEM SUPPORT
+        // PHYSICAL REPRESENTATION
         // ============================================
 
-        /// <summary>
-        /// Riferimento opzionale al WorkerController fisico in scena.
-        /// Può essere null per worker "virtuali" (solo dati/UI).
-        /// </summary>
         [ShowInInspector, ReadOnly]
         public WorkerController PhysicalWorker { get; set; }
 
+        public bool HasPhysicalRepresentation => PhysicalWorker != null;
+
         // ============================================
-        // RUNTIME PROPERTIES
+        // STATS
         // ============================================
 
-        public Vector3 Position => PhysicalWorker != null ? PhysicalWorker.transform.position : Vector3.zero;
-        public bool IsAssigned => AssignedStructure != null;
-        public bool IsIdle => CurrentState == WorkerState.Idle && !IsAssigned;
-        public bool IsWorking => CurrentState == WorkerState.Working && IsAssigned;
-        public bool HasPhysicalRepresentation => PhysicalWorker != null;
+        [ShowInInspector, ReadOnly]
+        public float CurrentHealth { get; private set; }
+
+        [ShowInInspector, ReadOnly]
+        public float MaxHealth => Data?.BaseHealth ?? 100f;
+
+        [ShowInInspector, ReadOnly]
+        public bool IsAlive => CurrentHealth > 0;
+
+        [ShowInInspector, ReadOnly]
+        public float Experience { get; private set; } = 0f;
+
+        [ShowInInspector, ReadOnly]
+        public int Level { get; private set; } = 1;
 
         // ============================================
         // CONSTRUCTOR
         // ============================================
 
-        public WorkerInstance(WorkerData data, string customName = null)
+        public WorkerInstance(WorkerData data)
         {
-            if (data == null)
-            {
-                Debug.LogError("[WorkerInstance] Cannot create with null WorkerData!");
-                return;
-            }
-
-            InstanceId = System.Guid.NewGuid().ToString().Substring(0, 8);
             Data = data;
-            CustomName = string.IsNullOrEmpty(customName) ? data.DisplayName : customName;
+            InstanceId = Guid.NewGuid().ToString();
+            CustomName = data?.DisplayName ?? "Worker";
+            CurrentHealth = MaxHealth;
             CurrentState = WorkerState.Idle;
-            AssignedStructure = null;
-            PhysicalWorker = null;
+            IsAtWorksite = false;
         }
 
         // ============================================
-        // LOGIC & CALCULATIONS
+        // ASSIGNMENT METHODS
         // ============================================
 
-        /// <summary>
-        /// Calcola il bonus di produzione per una specifica struttura.
-        /// </summary>
-        public float GetProductionBonus(StructureData structure)
+        public void AssignTo(StructureController structure)
         {
-            if (Data == null || structure == null) return 0f;
+            if (structure == null) return;
 
-            // Base bonus from productivity multiplier (e.g. 1.2 -> +0.2)
-            float bonus = Data.ProductivityMultiplier - 1f;
+            AssignedStructure = structure;
+            IsAtWorksite = false;
 
-            // Bitmask check per ruolo
-            bool isRoleAllowed = (structure.AllowedRoles & Data.DefaultRole) != 0;
-
-            if (isRoleAllowed)
+            if (PhysicalWorker != null)
             {
-                // Aggiungi bonus specifico del ruolo
-                bonus += Data.GetRoleBonus(Data.DefaultRole);
+                CurrentState = WorkerState.Moving;
+                PhysicalWorker.CommandMoveTo(structure.transform.position);
             }
             else
             {
-                // Penalità se il ruolo non è adatto (opzionale, o semplicemente niente bonus extra)
-                // bonus -= 0.5f; 
+                IsAtWorksite = true;
+                CurrentState = WorkerState.Working;
             }
 
-            return bonus;
+            Debug.Log($"<color=cyan>[WorkerInstance]</color> {CustomName} assigned to {structure.Data?.DisplayName}. IsAtWorksite: {IsAtWorksite}");
         }
 
-        // ============================================
-        // UI HELPERS (Fix CS1061 Errors)
-        // ============================================
-
-        /// <summary>
-        /// Calcola il bonus attuale. Se assegnato, usa la struttura corrente.
-        /// </summary>
-        public float GetCurrentBonus()
+        public void Unassign()
         {
-            if (AssignedStructure == null || Data == null) return 0f;
-            return GetProductionBonus(AssignedStructure.Data);
+            var previousStructure = AssignedStructure;
+            AssignedStructure = null;
+            IsAtWorksite = false;
+            CurrentState = WorkerState.Idle;
+
+            if (PhysicalWorker != null)
+            {
+                PhysicalWorker.CommandMoveTo(PhysicalWorker.transform.position);
+            }
+
+            Debug.Log($"<color=orange>[WorkerInstance]</color> {CustomName} unassigned from {previousStructure?.Data?.DisplayName}");
         }
 
-        /// <summary>
-        /// Calcola il bonus di costruzione per questo worker.
-        /// I Builder ottengono il loro BuildSpeedMultiplier, altri ottengono 1.0f.
-        /// </summary>
+        // ============================================
+        // STATE MANAGEMENT
+        // ============================================
+
+        public void SetState(WorkerState newState)
+        {
+            if (CurrentState == newState) return;
+            CurrentState = newState;
+        }
+
+        // ============================================
+        // BONUS CALCULATIONS
+        // ============================================
+
         public float GetConstructionBonus()
         {
-            if (Data == null) return 1.0f;
-            
-            // Se è un Builder, restituisci il moltiplicatore di costruzione
-            if (Data.DefaultRole == WildernessSurvival.Gameplay.Structures.WorkerRole.Builder)
-            {
-                return Data.BuildSpeedMultiplier;
-            }
-            
-            // Altrimenti, velocità normale
-            return 1.0f;
+            if (Data == null) return 1f;
+            return Data.BuildSpeedMultiplier * (1f + (Level - 1) * 0.1f);
         }
 
-        /// <summary>
-        /// Verifica se il worker è un match ideale per la struttura assegnata.
-        /// </summary>
+        public float GetProductionBonus(StructureData structureData)
+        {
+            if (Data == null) return 0f;
+            return (Data.ProductivityMultiplier - 1f) * (1f + (Level - 1) * 0.05f);
+        }
+
+        public float GetCurrentBonus()
+        {
+            if (Data == null) return 0f;
+
+            if (Data.DefaultRole == WorkerRole.Builder)
+            {
+                return GetConstructionBonus();
+            }
+            else
+            {
+                return Data.ProductivityMultiplier - 1f;
+            }
+        }
+
         public bool IsIdealMatch()
         {
             if (AssignedStructure == null || Data == null) return false;
-            // Verifica bitmask o uguaglianza diretta
             return (AssignedStructure.Data.AllowedRoles & Data.DefaultRole) != 0;
         }
 
-        // Overload per la UI che controlla "would serve be ideal?"
         public bool IsIdealMatchFor(StructureData structureData)
         {
             if (structureData == null || Data == null) return false;
@@ -152,57 +172,60 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         // ============================================
-        // ASSIGNMENT
+        // HEALTH & COMBAT
         // ============================================
 
-        /// <summary>
-        /// Assegna questo worker a una struttura.
-        /// Gestisce sia la logica dati che il movimento fisico (se presente).
-        /// </summary>
-        public void AssignTo(StructureController structure)
+        public void TakeDamage(float damage)
         {
-            if (structure == null) return;
+            if (!IsAlive) return;
 
-            AssignedStructure = structure;
-            CurrentState = WorkerState.MovingToWork;
+            CurrentHealth = Mathf.Max(0, CurrentHealth - damage);
 
-            // Se esiste una rappresentazione fisica, muovila
-            if (PhysicalWorker != null)
+            if (!IsAlive)
             {
-                PhysicalWorker.CommandMoveTo(structure.transform.position);
-            }
-            else
-            {
-                // Se virtuale, passa direttamente a working
-                CurrentState = WorkerState.Working;
+                OnDeath();
             }
         }
 
-        /// <summary>
-        /// Rimuove l'assegnazione dalla struttura corrente.
-        /// </summary>
-        public void Unassign()
+        public void Heal(float amount)
         {
-            AssignedStructure = null;
-            CurrentState = WorkerState.Idle;
-            
-            // Ferma il worker fisico
-            if (PhysicalWorker != null)
+            if (!IsAlive) return;
+            CurrentHealth = Mathf.Min(CurrentHealth + amount, MaxHealth);
+        }
+
+        private void OnDeath()
+        {
+            CurrentState = WorkerState.Dead;
+
+            if (AssignedStructure != null)
             {
-                // Stop movement (move to current position)
-                PhysicalWorker.CommandMoveTo(PhysicalWorker.transform.position);
+                AssignedStructure.RemoveWorker(this);
             }
+
+            Debug.Log($"<color=red>[WorkerInstance]</color> {CustomName} has died!");
         }
 
         // ============================================
-        // UTILITY
+        // EXPERIENCE & LEVELING
         // ============================================
 
-        public override string ToString()
+        public void AddExperience(float amount)
         {
-            string status = IsAssigned ? $"Working at {AssignedStructure.Data.DisplayName}" : "Idle";
-            string physical = HasPhysicalRepresentation ? " [Physical]" : " [Virtual]";
-            return $"{CustomName} ({Data?.DefaultRole}){physical} - {status}";
+            Experience += amount;
+
+            float expToLevel = GetExpRequiredForLevel(Level + 1);
+            while (Experience >= expToLevel && Level < 10)
+            {
+                Experience -= expToLevel;
+                Level++;
+                Debug.Log($"<color=green>[WorkerInstance]</color> {CustomName} leveled up to {Level}!");
+                expToLevel = GetExpRequiredForLevel(Level + 1);
+            }
+        }
+
+        private float GetExpRequiredForLevel(int level)
+        {
+            return 100f * Mathf.Pow(1.5f, level - 1);
         }
     }
 }

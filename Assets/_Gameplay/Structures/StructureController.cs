@@ -6,10 +6,6 @@ using WildernessSurvival.Gameplay.Workers;
 
 namespace WildernessSurvival.Gameplay.Structures
 {
-    /// <summary>
-    /// Controlla il comportamento runtime di una struttura.
-    /// Gestisce health, produzione, worker assignment, e stati.
-    /// </summary>
     public class StructureController : MonoBehaviour
     {
         // ============================================
@@ -23,12 +19,10 @@ namespace WildernessSurvival.Gameplay.Structures
 
         [BoxGroup("Setup/Components")]
         [ChildGameObjectsOnly]
-        [Tooltip("Root visivo della struttura")]
         [SerializeField] private Transform visualRoot;
 
         [BoxGroup("Setup/Components")]
         [ChildGameObjectsOnly]
-        [Tooltip("Transform per VFX")]
         [SerializeField] private Transform vfxSpawnPoint;
 
         // ============================================
@@ -37,20 +31,15 @@ namespace WildernessSurvival.Gameplay.Structures
 
         [TitleGroup("Runtime State")]
         [BoxGroup("Runtime State/Core")]
-        [ReadOnly]
-        [ShowInInspector]
-        [EnumToggleButtons]
+        [ReadOnly, ShowInInspector, EnumToggleButtons]
         private StructureState currentState = StructureState.Idle;
 
         [BoxGroup("Runtime State/Core")]
-        [ReadOnly]
-        [ShowInInspector]
-        [PropertyRange(1, 5)]
+        [ReadOnly, ShowInInspector, PropertyRange(1, 5)]
         private int currentLevel = 1;
 
         [BoxGroup("Runtime State/Core")]
-        [ReadOnly]
-        [ShowInInspector]
+        [ReadOnly, ShowInInspector]
         private bool isOperational = false;
 
         // ============================================
@@ -59,14 +48,12 @@ namespace WildernessSurvival.Gameplay.Structures
 
         [TitleGroup("Health")]
         [BoxGroup("Health/Stats")]
-        [ReadOnly]
-        [ShowInInspector]
+        [ReadOnly, ShowInInspector]
         [ProgressBar(0, "maxHealth", ColorGetter = "GetHealthColor")]
         private float currentHealth;
 
         [BoxGroup("Health/Stats")]
-        [ReadOnly]
-        [ShowInInspector]
+        [ReadOnly, ShowInInspector]
         private float maxHealth;
 
         // ============================================
@@ -75,35 +62,32 @@ namespace WildernessSurvival.Gameplay.Structures
 
         [TitleGroup("Workers")]
         [BoxGroup("Workers/Assigned")]
-        [ReadOnly]
-        [ShowInInspector]
+        [ReadOnly, ShowInInspector]
         [ListDrawerSettings(IsReadOnly = true, ShowPaging = false)]
         private List<WorkerController> assignedWorkers = new List<WorkerController>();
 
         [BoxGroup("Workers/Assigned")]
-        [ReadOnly]
-        [ShowInInspector]
+        [ReadOnly, ShowInInspector]
         [ListDrawerSettings(IsReadOnly = true, ShowPaging = false)]
         private List<WorkerController> assignedHeroes = new List<WorkerController>();
 
-        // [MODIFICATION 1] Worker Instances for UI Assignment System
         [BoxGroup("Workers/Assigned")]
-        [ReadOnly]
-        [ShowInInspector]
+        [ReadOnly, ShowInInspector]
         [ListDrawerSettings(IsReadOnly = true, ShowPaging = false)]
-        private List<Workers.WorkerInstance> assignedWorkerInstances = new List<Workers.WorkerInstance>();
+        private List<WorkerInstance> assignedWorkerInstances = new List<WorkerInstance>();
 
         [BoxGroup("Workers/Stats")]
-        [ReadOnly]
-        [ShowInInspector]
+        [ReadOnly, ShowInInspector]
         [ProgressBar(0, "structureData.WorkerSlots", ColorGetter = "GetWorkerSlotColor")]
         private int workerCount = 0;
 
+        [BoxGroup("Workers/Building")]
+        [ShowInInspector, ReadOnly]
+        public WorkerInstance CurrentBuilder { get; private set; }
+
         [BoxGroup("Workers/Stats")]
-        [ReadOnly]
-        [ShowInInspector]
+        [ReadOnly, ShowInInspector]
         [PropertyRange(0f, 3f)]
-        [Tooltip("Moltiplicatore produttività totale")]
         private float totalProductivityBonus = 1f;
 
         // ============================================
@@ -112,18 +96,16 @@ namespace WildernessSurvival.Gameplay.Structures
 
         [TitleGroup("Production")]
         [BoxGroup("Production/Stats")]
-        [ReadOnly]
-        [ShowInInspector]
+        [ReadOnly, ShowInInspector]
         [ShowIf("@structureData != null && structureData.Category == StructureCategory.Resource")]
         private float currentProductionRate = 0f;
 
         [BoxGroup("Production/Stats")]
-        [ReadOnly]
-        [ShowInInspector]
+        [ReadOnly, ShowInInspector]
         [ShowIf("@structureData != null && structureData.Category == StructureCategory.Resource")]
         private float productionAccumulator = 0f;
 
-        private float productionTickInterval = 1f; // Produce ogni secondo
+        private float productionTickInterval = 1f;
         private float productionTimer = 0f;
 
         // ============================================
@@ -132,19 +114,15 @@ namespace WildernessSurvival.Gameplay.Structures
 
         [TitleGroup("Construction")]
         [BoxGroup("Construction/Progress")]
-        [ReadOnly]
-        [ShowInInspector]
+        [ReadOnly, ShowInInspector]
         [ProgressBar(0, 1, ColorGetter = "GetConstructionColor")]
         private float buildProgress = 0f;
 
         [BoxGroup("Construction/Progress")]
-        [ReadOnly]
-        [ShowInInspector]
+        [ReadOnly, ShowInInspector]
         private float buildTimeRemaining = 0f;
 
         private List<WorkerController> buildersAssigned = new List<WorkerController>();
-
-        // [NEW] Current build speed from assigned workers
         private float currentBuildSpeed = 1f;
 
         // ============================================
@@ -168,8 +146,6 @@ namespace WildernessSurvival.Gameplay.Structures
         public bool IsOperational => isOperational;
         public int WorkerCount => workerCount;
         public List<WorkerController> AssignedWorkers => assignedWorkers;
-
-        // [MODIFICATION 2] Added Property
         public int AssignedWorkerInstanceCount => assignedWorkerInstances.Count;
 
         // ============================================
@@ -184,7 +160,6 @@ namespace WildernessSurvival.Gameplay.Structures
                 enabled = false;
                 return;
             }
-
             InitializeStructure();
         }
 
@@ -196,7 +171,6 @@ namespace WildernessSurvival.Gameplay.Structures
         private void Update()
         {
             if (!IsAlive) return;
-
             UpdateState();
             UpdateProduction();
         }
@@ -207,25 +181,21 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private void InitializeStructure()
         {
-            // Stats iniziali
             maxHealth = structureData.MaxHealth;
             currentHealth = maxHealth;
             currentLevel = 1;
 
-            // Cache renderers per cambio materiali
             if (visualRoot != null)
             {
                 renderers = visualRoot.GetComponentsInChildren<Renderer>();
                 CacheOriginalMaterials();
             }
 
-            // Setup VFX spawn point
             if (vfxSpawnPoint == null)
             {
                 vfxSpawnPoint = transform;
             }
 
-            // Se richiede builder, inizia in costruzione
             if (structureData.RequiresBuilder)
             {
                 ChangeState(StructureState.Building);
@@ -236,7 +206,6 @@ namespace WildernessSurvival.Gameplay.Structures
             }
             else
             {
-                // Struttura instant
                 ChangeState(StructureState.Operating);
                 buildProgress = 1f;
                 isOperational = true;
@@ -244,20 +213,14 @@ namespace WildernessSurvival.Gameplay.Structures
             }
         }
 
-        /// <summary>
-        /// Setup esterno con StructureData (chiamato da StructureSystem)
-        /// </summary>
         public void Initialize(StructureData data, int level = 1)
         {
             structureData = data;
             currentLevel = level;
 
-            // 🔧 SAFETY: Verifica BuildTime
             if (structureData.BuildTime <= 0f)
             {
-                Debug.LogWarning($"<color=yellow>[Structure]</color> ⚠️ {structureData.DisplayName} has BuildTime <= 0! Setting to 1f to prevent instant construction.");
-                // Non possiamo modificare lo ScriptableObject, ma possiamo loggare
-                // Il sistema userà comunque il valore dallo ScriptableObject
+                Debug.LogWarning($"<color=yellow>[Structure]</color> {structureData.DisplayName} has BuildTime <= 0!");
             }
 
             InitializeStructure();
@@ -274,17 +237,9 @@ namespace WildernessSurvival.Gameplay.Structures
                 case StructureState.Building:
                     UpdateBuilding();
                     break;
-
                 case StructureState.Operating:
-                    // Struttura attiva, produzione gestita in UpdateProduction()
-                    break;
-
                 case StructureState.Damaged:
-                    // Produzione ridotta
-                    break;
-
                 case StructureState.Destroyed:
-                    // Nessuna azione
                     break;
             }
         }
@@ -292,11 +247,8 @@ namespace WildernessSurvival.Gameplay.Structures
         private void ChangeState(StructureState newState)
         {
             if (currentState == newState) return;
-
             Debug.Log($"<color=orange>[Structure]</color> {structureData.DisplayName}: {currentState} → {newState}");
             currentState = newState;
-
-            // Callback cambio stato
             OnStateChanged(newState);
         }
 
@@ -308,17 +260,14 @@ namespace WildernessSurvival.Gameplay.Structures
                     isOperational = false;
                     ApplyConstructionVisuals();
                     break;
-
                 case StructureState.Operating:
                     isOperational = true;
                     ApplyNormalVisuals();
                     RecalculateProduction();
                     break;
-
                 case StructureState.Damaged:
                     ApplyDamagedVisuals();
                     break;
-
                 case StructureState.Destroyed:
                     isOperational = false;
                     OnStructureDestroyed();
@@ -334,12 +283,10 @@ namespace WildernessSurvival.Gameplay.Structures
         {
             if (buildProgress >= 1f) return;
 
-            // Calcola velocità costruzione
             float buildSpeed = 1f;
 
             if (structureData.RequiresBuilder && buildersAssigned.Count > 0)
             {
-                // Somma velocità di tutti i builder
                 foreach (var builder in buildersAssigned)
                 {
                     if (builder != null && builder.IsAlive)
@@ -350,21 +297,17 @@ namespace WildernessSurvival.Gameplay.Structures
             }
             else if (!structureData.RequiresBuilder)
             {
-                // Costruzione automatica
                 buildSpeed = 1f;
             }
             else
             {
-                // Nessun builder assegnato, pausa costruzione
                 return;
             }
 
-            // Aggiorna progresso
             float progressDelta = (buildSpeed / structureData.BuildTime) * Time.deltaTime;
             buildProgress += progressDelta;
             buildTimeRemaining -= Time.deltaTime * buildSpeed;
 
-            // Costruzione completata
             if (buildProgress >= 1f)
             {
                 CompleteConstruction();
@@ -378,12 +321,9 @@ namespace WildernessSurvival.Gameplay.Structures
 
             Debug.Log($"<color=green>[Structure]</color> {structureData.DisplayName} costruzione completata!");
 
-            // Spawna VFX completamento
             SpawnVFX("completion");
 
-            // 🔧 FIX: Rilascia tutti i worker PRIMA di cambiare stato
-            // Crea una copia della lista per evitare errori di modifica durante l'iterazione
-            var workersToRelease = new List<Workers.WorkerInstance>(assignedWorkerInstances);
+            var workersToRelease = new List<WorkerInstance>(assignedWorkerInstances);
             int releasedCount = 0;
 
             foreach (var worker in workersToRelease)
@@ -395,62 +335,43 @@ namespace WildernessSurvival.Gameplay.Structures
                 }
             }
 
-            // Pulizia finale (dovrebbe essere già vuota dopo UnassignWorker)
             assignedWorkerInstances.Clear();
+            CurrentBuilder = null;
             workerCount = 0;
 
-            Debug.Log($"<color=green>[Structure]</color> 🏗️ Construction complete. Released {releasedCount} builders.");
+            Debug.Log($"<color=green>[Structure]</color> Construction complete. Released {releasedCount} builders.");
 
-            // Cambia stato
             ChangeState(StructureState.Operating);
-
-            // Rilascia builder legacy (se presenti)
             ReleaseAllBuilders();
-
-            // [IMPORTANT] Ora che la struttura è operativa, ricalcola la produzione
-            // (Sarà 0 perché non ci sono worker assegnati, ma è corretto)
             RecalculateProduction();
-
-            // Notifica StructureSystem
-            // StructureSystem.Instance?.OnStructureCompleted(this);
         }
 
-        /// <summary>
-        /// Tick di costruzione chiamato da WorkerSystem.
-        /// Avanza il progresso basandosi su currentBuildSpeed.
-        /// </summary>
         public void TickConstruction(float deltaTime)
         {
             if (buildProgress >= 1f) return;
             if (currentState != StructureState.Building) return;
 
-            // Se non ha worker assegnati e richiede builder, pausa costruzione
             if (structureData.RequiresBuilder && assignedWorkerInstances.Count == 0)
             {
                 return;
             }
 
-            // Ricalcola velocità costruzione ogni tick (per aggiornamenti dinamici)
             RecalculateBuildSpeed();
 
-            // Calcola progresso
-            // Formula: progress += (currentBuildSpeed / buildTime) * dt
             float progressDelta = (currentBuildSpeed / structureData.BuildTime) * deltaTime;
             buildProgress += progressDelta;
 
-            // Aggiorna tempo rimanente
-            buildTimeRemaining = Mathf.Max(0, structureData.BuildTime * (1f - buildProgress) / currentBuildSpeed);
+            if (currentBuildSpeed > 0)
+            {
+                buildTimeRemaining = Mathf.Max(0, structureData.BuildTime * (1f - buildProgress) / currentBuildSpeed);
+            }
 
-            // Completa costruzione se raggiunto 100%
             if (buildProgress >= 1f)
             {
                 CompleteConstruction();
             }
         }
 
-        /// <summary>
-        /// Assegna builder alla costruzione
-        /// </summary>
         public bool AssignBuilder(WorkerController worker)
         {
             if (worker == null) return false;
@@ -462,9 +383,6 @@ namespace WildernessSurvival.Gameplay.Structures
             return true;
         }
 
-        /// <summary>
-        /// Rimuovi builder dalla costruzione
-        /// </summary>
         public void RemoveBuilder(WorkerController worker)
         {
             buildersAssigned.Remove(worker);
@@ -472,29 +390,18 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private void ReleaseAllBuilders()
         {
-            foreach (var builder in buildersAssigned)
-            {
-                if (builder != null)
-                {
-                    // WorkerSystem.Instance?.UnassignWorker(builder);
-                }
-            }
             buildersAssigned.Clear();
         }
 
         // ============================================
-        // WORKER ASSIGNMENT
+        // WORKER ASSIGNMENT (Legacy/Physical)
         // ============================================
 
-        /// <summary>
-        /// Assegna un worker a questa struttura (Legacy/Physical)
-        /// </summary>
         public bool AssignWorker(WorkerController worker, bool isHero = false)
         {
             if (worker == null) return false;
             if (!isOperational) return false;
 
-            // Verifica slot disponibili
             if (isHero)
             {
                 if (assignedHeroes.Count >= structureData.HeroSlots)
@@ -521,9 +428,6 @@ namespace WildernessSurvival.Gameplay.Structures
             return true;
         }
 
-        /// <summary>
-        /// Rimuovi worker da questa struttura (Legacy/Physical)
-        /// </summary>
         public void UnassignWorker(WorkerController worker)
         {
             if (worker == null) return;
@@ -537,47 +441,51 @@ namespace WildernessSurvival.Gameplay.Structures
             Debug.Log($"<color=orange>[Structure]</color> {worker.Data.DisplayName} unassigned from {structureData.DisplayName}");
         }
 
-        /// <summary>
-        /// Calcola bonus produttività da worker assegnati
-        /// </summary>
+        // ============================================
+        // PRODUCTION & BUILD SPEED CALCULATION
+        // ============================================
+
         public void RecalculateProduction()
         {
             if (structureData.Category != StructureCategory.Resource) return;
 
             totalProductivityBonus = 1f;
+            int workersAtSite = 0;
 
-            // Bonus da worker instances
             foreach (var instance in assignedWorkerInstances)
             {
-                if (instance != null)
+                if (instance != null && instance.IsAtWorksite)
                 {
-                     totalProductivityBonus += instance.GetProductionBonus(structureData);
+                    totalProductivityBonus += instance.GetProductionBonus(structureData);
+                    workersAtSite++;
                 }
             }
 
-            // Calcola produzione effettiva
             currentProductionRate = structureData.GetProductionAtLevel(currentLevel) * totalProductivityBonus;
 
-            Debug.Log($"<color=cyan>[Structure]</color> {structureData.DisplayName} production rate: {currentProductionRate:F1}/min (bonus: {totalProductivityBonus:F2}x)");
+            Debug.Log($"<color=cyan>[Structure]</color> {structureData.DisplayName} production rate: {currentProductionRate:F1}/min ({workersAtSite}/{assignedWorkerInstances.Count} at site)");
         }
 
-        /// <summary>
-        /// Calcola velocità di costruzione da worker Builder assegnati
-        /// </summary>
         public void RecalculateBuildSpeed()
         {
-            currentBuildSpeed = 1f;
+            currentBuildSpeed = 0f;
+            int buildersAtSite = 0;
 
-            // Somma i bonus di costruzione da tutti i worker instance assegnati
             foreach (var instance in assignedWorkerInstances)
             {
-                if (instance != null)
+                if (instance != null && instance.IsAtWorksite)
                 {
-                    currentBuildSpeed += (instance.GetConstructionBonus() - 1f);
+                    currentBuildSpeed += instance.GetConstructionBonus();
+                    buildersAtSite++;
                 }
             }
 
-            Debug.Log($"<color=orange>[Structure]</color> {structureData.DisplayName} build speed: {currentBuildSpeed:F2}x ({assignedWorkerInstances.Count} workers)");
+            if (buildersAtSite == 0)
+            {
+                currentBuildSpeed = 0f;
+            }
+
+            Debug.Log($"<color=orange>[Structure]</color> {structureData.DisplayName} build speed: {currentBuildSpeed:F2}x ({buildersAtSite}/{assignedWorkerInstances.Count} at site)");
         }
 
         // ============================================
@@ -589,7 +497,7 @@ namespace WildernessSurvival.Gameplay.Structures
             if (!isOperational) return;
             if (structureData.Category != StructureCategory.Resource) return;
             if (string.IsNullOrEmpty(structureData.ProducesResourceId)) return;
-            if (workerCount == 0) return; // Serve almeno 1 worker
+            if (workerCount == 0) return;
 
             productionTimer += Time.deltaTime;
 
@@ -602,17 +510,14 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private void ProduceResources()
         {
-            // Calcola quanto produrre in questo tick (1 secondo)
-            float amountPerSecond = currentProductionRate / 60f; // Rate è per minuto
+            float amountPerSecond = currentProductionRate / 60f;
             productionAccumulator += amountPerSecond;
 
-            // Se accumulato >= 1, aggiungi risorsa
             if (productionAccumulator >= 1f)
             {
                 int amountToAdd = Mathf.FloorToInt(productionAccumulator);
                 productionAccumulator -= amountToAdd;
 
-                // Aggiungi al ResourceSystem
                 if (ResourceSystem.Instance != null)
                 {
                     ResourceSystem.Instance.AddResource(structureData.ProducesResourceId, amountToAdd);
@@ -622,16 +527,12 @@ namespace WildernessSurvival.Gameplay.Structures
             }
         }
 
-        /// <summary>
-        /// Chiamato da StructureSystem per tick di produzione globale
-        /// </summary>
         public void TickProduction(float deltaTime)
         {
             if (!isOperational) return;
             if (structureData.Category != StructureCategory.Resource) return;
             if (workerCount == 0) return;
 
-            // Produzione basata su deltaTime
             float amountPerSecond = currentProductionRate / 60f;
             float amountThisTick = amountPerSecond * deltaTime;
 
@@ -645,36 +546,27 @@ namespace WildernessSurvival.Gameplay.Structures
         // HEALTH & COMBAT
         // ============================================
 
-        /// <summary>
-        /// Infliggi danno a questa struttura
-        /// </summary>
         public void TakeDamage(float damage)
         {
             if (!IsAlive) return;
 
-            // Calcola danno con armor
             float actualDamage = Mathf.Max(0, damage - structureData.Armor);
             currentHealth -= actualDamage;
 
             Debug.Log($"<color=red>[Structure]</color> {structureData.DisplayName} took {actualDamage:F1} damage ({currentHealth:F0}/{maxHealth:F0} HP)");
 
-            // Soglia damaged
             float healthPercent = currentHealth / maxHealth;
             if (healthPercent <= 0.3f && currentState != StructureState.Damaged)
             {
                 ChangeState(StructureState.Damaged);
             }
 
-            // Morte
             if (currentHealth <= 0)
             {
                 Die();
             }
         }
 
-        /// <summary>
-        /// Ripara questa struttura
-        /// </summary>
         public void Repair(float amount)
         {
             if (!IsAlive) return;
@@ -683,7 +575,6 @@ namespace WildernessSurvival.Gameplay.Structures
 
             Debug.Log($"<color=green>[Structure]</color> {structureData.DisplayName} repaired {amount:F1} HP ({currentHealth:F0}/{maxHealth:F0})");
 
-            // Ripristina stato Operating se riparato sopra 30%
             float healthPercent = currentHealth / maxHealth;
             if (healthPercent > 0.3f && currentState == StructureState.Damaged)
             {
@@ -696,44 +587,19 @@ namespace WildernessSurvival.Gameplay.Structures
             Debug.Log($"<color=red>[Structure]</color> {structureData.DisplayName} destroyed!");
 
             ChangeState(StructureState.Destroyed);
-
-            // Rilascia tutti i worker
             ReleaseAllWorkers();
-
-            // Spawna VFX distruzione
             SpawnVFX("destruction");
-
-            // Notifica StructureSystem
-            // StructureSystem.Instance?.OnStructureDestroyed(this);
-
-            // Distruggi dopo delay
             Destroy(gameObject, 2f);
         }
 
-        private void OnStructureDestroyed()
-        {
-            // Callback per eventi custom
-        }
+        private void OnStructureDestroyed() { }
 
         private void ReleaseAllWorkers()
         {
-            foreach (var worker in assignedWorkers)
-            {
-                if (worker != null)
-                {
-                    // WorkerSystem.Instance?.UnassignWorker(worker);
-                }
-            }
-            foreach (var hero in assignedHeroes)
-            {
-                if (hero != null)
-                {
-                    // WorkerSystem.Instance?.UnassignWorker(hero);
-                }
-            }
             assignedWorkers.Clear();
             assignedHeroes.Clear();
             buildersAssigned.Clear();
+            CurrentBuilder = null;
             workerCount = 0;
         }
 
@@ -741,9 +607,6 @@ namespace WildernessSurvival.Gameplay.Structures
         // UPGRADE
         // ============================================
 
-        /// <summary>
-        /// Upgrade struttura al livello successivo
-        /// </summary>
         public bool TryUpgrade()
         {
             if (currentLevel >= structureData.MaxLevel)
@@ -758,10 +621,9 @@ namespace WildernessSurvival.Gameplay.Structures
                 return false;
             }
 
-            // Verifica costi (gestito da StructureSystem)
             currentLevel++;
-            maxHealth = structureData.MaxHealth * currentLevel; // Scala HP con livello
-            currentHealth = maxHealth; // Ripristina full HP
+            maxHealth = structureData.MaxHealth * currentLevel;
+            currentHealth = maxHealth;
 
             RecalculateProduction();
 
@@ -789,38 +651,19 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private void ApplyConstructionVisuals()
         {
-            // TODO: Applica materiale costruzione
             SpawnVFX("construction");
         }
 
         private void ApplyNormalVisuals()
         {
-            // TODO: Ripristina materiali originali
             DestroyCurrentVFX();
         }
 
-        private void ApplyDamagedVisuals()
-        {
-            // TODO: Applica materiale danneggiato
-        }
+        private void ApplyDamagedVisuals() { }
 
         private void SpawnVFX(string vfxType)
         {
             GameObject vfxPrefab = null;
-
-            switch (vfxType)
-            {
-                case "construction":
-                    // vfxPrefab = structureData.ConstructionVFX;
-                    break;
-                case "completion":
-                    // vfxPrefab = structureData.CompletionVFX;
-                    break;
-                case "destruction":
-                    // vfxPrefab = structureData.DestructionVFX;
-                    break;
-            }
-
             if (vfxPrefab != null && vfxSpawnPoint != null)
             {
                 currentVFX = Instantiate(vfxPrefab, vfxSpawnPoint.position, Quaternion.identity, vfxSpawnPoint);
@@ -835,65 +678,72 @@ namespace WildernessSurvival.Gameplay.Structures
             }
         }
 
-        // [MODIFICATION 3] Added Worker Instance Management Methods
         // ============================================
         // WORKER INSTANCE MANAGEMENT (for UI Assignment)
         // ============================================
 
-        /// <summary>
-        /// Verifica se c'è uno slot worker libero
-        /// </summary>
         public bool HasFreeWorkerSlot()
         {
             if (structureData == null) return false;
+
+            if (currentState == StructureState.Building)
+            {
+                return CurrentBuilder == null && assignedWorkerInstances.Count == 0;
+            }
+
             return assignedWorkerInstances.Count < structureData.WorkerSlots;
         }
 
-        /// <summary>
-        /// Aggiunge un WorkerInstance a questa struttura
-        /// </summary>
-        public bool AssignWorker(Workers.WorkerInstance worker)
+        public bool AssignWorker(WorkerInstance worker)
         {
             if (worker == null) return false;
-            if (!HasFreeWorkerSlot()) return false;
             if (assignedWorkerInstances.Contains(worker)) return false;
+
+            if (currentState == StructureState.Building)
+            {
+                if (CurrentBuilder != null)
+                {
+                    Debug.LogWarning($"[Structure] {structureData.DisplayName} already has a builder assigned!");
+                    return false;
+                }
+
+                CurrentBuilder = worker;
+                assignedWorkerInstances.Add(worker);
+                workerCount = assignedWorkerInstances.Count;
+                worker.AssignTo(this);
+                RecalculateBuildSpeed();
+
+                Debug.Log($"<color=orange>[Structure]</color> {structureData.DisplayName} builder assigned: {worker.CustomName}");
+                return true;
+            }
+
+            if (!HasFreeWorkerSlot()) return false;
 
             assignedWorkerInstances.Add(worker);
             workerCount = assignedWorkers.Count + assignedWorkerInstances.Count;
-
-            // Link bidirezionale
             worker.AssignTo(this);
-
-            // Ricalcola produzione o costruzione a seconda dello stato
-            if (currentState == StructureState.Operating)
-            {
-                RecalculateProduction();
-            }
-            else if (currentState == StructureState.Building)
-            {
-                RecalculateBuildSpeed();
-            }
+            RecalculateProduction();
 
             Debug.Log($"<color=cyan>[Structure]</color> {structureData.DisplayName} now has {assignedWorkerInstances.Count} worker instances");
             return true;
         }
 
-        /// <summary>
-        /// Rimuove un WorkerInstance da questa struttura
-        /// </summary>
-        public void RemoveWorker(Workers.WorkerInstance worker)
+        public void RemoveWorker(WorkerInstance worker)
         {
             if (worker == null) return;
-            
+
             if (assignedWorkerInstances.Contains(worker))
             {
                 assignedWorkerInstances.Remove(worker);
                 workerCount = assignedWorkers.Count + assignedWorkerInstances.Count;
 
-                // Unlink bidirezionale
+                if (CurrentBuilder == worker)
+                {
+                    CurrentBuilder = null;
+                }
+
                 worker.Unassign();
 
-                // Ricalcola produzione o costruzione a seconda dello stato
                 if (currentState == StructureState.Operating)
                 {
                     RecalculateProduction();
@@ -907,17 +757,11 @@ namespace WildernessSurvival.Gameplay.Structures
             }
         }
 
-        /// <summary>
-        /// Ottiene tutti i WorkerInstance assegnati
-        /// </summary>
-        public List<Workers.WorkerInstance> GetAssignedWorkerInstances()
+        public List<WorkerInstance> GetAssignedWorkerInstances()
         {
-            return new List<Workers.WorkerInstance>(assignedWorkerInstances);
+            return new List<WorkerInstance>(assignedWorkerInstances);
         }
 
-        /// <summary>
-        /// Calcola il bonus totale dei worker instance assegnati
-        /// </summary>
         public float GetTotalWorkerBonus()
         {
             float totalBonus = 0f;
@@ -931,12 +775,8 @@ namespace WildernessSurvival.Gameplay.Structures
             return totalBonus;
         }
 
-        /// <summary>
-        /// Chiamato quando si clicca sulla struttura (per aprire UI assignment)
-        /// </summary>
         public void OnClick()
         {
-            // Apre il panel di assegnazione worker
             if (UI.WorkerAssignmentUI.Instance != null)
             {
                 UI.WorkerAssignmentUI.Instance.OpenForStructure(this);
@@ -980,7 +820,7 @@ namespace WildernessSurvival.Gameplay.Structures
 
         [TitleGroup("Debug Actions")]
         [ButtonGroup("Debug Actions/Row1")]
-        [Button("💥 Take 50 Damage", ButtonSizes.Medium)]
+        [Button("Take 50 Damage", ButtonSizes.Medium)]
         [GUIColor(1f, 0.5f, 0.5f)]
         private void DebugTakeDamage()
         {
@@ -988,7 +828,7 @@ namespace WildernessSurvival.Gameplay.Structures
         }
 
         [ButtonGroup("Debug Actions/Row1")]
-        [Button("🔧 Repair 100 HP", ButtonSizes.Medium)]
+        [Button("Repair 100 HP", ButtonSizes.Medium)]
         [GUIColor(0.5f, 1f, 0.5f)]
         private void DebugRepair()
         {
@@ -996,7 +836,7 @@ namespace WildernessSurvival.Gameplay.Structures
         }
 
         [ButtonGroup("Debug Actions/Row2")]
-        [Button("⬆️ Upgrade", ButtonSizes.Medium)]
+        [Button("Upgrade", ButtonSizes.Medium)]
         [GUIColor(0.5f, 0.8f, 1f)]
         private void DebugUpgrade()
         {
@@ -1004,7 +844,7 @@ namespace WildernessSurvival.Gameplay.Structures
         }
 
         [ButtonGroup("Debug Actions/Row2")]
-        [Button("✅ Complete Construction", ButtonSizes.Medium)]
+        [Button("Complete Construction", ButtonSizes.Medium)]
         [GUIColor(0.8f, 1f, 0.5f)]
         [ShowIf("@currentState == StructureState.Building")]
         private void DebugCompleteConstruction()
@@ -1017,19 +857,16 @@ namespace WildernessSurvival.Gameplay.Structures
         {
             if (structureData == null) return;
 
-            // Disegna griglia
             Gizmos.color = Color.yellow;
             Vector3 size = new Vector3(structureData.GridSize.x, 0.1f, structureData.GridSize.y);
             Gizmos.DrawWireCube(transform.position + Vector3.up * 0.05f, size);
 
-            // Disegna range (per torri difensive)
             if (structureData.Category == StructureCategory.Defense)
             {
                 Gizmos.color = new Color(1f, 0f, 0f, 0.2f);
                 Gizmos.DrawWireSphere(transform.position, structureData.AttackRange);
             }
 
-            // Disegna worker assegnati
             Gizmos.color = Color.cyan;
             foreach (var worker in assignedWorkers)
             {
@@ -1040,7 +877,7 @@ namespace WildernessSurvival.Gameplay.Structures
             }
         }
 
-        [Button("📊 Print Full Stats", ButtonSizes.Large)]
+        [Button("Print Full Stats", ButtonSizes.Large)]
         [TitleGroup("Debug")]
         private void DebugPrintStats()
         {
@@ -1049,16 +886,12 @@ namespace WildernessSurvival.Gameplay.Structures
                 $"Level: {currentLevel}/{structureData.MaxLevel}\n" +
                 $"Health: {currentHealth:F0}/{maxHealth:F0}\n" +
                 $"Workers: {workerCount}/{structureData.WorkerSlots}\n" +
+                $"CurrentBuilder: {(CurrentBuilder != null ? CurrentBuilder.CustomName : "None")}\n" +
                 $"Production Rate: {currentProductionRate:F1}/min\n" +
-                $"Productivity Bonus: {totalProductivityBonus:F2}x\n" +
                 $"Build Progress: {buildProgress:P0}");
         }
 #endif
     }
-
-    // ============================================
-    // ENUMS
-    // ============================================
 
     public enum StructureState
     {

@@ -5,107 +5,190 @@ using Sirenix.OdinInspector;
 namespace WildernessSurvival.Gameplay.Workers
 {
     /// <summary>
-    /// Controller fisico del worker (The Puppet).
-    /// Gestisce solo movimento e animazioni.
-    /// NON ha logica di gioco (spostata in WorkerInstance).
-    /// NON ha Update() (gestito da WorkerSystem).
+    /// Controller fisico per i worker nella scena.
+    /// Gestisce movimento, animazioni e interazioni.
     /// </summary>
     [RequireComponent(typeof(NavMeshAgent))]
-    [RequireComponent(typeof(Animator))]
     public class WorkerController : MonoBehaviour
     {
-        [TitleGroup("References")]
-        [SerializeField, Required] private WorkerData data;
-        [SerializeField] private Animator animator;
-        [SerializeField] private NavMeshAgent agent;
+        // ============================================
+        // RIFERIMENTI
+        // ============================================
 
-        [TitleGroup("Runtime State")]
-        [ShowInInspector, ReadOnly] private bool isMoving;
-        [ShowInInspector, ReadOnly] private bool isWorking;
+        [TitleGroup("Data")]
+        [SerializeField, Required]
+        private WorkerData workerData;
 
-        // Accessor per WorkerInstance
-        public WorkerData Data => data;
-        
-        // SAFETY PROPERTIES (Fix CS1061 Errors)
-        public bool IsAlive => this != null && gameObject.activeInHierarchy;
+        [TitleGroup("Components")]
+        [SerializeField, ReadOnly]
+        private NavMeshAgent agent;
+
+        [SerializeField]
+        private Animator animator;
+
+        // ============================================
+        // LINKED INSTANCE
+        // ============================================
+
+        private WorkerInstance linkedInstance;
+
+        // ============================================
+        // RUNTIME STATE
+        // ============================================
+
+        [TitleGroup("Runtime")]
+        [ShowInInspector, ReadOnly]
+        private bool isMoving = false;
+
+        [ShowInInspector, ReadOnly]
+        private Vector3 targetPosition;
+
+        // ============================================
+        // PROPERTIES
+        // ============================================
+
+        public WorkerData Data => workerData;
+        public bool IsAlive => linkedInstance?.IsAlive ?? true;
+        public bool IsMoving => isMoving;
+
+        // ============================================
+        // LIFECYCLE
+        // ============================================
 
         private void Awake()
         {
-            if (agent == null) agent = GetComponent<NavMeshAgent>();
-            if (animator == null) animator = GetComponent<Animator>();
-
-            // Mobile Optimization
-            agent.obstacleAvoidanceType = ObstacleAvoidanceType.LowQualityObstacleAvoidance;
-            agent.autoBraking = true;
+            agent = GetComponent<NavMeshAgent>();
+            {
+                WorkerSystem.Instance.RegisterWorker(this);
+            }
         }
 
-        /// <summary>
-        /// Metodo chiamato dal WorkerSystem nel loop centrale.
-        /// Sostituisce Update().
-        /// </summary>
+        private void OnDestroy()
+        {
+            if (WorkerSystem.Instance != null)
+            {
+                WorkerSystem.Instance.UnregisterWorker(this);
+            }
+        }
+
+        // ============================================
+        // INSTANCE LINKING
+        // ============================================
+
+        public void LinkToInstance(WorkerInstance instance)
+        {
+            linkedInstance = instance;
+            Debug.Log($"<color=cyan>[WorkerController]</color> Linked to instance: {instance?.CustomName}");
+        }
+
+        // ============================================
+        // UPDATE (chiamato da WorkerSystem)
+        // ============================================
+
         public void ManualUpdate(float deltaTime)
         {
-            if (agent == null) return;
+            if (agent == null || linkedInstance == null) return;
 
-            // Check arrivo destinazione
-            if (isMoving && !agent.pathPending)
-            {
-                if (agent.remainingDistance <= agent.stoppingDistance)
-                {
-                    if (!agent.hasPath || agent.velocity.sqrMagnitude == 0f)
-                    {
-                        OnDestinationReached();
-                    }
-                }
-            }
-
-            // Update Animation Parameters
+            UpdateMovementState();
             UpdateAnimations();
         }
 
-        /// <summary>
-        /// Comanda al worker di muoversi verso una posizione.
-        /// </summary>
-        public void CommandMoveTo(Vector3 targetPosition, System.Action onComplete = null)
+        private void UpdateMovementState()
         {
-            if (agent == null) return;
+            if (agent == null || linkedInstance == null) return;
 
-            agent.SetDestination(targetPosition);
-            agent.isStopped = false;
-            isMoving = true;
-            isWorking = false;
-            
-            // Nota: onComplete callback non è persistito qui per semplicità, 
-            // ma potrebbe essere gestito se necessario.
-        }
+            bool wasMoving = isMoving;
+            isMoving = agent.velocity.sqrMagnitude > 0.01f;
 
-        private void OnDestinationReached()
-        {
-            isMoving = false;
-            isWorking = true; // Assume working when arrived (simplified)
+            if (isMoving)
+            {
+                linkedInstance.IsAtWorksite = false;
+                linkedInstance.SetState(WorkerState.Moving);
+            }
+            else if (!agent.pathPending && agent.remainingDistance <= agent.stoppingDistance)
+            {
+                if (linkedInstance.IsAssigned && !linkedInstance.IsAtWorksite)
+                {
+                    linkedInstance.IsAtWorksite = true;
+                    linkedInstance.SetState(WorkerState.Working);
+
+                    if (linkedInstance.AssignedStructure != null)
+                    {
+                        Vector3 direction = linkedInstance.AssignedStructure.transform.position - transform.position;
+                        direction.y = 0;
+                        if (direction.sqrMagnitude > 0.01f)
+                        {
+                            transform.rotation = Quaternion.LookRotation(direction);
+                        }
+                    }
+
+                    linkedInstance.AssignedStructure?.RecalculateBuildSpeed();
+                    linkedInstance.AssignedStructure?.RecalculateProduction();
+
+                    Debug.Log($"<color=green>[WorkerController]</color> {linkedInstance.CustomName} arrived at worksite!");
+                }
+            }
         }
 
         private void UpdateAnimations()
         {
             if (animator == null) return;
-            
-            // Check if animator has a controller assigned (prevents warning spam)
-            if (animator.runtimeAnimatorController == null) return;
 
-            float speed = agent.velocity.magnitude;
-            animator.SetFloat("Speed", speed);
-            animator.SetBool("IsWorking", isWorking);
+            animator.SetBool("IsMoving", isMoving);
+            animator.SetBool("IsWorking", linkedInstance?.CurrentState == WorkerState.Working);
         }
 
         // ============================================
-        // EDITOR TOOLS
+        // MOVEMENT COMMANDS
+        // ============================================
+
+        public void CommandMoveTo(Vector3 position)
+        {
+            if (agent == null) return;
+
+            targetPosition = position;
+            agent.SetDestination(position);
+            isMoving = true;
+
+            if (linkedInstance != null)
+            {
+                linkedInstance.IsAtWorksite = false;
+                linkedInstance.SetState(WorkerState.Moving);
+            }
+
+            Debug.Log($"<color=cyan>[WorkerController]</color> {gameObject.name} moving to {position}");
+        }
+
+        public void StopMovement()
+        {
+            if (agent == null) return;
+
+            agent.ResetPath();
+            isMoving = false;
+        }
+
+        // ============================================
+        // DEBUG
         // ============================================
 
 #if UNITY_EDITOR
-        private void OnValidate()
+        private void OnDrawGizmosSelected()
         {
-            if (agent == null) agent = GetComponent<NavMeshAgent>();
-            if (animator == null) animator = GetComponent<Animator>();
+            if (agent != null && agent.hasPath)
+            {
+                Gizmos.color = Color.yellow;
+                var path = agent.path;
+                for (int i = 0; i < path.corners.Length - 1; i++)
+                {
+                    Gizmos.DrawLine(path.corners[i], path.corners[i + 1]);
+                }
+            }
+
+            if (linkedInstance != null)
+            {
+                Gizmos.color = linkedInstance.IsAtWorksite ? Color.green : Color.red;
+                Gizmos.DrawWireSphere(transform.position + Vector3.up * 2f, 0.3f);
+            }
         }
 #endif
     }

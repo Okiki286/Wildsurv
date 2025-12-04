@@ -187,6 +187,7 @@ namespace WildernessSurvival.Gameplay.Workers
                 if (controller != null)
                 {
                     newWorker.PhysicalWorker = controller;
+                    controller.LinkToInstance(newWorker); // Link controller to instance for proximity detection
                     RegisterWorker(controller);
                     Debug.Log($"<color=green>[WorkerSystem]</color> Spawned {data.DisplayName} at {spawnPos}");
                 }

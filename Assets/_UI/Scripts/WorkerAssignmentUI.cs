@@ -11,6 +11,7 @@ namespace WildernessSurvival.UI
     /// <summary>
     /// UI per assegnare worker alle strutture.
     /// Si apre quando si clicca su una struttura.
+    /// VERSIONE OTTIMIZZATA: Object Pooling per eliminare GC da Instantiate/Destroy.
     /// </summary>
     public class WorkerAssignmentUI : MonoBehaviour
     {
@@ -209,7 +210,7 @@ namespace WildernessSurvival.UI
 
             currentStructure = null;
             
-            // Clear UI lists
+            // Disattiva tutti gli elementi pooled invece di distruggerli
             ClearSlotUIs();
             ClearAvailableUIs();
             
@@ -293,82 +294,172 @@ namespace WildernessSurvival.UI
             }
         }
 
+        /// <summary>
+        /// Refresh worker slots con Object Pooling (zero allocazioni dopo warm-up)
+        /// </summary>
         private void RefreshWorkerSlots()
         {
-            ClearSlotUIs();
-
             if (currentStructure == null || workerSlotPrefab == null || workerSlotsContainer == null)
             {
+                // Disattiva tutti se non c'è struttura
+                for (int i = 0; i < slotUIList.Count; i++)
+                {
+                    if (slotUIList[i] != null)
+                    {
+                        slotUIList[i].gameObject.SetActive(false);
+                    }
+                }
                 return;
             }
 
             int totalSlots = currentStructure.Data.WorkerSlots;
             var assignedWorkers = currentStructure.GetAssignedWorkerInstances();
 
-            // Create UI slot for each worker slot
+            // Riutilizza o crea slot UI
             for (int i = 0; i < totalSlots; i++)
             {
-                GameObject slotObj = Instantiate(workerSlotPrefab, workerSlotsContainer);
-                slotObj.name = $"WorkerSlot_{i}";
+                WorkerSlotUI slotUI;
                 
-                WorkerSlotUI slotUI = slotObj.GetComponent<WorkerSlotUI>();
-                if (slotUI == null)
+                if (i < slotUIList.Count)
                 {
-                    slotUI = slotObj.AddComponent<WorkerSlotUI>();
+                    // Ricicla elemento esistente
+                    slotUI = slotUIList[i];
+                    if (slotUI != null)
+                    {
+                        slotUI.gameObject.SetActive(true);
+                    }
+                    else
+                    {
+                        // Elemento nella lista era null, ricrea
+                        GameObject slotObj = Instantiate(workerSlotPrefab, workerSlotsContainer);
+                        slotObj.name = $"WorkerSlot_{i}";
+                        slotUI = slotObj.GetComponent<WorkerSlotUI>();
+                        if (slotUI == null)
+                        {
+                            slotUI = slotObj.AddComponent<WorkerSlotUI>();
+                        }
+                        slotUIList[i] = slotUI;
+                    }
+                }
+                else
+                {
+                    // Crea nuovo elemento e aggiungi al pool
+                    GameObject slotObj = Instantiate(workerSlotPrefab, workerSlotsContainer);
+                    slotObj.name = $"WorkerSlot_{i}";
+                    slotUI = slotObj.GetComponent<WorkerSlotUI>();
+                    if (slotUI == null)
+                    {
+                        slotUI = slotObj.AddComponent<WorkerSlotUI>();
+                    }
+                    slotUIList.Add(slotUI);
                 }
 
-                // Assign worker if one exists for this slot index
+                // Inizializza con dati corretti
                 WorkerInstance worker = i < assignedWorkers.Count ? assignedWorkers[i] : null;
                 slotUI.Initialize(worker, OnWorkerUnassigned);
+            }
 
-                slotUIList.Add(slotUI);
+            // Disattiva gli slot in eccesso (oltre totalSlots)
+            for (int i = totalSlots; i < slotUIList.Count; i++)
+            {
+                if (slotUIList[i] != null)
+                {
+                    slotUIList[i].gameObject.SetActive(false);
+                }
             }
 
             if (debugMode)
             {
-                Debug.Log($"[WorkerAssignmentUI] Created {totalSlots} slot UIs, {assignedWorkers.Count} filled");
+                Debug.Log($"[WorkerAssignmentUI] Pooled Slots: {totalSlots} active, {slotUIList.Count - totalSlots} pooled inactive");
             }
         }
 
+        /// <summary>
+        /// Refresh available workers con Object Pooling (zero allocazioni dopo warm-up)
+        /// </summary>
         private void RefreshAvailableWorkers()
         {
-            ClearAvailableUIs();
-
             if (WorkerSystem.Instance == null || availableWorkerPrefab == null || availableWorkersContainer == null)
             {
+                // Disattiva tutti se sistema non disponibile
+                for (int i = 0; i < availableUIList.Count; i++)
+                {
+                    if (availableUIList[i] != null)
+                    {
+                        availableUIList[i].gameObject.SetActive(false);
+                    }
+                }
                 return;
             }
 
             var availableWorkers = WorkerSystem.Instance.GetAvailableWorkers();
+            int neededCount = availableWorkers.Count;
 
             // Update count text
             if (availableCountText != null)
             {
-                availableCountText.text = $"Available Workers ({availableWorkers.Count})";
+                availableCountText.text = $"Available Workers ({neededCount})";
             }
 
             // Check if structure has free slots
             bool hasFreeSslots = currentStructure != null && currentStructure.HasFreeWorkerSlot();
 
-            // Create UI for each available worker
-            foreach (var worker in availableWorkers)
+            // Riutilizza o crea worker UI
+            for (int i = 0; i < neededCount; i++)
             {
-                GameObject workerObj = Instantiate(availableWorkerPrefab, availableWorkersContainer);
-                workerObj.name = $"AvailableWorker_{worker.CustomName}";
-                
-                AvailableWorkerUI workerUI = workerObj.GetComponent<AvailableWorkerUI>();
-                if (workerUI == null)
+                AvailableWorkerUI workerUI;
+                WorkerInstance worker = availableWorkers[i];
+
+                if (i < availableUIList.Count)
                 {
-                    workerUI = workerObj.AddComponent<AvailableWorkerUI>();
+                    // Ricicla elemento esistente
+                    workerUI = availableUIList[i];
+                    if (workerUI != null)
+                    {
+                        workerUI.gameObject.SetActive(true);
+                    }
+                    else
+                    {
+                        // Elemento nella lista era null, ricrea
+                        GameObject workerObj = Instantiate(availableWorkerPrefab, availableWorkersContainer);
+                        workerObj.name = $"AvailableWorker_{worker.CustomName}";
+                        workerUI = workerObj.GetComponent<AvailableWorkerUI>();
+                        if (workerUI == null)
+                        {
+                            workerUI = workerObj.AddComponent<AvailableWorkerUI>();
+                        }
+                        availableUIList[i] = workerUI;
+                    }
+                }
+                else
+                {
+                    // Crea nuovo elemento e aggiungi al pool
+                    GameObject workerObj = Instantiate(availableWorkerPrefab, availableWorkersContainer);
+                    workerObj.name = $"AvailableWorker_{worker.CustomName}";
+                    workerUI = workerObj.GetComponent<AvailableWorkerUI>();
+                    if (workerUI == null)
+                    {
+                        workerUI = workerObj.AddComponent<AvailableWorkerUI>();
+                    }
+                    availableUIList.Add(workerUI);
                 }
 
+                // Inizializza con dati corretti
                 workerUI.Initialize(worker, hasFreeSslots, OnWorkerAssigned);
-                availableUIList.Add(workerUI);
+            }
+
+            // Disattiva gli elementi in eccesso (oltre neededCount)
+            for (int i = neededCount; i < availableUIList.Count; i++)
+            {
+                if (availableUIList[i] != null)
+                {
+                    availableUIList[i].gameObject.SetActive(false);
+                }
             }
 
             if (debugMode)
             {
-                Debug.Log($"[WorkerAssignmentUI] Created {availableWorkers.Count} available worker UIs");
+                Debug.Log($"[WorkerAssignmentUI] Pooled Available: {neededCount} active, {availableUIList.Count - neededCount} pooled inactive");
             }
         }
 
@@ -416,28 +507,34 @@ namespace WildernessSurvival.UI
             }
         }
 
+        /// <summary>
+        /// Disattiva tutti gli slot UI senza distruggerli (Object Pooling)
+        /// </summary>
         private void ClearSlotUIs()
         {
-            foreach (var slot in slotUIList)
+            for (int i = 0; i < slotUIList.Count; i++)
             {
-                if (slot != null)
+                if (slotUIList[i] != null)
                 {
-                    Destroy(slot.gameObject);
+                    slotUIList[i].gameObject.SetActive(false);
                 }
             }
-            slotUIList.Clear();
+            // NON chiamiamo slotUIList.Clear() - manteniamo il pool!
         }
 
+        /// <summary>
+        /// Disattiva tutti gli available worker UI senza distruggerli (Object Pooling)
+        /// </summary>
         private void ClearAvailableUIs()
         {
-            foreach (var ui in availableUIList)
+            for (int i = 0; i < availableUIList.Count; i++)
             {
-                if (ui != null)
+                if (availableUIList[i] != null)
                 {
-                    Destroy(ui.gameObject);
+                    availableUIList[i].gameObject.SetActive(false);
                 }
             }
-            availableUIList.Clear();
+            // NON chiamiamo availableUIList.Clear() - manteniamo il pool!
         }
 
         // ============================================
@@ -549,27 +646,25 @@ namespace WildernessSurvival.UI
             }
         }
 
-        /*
-        [Button("Test Open (First Structure)", ButtonSizes.Medium)]
-        private void DebugOpenFirst()
+        [TitleGroup("Debug Actions")]
+        [Button("Print Pool Stats", ButtonSizes.Medium)]
+        private void DebugPrintPoolStats()
         {
-            // TODO: Uncomment when StructureSystem.GetAllStructures() is available
-            /*
-            if (StructureSystem.Instance != null)
+            int activeSlots = 0;
+            int activeAvailable = 0;
+
+            foreach (var slot in slotUIList)
             {
-                var structures = StructureSystem.Instance.GetAllStructures();
-                if (structures.Count > 0)
-                {
-                    OpenForStructure(structures[0]);
-                }
-                else
-                {
-                    Debug.LogWarning("[WorkerAssignmentUI] No structures in scene");
-                }
+                if (slot != null && slot.gameObject.activeSelf) activeSlots++;
             }
-            * /
-            Debug.LogWarning("[WorkerAssignmentUI] DebugOpenFirst disabled - StructureSystem.GetAllStructures() not available");
+            foreach (var ui in availableUIList)
+            {
+                if (ui != null && ui.gameObject.activeSelf) activeAvailable++;
+            }
+
+            Debug.Log($"=== POOL STATS ===\n" +
+                      $"Slot Pool: {slotUIList.Count} total, {activeSlots} active\n" +
+                      $"Available Pool: {availableUIList.Count} total, {activeAvailable} active");
         }
-        */
     }
 }

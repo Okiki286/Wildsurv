@@ -6,6 +6,7 @@ namespace WildernessSurvival.Gameplay.Workers
     public enum WorkerState
     {
         Idle,
+        Moving,
         MovingToWork,
         Working,
         Resting,
