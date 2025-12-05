@@ -1,6 +1,7 @@
 using UnityEngine;
 using Sirenix.OdinInspector;
 using WildernessSurvival.Gameplay.Resources;
+using WildernessSurvival.UI;
 
 namespace WildernessSurvival.Gameplay.Structures
 {
@@ -187,6 +188,31 @@ namespace WildernessSurvival.Gameplay.Structures
             var colliders = currentPreview.GetComponentsInChildren<Collider>();
             foreach (var col in colliders)
                 col.enabled = false;
+
+            // ═══════════════════════════════════════════════════════════
+            // DISABILITA COMPONENTI CHE NON DEVONO ESSERE ATTIVI NEL PREVIEW
+            // ═══════════════════════════════════════════════════════════
+
+            // Disabilita StructureController (impedisce inizializzazione)
+            var structureController = currentPreview.GetComponent<StructureController>();
+            if (structureController != null)
+            {
+                structureController.enabled = false;
+            }
+
+            // Disabilita StructureStatusUI (nasconde progress bar)
+            var statusUI = currentPreview.GetComponent<StructureStatusUI>();
+            if (statusUI != null)
+            {
+                statusUI.enabled = false;
+            }
+
+            // Nascondi anche il container UI se esiste
+            var uiContainer = currentPreview.transform.Find("StatusUI");
+            if (uiContainer != null)
+            {
+                uiContainer.gameObject.SetActive(false);
+            }
 
             CenterPreviewPivot();
 

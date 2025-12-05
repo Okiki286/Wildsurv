@@ -104,6 +104,11 @@ namespace WildernessSurvival.Gameplay.Workers
             Debug.Log($"<color=cyan>[WorkerInstance]</color> {CustomName} assigned to {structure.Data?.DisplayName}. IsAtWorksite: {IsAtWorksite}");
         }
 
+        /// <summary>
+        /// Disassegna il worker dalla struttura.
+        /// NON chiama CommandMoveTo per evitare di sbloccare il worker se era stato forzato in IDLE.
+        /// Il movimento deve essere gestito esternamente (es. WorkerSystem).
+        /// </summary>
         public void Unassign()
         {
             var previousStructure = AssignedStructure;
@@ -111,9 +116,15 @@ namespace WildernessSurvival.Gameplay.Workers
             IsAtWorksite = false;
             CurrentState = WorkerState.Idle;
 
+            // IMPORTANTE: NON chiamare CommandMoveTo qui!
+            // Il worker è già stato forzato in IDLE da WorkerSystem.UnassignWorker.
+            // Chiamare CommandMoveTo sbloccherebbe il worker.
+            
+            // Se il PhysicalWorker esiste, assicurati solo che sia in stato corretto
             if (PhysicalWorker != null)
             {
-                PhysicalWorker.CommandMoveTo(PhysicalWorker.transform.position);
+                // Il ForceIdle è già stato chiamato da WorkerSystem.UnassignWorker
+                // Non fare nulla qui, il worker è già fermo
             }
 
             Debug.Log($"<color=orange>[WorkerInstance]</color> {CustomName} unassigned from {previousStructure?.Data?.DisplayName}");
