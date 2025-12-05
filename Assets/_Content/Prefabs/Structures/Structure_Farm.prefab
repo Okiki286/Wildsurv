@@ -120,6 +120,7 @@ GameObject:
   - component: {fileID: 1291205237327857796}
   - component: {fileID: 876202264443729529}
   - component: {fileID: 4707671623129455362}
+  - component: {fileID: -382111224787983639}
   m_Layer: 0
   m_Name: Structure_Farm
   m_TagString: Untagged
@@ -191,3 +192,25 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 036cce96320b0ff4499342c0d69b77db, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &-382111224787983639
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9051408422575919793}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7486b846a76f0914bb49080a8ca1aea4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  structure: {fileID: 0}
+  uiCanvas: {fileID: 0}
+  progressBarFill: {fileID: 0}
+  progressBarBackground: {fileID: 0}
+  progressText: {fileID: 0}
+  heightOffset: 3
+  uiScale: 0.01
+  startColor: {r: 1, g: 0.3, b: 0.3, a: 1}
+  endColor: {r: 0.3, g: 1, b: 0.3, a: 1}
+  showPercentageText: 1

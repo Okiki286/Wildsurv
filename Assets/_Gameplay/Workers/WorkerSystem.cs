@@ -2,7 +2,7 @@
 using Sirenix.OdinInspector;
 using System.Collections.Generic;
 using WildernessSurvival.Gameplay.Structures;
-using System.Linq; // Necessario per Linq
+using System.Linq;
 
 namespace WildernessSurvival.Gameplay.Workers
 {
@@ -187,7 +187,7 @@ namespace WildernessSurvival.Gameplay.Workers
                 if (controller != null)
                 {
                     newWorker.PhysicalWorker = controller;
-                    controller.LinkToInstance(newWorker); // Link controller to instance for proximity detection
+                    controller.LinkToInstance(newWorker);
                     RegisterWorker(controller);
                     Debug.Log($"<color=green>[WorkerSystem]</color> Spawned {data.DisplayName} at {spawnPos}");
                 }
@@ -245,10 +245,22 @@ namespace WildernessSurvival.Gameplay.Workers
             return false;
         }
 
+        /// <summary>
+        /// Disassegna un worker dalla sua struttura.
+        /// IMPORTANTE: Chiama ForceIdle sul physical worker per fermare movimento/animazioni.
+        /// </summary>
         public void UnassignWorker(WorkerInstance worker)
         {
             if (worker == null) return;
 
+            // 1. Forza il worker fisico in stato IDLE
+            if (worker.PhysicalWorker != null)
+            {
+                worker.PhysicalWorker.ForceIdle();
+                Debug.Log($"<color=orange>[WorkerSystem]</color> {worker.CustomName} physical worker forced to idle.");
+            }
+
+            // 2. Rimuovi dalla struttura
             if (worker.AssignedStructure != null)
             {
                 worker.AssignedStructure.RemoveWorker(worker);
@@ -258,8 +270,32 @@ namespace WildernessSurvival.Gameplay.Workers
                 worker.Unassign();
             }
 
+            // 3. Aggiorna le liste
             assignedWorkers.Remove(worker);
             if (!availableWorkers.Contains(worker)) availableWorkers.Add(worker);
+        }
+
+        /// <summary>
+        /// Disassegna tutti i worker da una struttura specifica.
+        /// Utile quando una struttura viene completata o distrutta.
+        /// </summary>
+        public void UnassignAllWorkersFromStructure(StructureController structure)
+        {
+            if (structure == null) return;
+
+            var workersToUnassign = assignedWorkers
+                .Where(w => w.AssignedStructure == structure)
+                .ToList();
+
+            foreach (var worker in workersToUnassign)
+            {
+                UnassignWorker(worker);
+            }
+
+            if (workersToUnassign.Count > 0)
+            {
+                Debug.Log($"<color=orange>[WorkerSystem]</color> Unassigned {workersToUnassign.Count} workers from {structure.name}");
+            }
         }
 
         // ============================================
@@ -383,6 +419,19 @@ namespace WildernessSurvival.Gameplay.Workers
             }
         }
 
+        [Button("🛑 Force All Workers Idle", ButtonSizes.Medium), GUIColor(1f, 0.5f, 0.3f)]
+        private void DebugForceAllIdle()
+        {
+            foreach (var worker in physicalWorkers)
+            {
+                if (worker != null)
+                {
+                    worker.ForceIdle();
+                }
+            }
+            Debug.Log($"<color=orange>[WorkerSystem]</color> Forced ALL {physicalWorkers.Count} workers to idle.");
+        }
+
 #if UNITY_EDITOR
         [Button("Find All Actors in Scene", ButtonSizes.Medium)]
         private void FindAllActors()
@@ -390,6 +439,24 @@ namespace WildernessSurvival.Gameplay.Workers
             activeStructures = new List<StructureController>(FindObjectsByType<StructureController>(FindObjectsSortMode.None));
             physicalWorkers = new List<WorkerController>(FindObjectsByType<WorkerController>(FindObjectsSortMode.None));
             Debug.Log($"Found {activeStructures.Count} structures and {physicalWorkers.Count} workers.");
+        }
+
+        [Button("📊 Print Worker Status", ButtonSizes.Medium)]
+        private void DebugPrintWorkerStatus()
+        {
+            Debug.Log($"=== WORKER STATUS ===\n" +
+                     $"Total Instances: {allWorkerInstances.Count}\n" +
+                     $"Available: {availableWorkers.Count}\n" +
+                     $"Assigned: {assignedWorkers.Count}\n" +
+                     $"Physical Workers: {physicalWorkers.Count}");
+
+            foreach (var worker in allWorkerInstances)
+            {
+                string status = worker.IsAssigned 
+                    ? $"Assigned to {worker.AssignedStructure?.name ?? "NULL"}" 
+                    : "Available";
+                Debug.Log($"  - {worker.CustomName}: {status}");
+            }
         }
 #endif
     }

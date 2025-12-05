@@ -144,6 +144,7 @@ namespace WildernessSurvival.Gameplay.Structures
         public float MaxHealth => maxHealth;
         public bool IsAlive => currentHealth > 0;
         public bool IsOperational => isOperational;
+        public float BuildProgress => buildProgress;
         public int WorkerCount => workerCount;
         public List<WorkerController> AssignedWorkers => assignedWorkers;
         public int AssignedWorkerInstanceCount => assignedWorkerInstances.Count;
