@@ -134,6 +134,14 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (animator == null) return;
 
+            // Calcola la velocità normalizzata per l'animazione
+            float currentSpeed = agent != null ? agent.velocity.magnitude : 0f;
+            float normalizedSpeed = workerData != null ? currentSpeed / workerData.MovementSpeed : currentSpeed / 3.5f;
+            
+            // Passa Speed (float) all'Animator - usato per blend Idle/Run
+            animator.SetFloat("Speed", normalizedSpeed);
+            
+            // Mantieni compatibilità con vecchi animator
             animator.SetBool("IsMoving", isMoving);
             animator.SetBool("IsWorking", linkedInstance?.CurrentState == WorkerState.Working);
         }
