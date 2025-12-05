@@ -3,6 +3,7 @@ using Sirenix.OdinInspector;
 using System.Collections.Generic;
 using WildernessSurvival.Gameplay.Resources;
 using WildernessSurvival.Gameplay.Workers;
+using WildernessSurvival.UI;
 
 namespace WildernessSurvival.Gameplay.Structures
 {
@@ -166,6 +167,13 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private void Start()
         {
+            // Abilita StructureStatusUI (era disabilitato nel prefab per evitare che apparisse durante il piazzamento)
+            var statusUI = GetComponent<StructureStatusUI>();
+            if (statusUI != null)
+            {
+                statusUI.enabled = true;
+            }
+
             Debug.Log($"<color=orange>[Structure]</color> {structureData.DisplayName} initialized at {transform.position}");
         }
 

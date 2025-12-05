@@ -75,11 +75,6 @@ namespace WildernessSurvival.Gameplay.Workers
         [PropertyRange(1f, 10f)]
         private float lookAtRotationSpeed = 5f;
 
-        [BoxGroup("Animation Settings")]
-        [SerializeField]
-        [Tooltip("Nome dello stato Idle nell'Animator")]
-        private string idleStateName = "Idle";
-
         // ============================================
         // LINKED INSTANCE
         // ============================================
@@ -99,7 +94,7 @@ namespace WildernessSurvival.Gameplay.Workers
         private bool isPatrollingWorksite = false;
 
         [ShowInInspector, ReadOnly]
-        [LabelText("Is Forced Idle")]
+        [LabelText("Is Forced Idle (BLOCKED)")]
         private bool isForcedIdle = false;
 
         [ShowInInspector, ReadOnly]
@@ -120,6 +115,11 @@ namespace WildernessSurvival.Gameplay.Workers
         // Cached speed for animation
         private float currentSpeed;
 
+        // Animator parameter hashes (optimization)
+        private static readonly int SpeedHash = Animator.StringToHash("Speed");
+        private static readonly int IsWorkingHash = Animator.StringToHash("IsWorking");
+        private static readonly int IsMovingHash = Animator.StringToHash("IsMoving");
+
         // ============================================
         // PROPERTIES
         // ============================================
@@ -137,7 +137,6 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             agent = GetComponent<NavMeshAgent>();
             
-            // Fallback: cerca l'Animator nei children se non è assegnato
             if (animator == null)
             {
                 animator = GetComponentInChildren<Animator>();
@@ -162,6 +161,21 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         // ============================================
+        // LATE UPDATE - Forza parametri Animator se bloccato
+        // ============================================
+
+        private void LateUpdate()
+        {
+            // Se siamo in ForceIdle, FORZA i parametri dell'Animator ogni frame
+            if (isForcedIdle && animator != null)
+            {
+                animator.SetFloat(SpeedHash, 0f);
+                animator.SetBool(IsWorkingHash, false);
+                animator.SetBool(IsMovingHash, false);
+            }
+        }
+
+        // ============================================
         // INSTANCE LINKING
         // ============================================
 
@@ -178,19 +192,24 @@ namespace WildernessSurvival.Gameplay.Workers
         public void ManualUpdate(float deltaTime)
         {
             // ═══════════════════════════════════════════════════════════
-            // BLOCCO CRITICO: Se forzato in idle, non fare NULLA
+            // BLOCCO CRITICO: Se forzato in idle, FORZA stato e ritorna
             // ═══════════════════════════════════════════════════════════
             if (isForcedIdle)
             {
-                return; // BLOCCO TOTALE - nessuna logica eseguita
+                // Forza parametri
+                if (animator != null)
+                {
+                    animator.SetFloat(SpeedHash, 0f);
+                    animator.SetBool(IsWorkingHash, false);
+                    animator.SetBool(IsMovingHash, false);
+                }
+                return; // BLOCCO TOTALE
             }
 
             if (agent == null || linkedInstance == null) return;
 
-            // Calcola la velocità corrente (usata per animazioni)
             currentSpeed = agent.velocity.magnitude;
 
-            // Se non siamo in pattugliamento attivo e siamo idle, non fare nulla
             if (currentMovementState == MovementState.Idle && !isPatrollingWorksite)
             {
                 UpdateIdleState();
@@ -424,33 +443,30 @@ namespace WildernessSurvival.Gameplay.Workers
         /// <summary>
         /// FORZA IL WORKER IN STATO IDLE COMPLETO.
         /// BRUTALE: Blocca TUTTO - movimento, animazioni, update loop.
-        /// Chiamato quando il worker viene disassegnato.
         /// </summary>
         public void ForceIdle()
         {
+            Debug.Log($"<color=red>[WorkerController]</color> {gameObject.name} ForceIdle START");
+
             // ═══════════════════════════════════════════════════════════
-            // 1. BLOCCA L'UPDATE LOOP (CRITICO!)
+            // 1. BLOCCA TUTTO
             // ═══════════════════════════════════════════════════════════
             isForcedIdle = true;
-            
-            // ═══════════════════════════════════════════════════════════
-            // 2. STOP PATTUGLIAMENTO
-            // ═══════════════════════════════════════════════════════════
             isPatrollingWorksite = false;
             
             // ═══════════════════════════════════════════════════════════
-            // 3. STOP NAVMESH AGENT - BRUTALE
+            // 2. STOP NAVMESH AGENT - BRUTALE
             // ═══════════════════════════════════════════════════════════
             if (agent != null)
             {
                 agent.isStopped = true;
                 agent.ResetPath();
-                agent.velocity = Vector3.zero; // FORZA velocità a zero
-                agent.isStopped = false;
+                agent.velocity = Vector3.zero;
+                // NON fare isStopped = false, lascialo fermo!
             }
 
             // ═══════════════════════════════════════════════════════════
-            // 4. RESET STATO INTERNO
+            // 3. RESET STATO INTERNO
             // ═══════════════════════════════════════════════════════════
             currentMovementState = MovementState.Idle;
             isMoving = false;
@@ -461,20 +477,25 @@ namespace WildernessSurvival.Gameplay.Workers
             currentSpeed = 0f;
 
             // ═══════════════════════════════════════════════════════════
-            // 5. RESET ANIMATOR - INSTANT (ignora transizioni!)
+            // 4. RESET ANIMATOR - TRIPLO ATTACCO
             // ═══════════════════════════════════════════════════════════
             if (animator != null)
             {
-                // Forza parametri a zero
-                animator.SetFloat("Speed", 0f);
-                animator.SetBool("IsWorking", false);
-                animator.SetBool("IsMoving", false);
+                // PRIMA: Imposta IsWorking a FALSE
+                animator.SetBool(IsWorkingHash, false);
+                animator.SetBool(IsMovingHash, false);
+                animator.SetFloat(SpeedHash, 0f);
                 
-                // FORZA lo stato Idle immediatamente (ignora exit time e transizioni)
-                animator.Play(idleStateName, 0, 0f);
+                // SECONDO: Forza lo stato Idle con Play (layer 0, normalized time 0)
+                animator.Play("Idle", 0, 0f);
+                
+                // TERZO: Forza l'update dell'animator
+                animator.Update(0f);
+                
+                Debug.Log($"<color=red>[WorkerController]</color> Animator forced to Idle state");
             }
 
-            Debug.Log($"<color=red>[WorkerController]</color> {gameObject.name} FORCE IDLE - UPDATE BLOCKED");
+            Debug.Log($"<color=red>[WorkerController]</color> {gameObject.name} FORCE IDLE COMPLETE - UPDATE BLOCKED");
         }
 
         // ============================================
@@ -484,15 +505,15 @@ namespace WildernessSurvival.Gameplay.Workers
         private void UpdateAnimations()
         {
             if (animator == null) return;
-            if (isForcedIdle) return; // Non aggiornare se bloccato
+            if (isForcedIdle) return;
 
-            animator.SetFloat("Speed", currentSpeed);
+            animator.SetFloat(SpeedHash, currentSpeed);
 
             bool shouldPlayWorkAnim = isPatrollingWorksite && 
                                       currentMovementState == MovementState.WorkingOnSite && 
                                       isPlayingWorkAnimation;
-            animator.SetBool("IsWorking", shouldPlayWorkAnim);
-            animator.SetBool("IsMoving", isMoving && !shouldPlayWorkAnim);
+            animator.SetBool(IsWorkingHash, shouldPlayWorkAnim);
+            animator.SetBool(IsMovingHash, isMoving && !shouldPlayWorkAnim);
         }
 
         // ============================================
@@ -504,6 +525,9 @@ namespace WildernessSurvival.Gameplay.Workers
         [ShowInInspector, ReadOnly]
         [ProgressBar(0, 5, ColorGetter = "GetSpeedBarColor")]
         private float DebugCurrentSpeed => currentSpeed;
+
+        [ShowInInspector, ReadOnly]
+        private bool DebugAnimatorIsWorking => animator != null ? animator.GetBool(IsWorkingHash) : false;
 
         private Color GetSpeedBarColor(float value)
         {
@@ -540,7 +564,6 @@ namespace WildernessSurvival.Gameplay.Workers
                 Gizmos.DrawLine(transform.position + Vector3.up, structurePosition + Vector3.up);
             }
 
-            // Indicatore FORCE IDLE
             if (isForcedIdle)
             {
                 Gizmos.color = Color.red;
@@ -555,6 +578,7 @@ namespace WildernessSurvival.Gameplay.Workers
             if (Application.isPlaying)
             {
                 isForcedIdle = false;
+                if (agent != null) agent.isStopped = false;
                 currentWorkTargetCenter = transform.position;
                 structurePosition = transform.position + transform.forward * 3f;
                 currentMovementState = MovementState.WorkingOnSite;
@@ -579,6 +603,7 @@ namespace WildernessSurvival.Gameplay.Workers
             if (Application.isPlaying)
             {
                 isForcedIdle = false;
+                if (agent != null) agent.isStopped = false;
                 Debug.Log("[WorkerController] Worker unlocked!");
             }
         }
@@ -594,6 +619,20 @@ namespace WildernessSurvival.Gameplay.Workers
             else
             {
                 Debug.LogWarning("[WorkerController] No Animator found in children!");
+            }
+        }
+
+        [Button("📊 Print Animator State", ButtonSizes.Medium)]
+        private void DebugPrintAnimatorState()
+        {
+            if (animator != null)
+            {
+                var stateInfo = animator.GetCurrentAnimatorStateInfo(0);
+                Debug.Log($"[WorkerController] Current Animator State:\n" +
+                         $"  IsWorking: {animator.GetBool(IsWorkingHash)}\n" +
+                         $"  Speed: {animator.GetFloat(SpeedHash)}\n" +
+                         $"  State Hash: {stateInfo.shortNameHash}\n" +
+                         $"  Normalized Time: {stateInfo.normalizedTime}");
             }
         }
 #endif
