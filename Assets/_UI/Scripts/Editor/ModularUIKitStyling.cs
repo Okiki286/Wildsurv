@@ -335,7 +335,7 @@ namespace WildernessSurvival.EditorTools
                     textObj.transform.SetParent(badgeObj.transform, false);
                     TextMeshProUGUI badgeText = textObj.AddComponent<TextMeshProUGUI>();
                     badgeText.alignment = TextAlignmentOptions.Center;
-                    badgeText.enableWordWrapping = false;
+                    badgeText.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
                     
                     RectTransform textRt = textObj.GetComponent<RectTransform>();
                     textRt.anchorMin = Vector2.zero;

@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 8bbd1d0f54bd16540bd13255b08de22d
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 312651
+  packageName: Behaviour Tree - Easy, Simple, and Efficient
+  packageVersion: 1.0
+  assetPath: Assets/BehaviourTree/Scripts/Editor/PortBT.cs
+  uploadId: 801720

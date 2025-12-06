@@ -149,7 +149,9 @@ namespace WildernessSurvival.Gameplay.Structures
         [BoxGroup("Effetti Struttura/Utility")]
         [ShowIf("@category == StructureCategory.Utility")]
         [LabelWidth(100)]
+        #pragma warning disable CS0414 // Reserved for future utility structure bonus radius feature
         [SerializeField] private float bonusRadius = 5f;
+        #pragma warning restore CS0414
 
         [BoxGroup("Effetti Struttura/Utility")]
         [ShowIf("@category == StructureCategory.Utility")]

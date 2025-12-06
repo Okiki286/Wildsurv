@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 5799e35a095288641b7ad55f99b85863
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 312651
+  packageName: Behaviour Tree - Easy, Simple, and Efficient
+  packageVersion: 1.0
+  assetPath: Assets/BehaviourTree/Scripts/Inverter.cs
+  uploadId: 801720

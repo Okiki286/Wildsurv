@@ -9,6 +9,10 @@ TagManager:
   - Structure
   - Resource
   - Bonfire
+  - Env_Tree
+  - Env_Rock
+  - Env_Decor
+  - Env_Water
   layers:
   - Default
   - TransparentFX
@@ -16,14 +20,14 @@ TagManager:
   - 
   - Water
   - UI
-  - 
-  - 
+  - Environment_Blocking
+  - Environment_Decor
   - Ground
   - Structure
   - Worker
   - Enemy
   - Resource
-  - 
+  - Water
   - 
   - 
   - 

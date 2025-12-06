@@ -72,8 +72,10 @@ namespace WildernessSurvival.UI
 
         [TitleGroup("Configurazione")]
         [SerializeField] private KeyCode closeKey = KeyCode.Escape;
+        #pragma warning disable CS0414 // Reserved for future keyboard shortcut features
         [SerializeField] private KeyCode toggleKey = KeyCode.Tab;
         [SerializeField] private bool closeOnClickOutside = true;
+        #pragma warning restore CS0414
 
         [TitleGroup("Audio")]
         [SerializeField] private AudioClip openSound;

@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 44524598826d7044e9fff8a56151a82f
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 312651
+  packageName: Behaviour Tree - Easy, Simple, and Efficient
+  packageVersion: 1.0
+  assetPath: Assets/BehaviourTree/Scripts/BehaviourTreeContainer.cs
+  uploadId: 801720

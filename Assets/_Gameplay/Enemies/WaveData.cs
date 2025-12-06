@@ -48,7 +48,9 @@ namespace WildernessSurvival.Gameplay.Enemies
 
         [BoxGroup("Configurazione/Spawn Points")]
         [ToggleLeft]
+        #pragma warning disable CS0414 // Reserved for future random spawn point feature
         [SerializeField] private bool useRandomSpawnPoints = true;
+        #pragma warning restore CS0414
         
         [BoxGroup("Configurazione/Spawn Points")]
         [HideIf("useRandomSpawnPoints")]
@@ -108,16 +110,20 @@ namespace WildernessSurvival.Gameplay.Enemies
         [LabelWidth(120)]
         [Tooltip("Spawn boss dopo X% della wave")]
         [PropertyRange(0, 100)]
+        #pragma warning disable CS0414 // Reserved for future boss spawn timing feature
         [SerializeField] private float bossSpawnAtPercent = 80f;
+        #pragma warning restore CS0414
 
         [BoxGroup("Eventi Speciali/Hazards")]
         [ToggleLeft]
+        #pragma warning disable CS0414 // Reserved for future environmental hazard feature
         [SerializeField] private bool hasEnvironmentalHazard = false;
         
         [BoxGroup("Eventi Speciali/Hazards")]
         [ShowIf("hasEnvironmentalHazard")]
         [EnumToggleButtons]
         [SerializeField] private HazardType hazardType = HazardType.None;
+        #pragma warning restore CS0414
 
         // ============================================
         // RICOMPENSE WAVE

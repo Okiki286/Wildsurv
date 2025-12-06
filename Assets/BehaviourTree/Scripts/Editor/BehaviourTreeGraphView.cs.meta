@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 720a061a91d9e5b4b8b17d19e23065e6
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 312651
+  packageName: Behaviour Tree - Easy, Simple, and Efficient
+  packageVersion: 1.0
+  assetPath: Assets/BehaviourTree/Scripts/Editor/BehaviourTreeGraphView.cs
+  uploadId: 801720

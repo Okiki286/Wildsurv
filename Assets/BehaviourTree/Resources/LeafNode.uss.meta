@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 23dec6f7072a8214eb72e46f30ea1e98
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+  script: {fileID: 12385, guid: 0000000000000000e000000000000000, type: 0}
+  disableValidation: 0
+AssetOrigin:
+  serializedVersion: 1
+  productId: 312651
+  packageName: Behaviour Tree - Easy, Simple, and Efficient
+  packageVersion: 1.0
+  assetPath: Assets/BehaviourTree/Resources/LeafNode.uss
+  uploadId: 801720

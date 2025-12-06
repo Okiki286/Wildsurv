@@ -47,10 +47,12 @@ namespace WildernessSurvival.Core.Systems
         [SerializeField] private Vector4 worldBounds = new Vector4(-50, 50, -50, 50);
 
         [Tooltip("Abilita pan con bordi schermo")]
+        #pragma warning disable CS0414 // Reserved for future edge panning feature
         [SerializeField] private bool enableEdgePan = true;
 
         [Tooltip("Distanza dal bordo per edge pan (pixels)")]
         [SerializeField] private float edgePanThreshold = 20f;
+        #pragma warning restore CS0414
 
         [Header("=== TARGET FOLLOW ===")]
         [Tooltip("Target da seguire (opzionale)")]

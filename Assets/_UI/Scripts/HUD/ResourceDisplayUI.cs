@@ -30,10 +30,12 @@ namespace WildernessSurvival.UI
 
         [TitleGroup("Configurazione")]
         [SerializeField] private float updateInterval = 0.25f;
+        #pragma warning disable CS0414 // Reserved for future production rate display feature
         [SerializeField] private bool showProductionRate = true;
 
         [TitleGroup("Animazione")]
         [SerializeField] private float changeAnimationDuration = 0.3f;
+        #pragma warning restore CS0414
         [SerializeField] private Color increaseColor = new Color(0.3f, 1f, 0.3f);
         [SerializeField] private Color decreaseColor = new Color(1f, 0.3f, 0.3f);
         [SerializeField] private float pulseScale = 1.2f;

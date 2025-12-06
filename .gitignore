@@ -17,5 +17,7 @@ UserSettings/
 *.booproj
 
 Assets/Pure Poly/
-Assets\ToonyTinyPeople
-Assets\ThirdParty
+Assets/ToonyTinyPeople/
+Assets/ThirdParty/
+Assets/_Art/
+Assets/SoStylized/

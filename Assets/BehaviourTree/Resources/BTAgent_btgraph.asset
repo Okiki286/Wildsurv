@@ -1,0 +1,121 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 44524598826d7044e9fff8a56151a82f, type: 3}
+  m_Name: BTAgent_btgraph
+  m_EditorClassIdentifier: 
+  entryNodeGUID: 7512ce70-b1cd-4df6-a6b6-9df199db9a4e
+  nodeData:
+  - GUID: 910591b9-26dc-4035-a432-3d1dcde8dce2
+    name: Selector
+    type: 3
+    random: 0
+    loopThroughAll: 0
+    inverted: 0
+    position: {x: 248, y: 200}
+    leafMethod: 
+  - GUID: be3e7215-01ab-42db-8dd7-5f81e989c93a
+    name: Sequence
+    type: 2
+    random: 0
+    loopThroughAll: 0
+    inverted: 0
+    position: {x: 596, y: 379}
+    leafMethod: 
+  - GUID: 4f66fbb9-1661-471c-a808-edf0d8aa1eaa
+    name: Sequence
+    type: 2
+    random: 0
+    loopThroughAll: 0
+    inverted: 0
+    position: {x: 596, y: 24}
+    leafMethod: 
+  - GUID: 533b75b2-0946-487e-b999-87ce3dd23f57
+    name: Run Away
+    type: 1
+    random: 0
+    loopThroughAll: 0
+    inverted: 0
+    position: {x: 922, y: 134}
+    leafMethod: RunAway
+  - GUID: 4191ff64-2746-495e-ba63-3de4d9101d4d
+    name: Is Predator Nearby
+    type: 1
+    random: 0
+    loopThroughAll: 0
+    inverted: 0
+    position: {x: 922, y: -53}
+    leafMethod: IsPredatorNearby
+  - GUID: 2432fdbf-4c4d-44ab-a630-58f67b017312
+    name: Choose Random Direction
+    type: 1
+    random: 0
+    loopThroughAll: 0
+    inverted: 0
+    position: {x: 922, y: 260}
+    leafMethod: ChooseRandomDirection
+  - GUID: 8b016129-ab37-49f4-ba10-6be04a41eb3a
+    name: Walk
+    type: 1
+    random: 0
+    loopThroughAll: 0
+    inverted: 0
+    position: {x: 922, y: 402}
+    leafMethod: Walk
+  - GUID: 229bcd29-14b2-4bce-b35a-51a287ca87f5
+    name: Eat Grass
+    type: 1
+    random: 0
+    loopThroughAll: 0
+    inverted: 0
+    position: {x: 922, y: 563}
+    leafMethod: EatGrass
+  nodeLinks:
+  - baseNodeGUID: 7512ce70-b1cd-4df6-a6b6-9df199db9a4e
+    outputPortIndex: 0
+    portName: Start
+    targetNodeGUID: 910591b9-26dc-4035-a432-3d1dcde8dce2
+    inputPortIndex: 0
+  - baseNodeGUID: 910591b9-26dc-4035-a432-3d1dcde8dce2
+    outputPortIndex: 0
+    portName: Child 0
+    targetNodeGUID: 4f66fbb9-1661-471c-a808-edf0d8aa1eaa
+    inputPortIndex: 0
+  - baseNodeGUID: 910591b9-26dc-4035-a432-3d1dcde8dce2
+    outputPortIndex: 1
+    portName: Child 1
+    targetNodeGUID: be3e7215-01ab-42db-8dd7-5f81e989c93a
+    inputPortIndex: 0
+  - baseNodeGUID: 4f66fbb9-1661-471c-a808-edf0d8aa1eaa
+    outputPortIndex: 0
+    portName: Child 0
+    targetNodeGUID: 4191ff64-2746-495e-ba63-3de4d9101d4d
+    inputPortIndex: 0
+  - baseNodeGUID: 4f66fbb9-1661-471c-a808-edf0d8aa1eaa
+    outputPortIndex: 1
+    portName: Child 1
+    targetNodeGUID: 533b75b2-0946-487e-b999-87ce3dd23f57
+    inputPortIndex: 0
+  - baseNodeGUID: be3e7215-01ab-42db-8dd7-5f81e989c93a
+    outputPortIndex: 0
+    portName: Child 0
+    targetNodeGUID: 2432fdbf-4c4d-44ab-a630-58f67b017312
+    inputPortIndex: 0
+  - baseNodeGUID: be3e7215-01ab-42db-8dd7-5f81e989c93a
+    outputPortIndex: 1
+    portName: Child 1
+    targetNodeGUID: 8b016129-ab37-49f4-ba10-6be04a41eb3a
+    inputPortIndex: 0
+  - baseNodeGUID: be3e7215-01ab-42db-8dd7-5f81e989c93a
+    outputPortIndex: 2
+    portName: Child 2
+    targetNodeGUID: 229bcd29-14b2-4bce-b35a-51a287ca87f5
+    inputPortIndex: 0

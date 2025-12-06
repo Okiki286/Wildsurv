@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: ef6408cc9486db545ac76c6d48da8393
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 334586
+  packageName: Backbone Logger
+  packageVersion: 1.0
+  assetPath: Assets/Backbone/Common/Logger/Sample Scene/SampleLoggerScene.unity
+  uploadId: 792520

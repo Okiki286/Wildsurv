@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 1a1af6f7a96baf847bb667daa207f56d
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 312651
+  packageName: Behaviour Tree - Easy, Simple, and Efficient
+  packageVersion: 1.0
+  assetPath: Assets/BehaviourTree/Scenes/ExampleBehaviourTree.unity
+  uploadId: 801720

@@ -468,7 +468,6 @@ namespace WildernessSurvival.Gameplay.Structures
             Collider[] colliders = Physics.OverlapBox(boxCenter, boxSize / 2f, Quaternion.identity, layerMask);
 
             // Log warning se trova overlap, ma NON blocca il piazzamento
-            bool hasAnyOverlap = false;
             foreach (var col in colliders)
             {
                 // Controlla se è una struttura
@@ -477,7 +476,6 @@ namespace WildernessSurvival.Gameplay.Structures
                 {
                     // ⚠️ WARNING: overlap rilevato ma non bloccante
                     Debug.LogWarning($"<color=yellow>[StructureSystem]</color> ⚠️ Overlap detected with {structure.Data.DisplayName} (placement allowed)");
-                    hasAnyOverlap = true;
                 }
             }
 

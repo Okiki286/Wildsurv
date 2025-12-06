@@ -114,6 +114,7 @@ namespace WildernessSurvival.Gameplay.Enemies
 
         [BoxGroup("Comportamento AI/Special")]
         [ToggleLeft]
+        #pragma warning disable CS0414 // Reserved for future burrowing enemy mechanic
         [SerializeField] private bool canBurrow = false;
 
         [BoxGroup("Comportamento AI/Special")]
@@ -124,6 +125,7 @@ namespace WildernessSurvival.Gameplay.Enemies
         [BoxGroup("Comportamento AI/Special")]
         [ToggleLeft]
         [SerializeField] private bool isRanged = false;
+        #pragma warning restore CS0414
 
         [BoxGroup("Comportamento AI/Special")]
         [ShowIf("isRanged")]

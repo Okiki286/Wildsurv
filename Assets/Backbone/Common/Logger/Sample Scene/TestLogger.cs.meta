@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: a62d4a27b7d6fe44d9a902214c0c1d8b
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 334586
+  packageName: Backbone Logger
+  packageVersion: 1.0
+  assetPath: Assets/Backbone/Common/Logger/Sample Scene/TestLogger.cs
+  uploadId: 792520

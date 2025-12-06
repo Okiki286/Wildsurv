@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c6619c63a3c049645aaabc08ea3469f0, type: 3}
+  m_Name: Biome_Forest
+  m_EditorClassIdentifier: 
+  biomeId: '"Forest"'
+  description: A temperate forest with mixed vegetation.
+  treePrefabs:
+  - {fileID: 2611554157235534438, guid: 1743da68350134a42965f53a047f4365, type: 3}
+  rockPrefabs:
+  - {fileID: 351720490677871901, guid: 3bdd971261f50284dbcf9ad07cc75e0e, type: 3}
+  foliagePrefabs:
+  - {fileID: 1564790060112024591, guid: 87a0af09d2b35624097b4d242b15553f, type: 3}
+  decorPrefabs:
+  - {fileID: 7541250299759639816, guid: dc1742d6a2a4006408960207539c84bb, type: 3}
+  - {fileID: 402524150210057409, guid: 152f2e34f54059340b456cd3a7011005, type: 3}
+  - {fileID: 962890281488180649, guid: 75d1151f6d94ef845a411c9e8632eae5, type: 3}
+  - {fileID: 6352666833061404634, guid: 02bf80e65f30bec4caaf5fc29125c606, type: 3}
+  - {fileID: 6101612759639009541, guid: 7f27eb938ba0c4a448b038a0816f9e86, type: 3}
+  treesPerChunk: {x: 10, y: 20}
+  rocksPerChunk: {x: 0, y: 2}
+  foliagePerChunk: {x: 1, y: 2}
+  decorPerChunk: {x: 2, y: 2}
+  minDistanceBetweenTrees: 3
+  minDistanceBetweenRocks: 1.5
+  maxSlopeForTrees: 30
+  maxSlopeForFoliage: 45
+  bonfireSafeRadius: 8
+  edgeMargin: 2
+  scaleVariation: {x: 0.85, y: 1.15}
+  randomRotation: 1
