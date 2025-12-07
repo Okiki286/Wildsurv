@@ -180,9 +180,32 @@ namespace WildernessSurvival.Gameplay.Structures
             if (currentPreview != null)
                 Destroy(currentPreview);
 
-            // Crea nuovo preview
-            currentPreview = Instantiate(structure.Prefab);
-            currentPreview.name = $"Preview_{structure.StructureId}";
+            // ═══════════════════════════════════════════════════════════
+            // PARENT/CHILD PATTERN: Crea un wrapper vuoto per il pivot
+            // ═══════════════════════════════════════════════════════════
+            
+            // 1. Crea il parent wrapper (questo è quello che seguirà il mouse)
+            currentPreview = new GameObject($"Preview_{structure.StructureId}");
+            
+            // 2. Istanzia il prefab come figlio
+            GameObject visualChild = Instantiate(structure.Prefab, currentPreview.transform);
+            visualChild.name = "Visual";
+            
+            // 3. Calcola l'offset per centrare il visual sul parent
+            Renderer[] renderers = visualChild.GetComponentsInChildren<Renderer>();
+            if (renderers.Length > 0)
+            {
+                Bounds combinedBounds = renderers[0].bounds;
+                for (int i = 1; i < renderers.Length; i++)
+                {
+                    combinedBounds.Encapsulate(renderers[i].bounds);
+                }
+                
+                // Offset il visual per centrare i bounds sul parent (0,0,0 locale)
+                Vector3 centerOffset = visualChild.transform.position - combinedBounds.center;
+                centerOffset.y = 0; // Mantieni Y
+                visualChild.transform.localPosition = centerOffset;
+            }
 
             // Disabilita collider sul preview
             var colliders = currentPreview.GetComponentsInChildren<Collider>();
@@ -194,27 +217,25 @@ namespace WildernessSurvival.Gameplay.Structures
             // ═══════════════════════════════════════════════════════════
 
             // Disabilita StructureController (impedisce inizializzazione)
-            var structureController = currentPreview.GetComponent<StructureController>();
+            var structureController = visualChild.GetComponent<StructureController>();
             if (structureController != null)
             {
                 structureController.enabled = false;
             }
 
             // Disabilita StructureStatusUI (nasconde progress bar)
-            var statusUI = currentPreview.GetComponent<StructureStatusUI>();
+            var statusUI = visualChild.GetComponent<StructureStatusUI>();
             if (statusUI != null)
             {
                 statusUI.enabled = false;
             }
 
             // Nascondi anche il container UI se esiste
-            var uiContainer = currentPreview.transform.Find("StatusUI");
+            var uiContainer = visualChild.transform.Find("StatusUI");
             if (uiContainer != null)
             {
                 uiContainer.gameObject.SetActive(false);
             }
-
-            CenterPreviewPivot();
 
             if (debugMode)
                 Debug.Log($"[BuildMode] Selected: {structure.DisplayName}");
@@ -230,6 +251,17 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private void UpdatePreviewPosition()
         {
+            // Auto-find camera if not assigned
+            if (mainCamera == null)
+            {
+                mainCamera = Camera.main;
+                if (mainCamera == null)
+                {
+                    Debug.LogError("[BuildMode] No Main Camera found!");
+                    return;
+                }
+            }
+            
             Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
 
             if (Physics.Raycast(ray, out RaycastHit hit, 1000f, groundLayer))

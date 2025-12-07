@@ -75,7 +75,12 @@ namespace WildernessSurvival.Gameplay.Resources
                 return;
             }
             Instance = this;
-            DontDestroyOnLoad(gameObject);
+            
+            // DontDestroyOnLoad only works for root objects
+            if (transform.parent == null)
+            {
+                DontDestroyOnLoad(gameObject);
+            }
 
             InitializeSystem();
         }

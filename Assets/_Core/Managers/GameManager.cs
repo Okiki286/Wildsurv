@@ -106,7 +106,12 @@ namespace WildernessSurvival.Core.Managers
                 return;
             }
             Instance = this;
-            DontDestroyOnLoad(gameObject);
+            
+            // DontDestroyOnLoad only works for root objects
+            if (transform.parent == null)
+            {
+                DontDestroyOnLoad(gameObject);
+            }
 
             // Configurazione performance
             SetupPerformanceSettings();
