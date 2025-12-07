@@ -34,7 +34,8 @@ namespace WildernessSurvival.UI
         [SerializeField] private Color normalColor = new Color(0.2f, 0.2f, 0.25f, 0.9f);
         [SerializeField] private Color hoverColor = new Color(0.3f, 0.3f, 0.35f, 1f);
         [SerializeField] private Color disabledColor = new Color(0.15f, 0.15f, 0.15f, 0.6f);
-        [SerializeField] private Color idealMatchBorderColor = new Color(0.4f, 0.8f, 0.4f, 1f);
+        // Verde più tenue con alpha 0.5 per non essere troppo invasivo
+        [SerializeField] private Color idealMatchBorderColor = new Color(0.3f, 0.7f, 0.3f, 0.5f);
 
         // ============================================
         // RUNTIME
@@ -71,6 +72,9 @@ namespace WildernessSurvival.UI
             // Auto-find components
             AutoFindComponents();
 
+            // Ensure raycast safety for decorative elements
+            EnsureRaycastSafety();
+
             UpdateVisuals();
         }
 
@@ -93,6 +97,36 @@ namespace WildernessSurvival.UI
             
             if (iconImage == null)
                 iconImage = transform.Find("Icon")?.GetComponent<Image>();
+        }
+
+        /// <summary>
+        /// Disabilita raycastTarget su elementi decorativi (indicator/border) 
+        /// per evitare blocco del click sui pulsanti sottostanti.
+        /// </summary>
+        private void EnsureRaycastSafety()
+        {
+            // Disabilita raycast sul border decorativo
+            if (idealMatchBorder != null)
+            {
+                idealMatchBorder.raycastTarget = false;
+            }
+
+            // Disabilita raycast su tutti i componenti Image nell'indicator
+            if (idealMatchIndicator != null)
+            {
+                var indicatorImages = idealMatchIndicator.GetComponentsInChildren<Image>(true);
+                foreach (var img in indicatorImages)
+                {
+                    img.raycastTarget = false;
+                }
+
+                // Anche i Graphics generici (per sicurezza)
+                var indicatorGraphics = idealMatchIndicator.GetComponentsInChildren<Graphic>(true);
+                foreach (var graphic in indicatorGraphics)
+                {
+                    graphic.raycastTarget = false;
+                }
+            }
         }
 
         private void CheckIdealMatch()
@@ -149,19 +183,20 @@ namespace WildernessSurvival.UI
             // Bonus preview
             UpdateBonusPreview();
 
-            // Ideal match indicator
+            // DISABILITATO: Gli indicatori visivi verdi coprono il testo.
+            // L'ideal match è ora indicato solo dal testo "(Best!)" sul pulsante.
             if (idealMatchIndicator != null)
             {
-                idealMatchIndicator.SetActive(isIdealMatch && canAssign);
+                idealMatchIndicator.SetActive(false); // Sempre disattivo
             }
 
             if (idealMatchBorder != null)
             {
-                idealMatchBorder.enabled = isIdealMatch && canAssign;
-                idealMatchBorder.color = idealMatchBorderColor;
+                idealMatchBorder.enabled = false; // Sempre disattivo
+                idealMatchBorder.raycastTarget = false;
             }
 
-            // Background
+            // Background - NON cambiamo colore per ideal match, manteniamo normale
             if (backgroundImage != null)
             {
                 backgroundImage.color = canAssign ? normalColor : disabledColor;
@@ -187,7 +222,8 @@ namespace WildernessSurvival.UI
                     
                     if (isIdealMatch)
                     {
-                        bonusPreviewText.color = Color.green;
+                        // Verde più scuro e leggibile
+                        bonusPreviewText.color = new Color(0.2f, 0.8f, 0.2f);
                     }
                     else
                     {
@@ -216,7 +252,9 @@ namespace WildernessSurvival.UI
             {
                 if (canAssign)
                 {
-                    assignButtonText.text = isIdealMatch ? "Assign ★" : "Assign";
+                    // Usa "Assign (Best!)" per ideal match - testo chiaro e leggibile
+                    assignButtonText.text = isIdealMatch ? "Assign (Best!)" : "Assign";
+                    // Mantieni testo bianco per leggibilità, non verde
                     assignButtonText.color = Color.white;
                 }
                 else
@@ -226,19 +264,19 @@ namespace WildernessSurvival.UI
                 }
             }
 
-            // Button color
+            // Button color - STESSO colore per tutti, nessun verde
             var buttonImage = assignButton.GetComponent<Image>();
             if (buttonImage != null)
             {
                 if (canAssign)
                 {
-                    buttonImage.color = isIdealMatch 
-                        ? new Color(0.3f, 0.6f, 0.3f) 
-                        : new Color(0.3f, 0.4f, 0.5f);
+                    // Colore identico per tutti i worker assegnabili
+                    // L'ideal match è indicato SOLO dal testo "(Best!)"
+                    buttonImage.color = new Color(0.3f, 0.4f, 0.5f, 0.95f);
                 }
                 else
                 {
-                    buttonImage.color = new Color(0.2f, 0.2f, 0.2f);
+                    buttonImage.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
                 }
             }
         }
@@ -310,6 +348,7 @@ namespace WildernessSurvival.UI
         public void Refresh()
         {
             CheckIdealMatch();
+            EnsureRaycastSafety(); // Riapplica safety anche su refresh
             UpdateVisuals();
         }
     }

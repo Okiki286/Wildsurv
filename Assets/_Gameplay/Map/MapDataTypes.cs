@@ -14,8 +14,11 @@ namespace WildernessSurvival.Gameplay.Map
         /// <summary>Bonfire/base location</summary>
         Bonfire,
         
-        /// <summary>Enemy spawn point (placeholder for future)</summary>
-        EnemySpawn
+        /// <summary>Regular enemy spawn point</summary>
+        EnemySpawn,
+        
+        /// <summary>Boss enemy spawn point</summary>
+        BossSpawn
     }
 
     /// <summary>
@@ -37,6 +40,12 @@ namespace WildernessSurvival.Gameplay.Map
         Resource_Stone,
         
         /// <summary>Food resources can be gathered here</summary>
-        Resource_Food
+        Resource_Food,
+        
+        /// <summary>Enemy camp/spawn area</summary>
+        EnemyCamp,
+        
+        /// <summary>Main path/corridor for navigation</summary>
+        Path_Main
     }
 }

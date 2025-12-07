@@ -119,6 +119,12 @@ namespace WildernessSurvival.Gameplay.Workers
         private static readonly int SpeedHash = Animator.StringToHash("Speed");
         private static readonly int IsWorkingHash = Animator.StringToHash("IsWorking");
         private static readonly int IsMovingHash = Animator.StringToHash("IsMoving");
+        
+        // Flags to check if animator has these parameters
+        private bool hasIsMovingParam = false;
+        private bool hasIsWorkingParam = false;
+        private bool hasSpeedParam = false;
+        private bool animatorChecked = false;
 
         // ============================================
         // PROPERTIES
@@ -145,10 +151,39 @@ namespace WildernessSurvival.Gameplay.Workers
                     Debug.Log($"<color=yellow>[WorkerController]</color> Animator trovato in children: {animator.gameObject.name}");
                 }
             }
+            
+            // Check which animator parameters exist
+            CheckAnimatorParameters();
 
             if (WorkerSystem.Instance != null)
             {
                 WorkerSystem.Instance.RegisterWorker(this);
+            }
+        }
+        
+        /// <summary>
+        /// Checks which animator parameters exist to avoid errors.
+        /// </summary>
+        private void CheckAnimatorParameters()
+        {
+            if (animator == null || animator.runtimeAnimatorController == null)
+            {
+                animatorChecked = true;
+                return;
+            }
+            
+            foreach (var param in animator.parameters)
+            {
+                if (param.nameHash == SpeedHash) hasSpeedParam = true;
+                if (param.nameHash == IsWorkingHash) hasIsWorkingParam = true;
+                if (param.nameHash == IsMovingHash) hasIsMovingParam = true;
+            }
+            
+            animatorChecked = true;
+            
+            if (!hasIsMovingParam)
+            {
+                Debug.LogWarning($"[WorkerController] Animator missing 'IsMoving' parameter - animations may not work correctly");
             }
         }
 
@@ -169,9 +204,9 @@ namespace WildernessSurvival.Gameplay.Workers
             // Se siamo in ForceIdle, FORZA i parametri dell'Animator ogni frame
             if (isForcedIdle && animator != null)
             {
-                animator.SetFloat(SpeedHash, 0f);
-                animator.SetBool(IsWorkingHash, false);
-                animator.SetBool(IsMovingHash, false);
+                if (hasSpeedParam) animator.SetFloat(SpeedHash, 0f);
+                if (hasIsWorkingParam) animator.SetBool(IsWorkingHash, false);
+                if (hasIsMovingParam) animator.SetBool(IsMovingHash, false);
             }
         }
 
@@ -199,9 +234,9 @@ namespace WildernessSurvival.Gameplay.Workers
                 // Forza parametri
                 if (animator != null)
                 {
-                    animator.SetFloat(SpeedHash, 0f);
-                    animator.SetBool(IsWorkingHash, false);
-                    animator.SetBool(IsMovingHash, false);
+                    if (hasSpeedParam) animator.SetFloat(SpeedHash, 0f);
+                    if (hasIsWorkingParam) animator.SetBool(IsWorkingHash, false);
+                    if (hasIsMovingParam) animator.SetBool(IsMovingHash, false);
                 }
                 return; // BLOCCO TOTALE
             }
@@ -482,9 +517,9 @@ namespace WildernessSurvival.Gameplay.Workers
             if (animator != null)
             {
                 // PRIMA: Imposta IsWorking a FALSE
-                animator.SetBool(IsWorkingHash, false);
-                animator.SetBool(IsMovingHash, false);
-                animator.SetFloat(SpeedHash, 0f);
+                if (hasIsWorkingParam) animator.SetBool(IsWorkingHash, false);
+                if (hasIsMovingParam) animator.SetBool(IsMovingHash, false);
+                if (hasSpeedParam) animator.SetFloat(SpeedHash, 0f);
                 
                 // SECONDO: Forza lo stato Idle con Play (layer 0, normalized time 0)
                 animator.Play("Idle", 0, 0f);
@@ -507,13 +542,13 @@ namespace WildernessSurvival.Gameplay.Workers
             if (animator == null) return;
             if (isForcedIdle) return;
 
-            animator.SetFloat(SpeedHash, currentSpeed);
+            if (hasSpeedParam) animator.SetFloat(SpeedHash, currentSpeed);
 
             bool shouldPlayWorkAnim = isPatrollingWorksite && 
                                       currentMovementState == MovementState.WorkingOnSite && 
                                       isPlayingWorkAnimation;
-            animator.SetBool(IsWorkingHash, shouldPlayWorkAnim);
-            animator.SetBool(IsMovingHash, isMoving && !shouldPlayWorkAnim);
+            if (hasIsWorkingParam) animator.SetBool(IsWorkingHash, shouldPlayWorkAnim);
+            if (hasIsMovingParam) animator.SetBool(IsMovingHash, isMoving && !shouldPlayWorkAnim);
         }
 
         // ============================================

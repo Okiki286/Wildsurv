@@ -16,18 +16,33 @@ MonoBehaviour:
   description: A temperate forest with mixed vegetation.
   treePrefabs:
   - {fileID: 2611554157235534438, guid: 1743da68350134a42965f53a047f4365, type: 3}
+  - {fileID: 6025389439302526993, guid: 16402f43de9da6f43859a010a4d5e239, type: 3}
+  - {fileID: 4944280553967320908, guid: 8bd96f4d3289c1246b943d72ee41d622, type: 3}
+  - {fileID: 368329325096245657, guid: a049721a248bbf742a0ba8057c885a34, type: 3}
+  - {fileID: 8613086161171974773, guid: 8ea693ca435c06240afc74a307b5d93e, type: 3}
+  - {fileID: 5853596959982655087, guid: 24d4631ab71189a4eaa128b8679c3509, type: 3}
+  - {fileID: 3127717678723679313, guid: 12e19ab263a24fc4cb540b393623a4b7, type: 3}
+  - {fileID: 7703657488077527746, guid: b6301e92ae67c1d4d98037e95328295e, type: 3}
+  - {fileID: 6116630976365693112, guid: f761645346febec498d81ba6ab902eab, type: 3}
   rockPrefabs:
   - {fileID: 351720490677871901, guid: 3bdd971261f50284dbcf9ad07cc75e0e, type: 3}
+  - {fileID: 1674237944231755395, guid: 871cc40058ccda44884e935128953594, type: 3}
+  - {fileID: 3155803217584034488, guid: cf74e8f10d973f04ab307266f2e78438, type: 3}
   foliagePrefabs:
-  - {fileID: 1564790060112024591, guid: 87a0af09d2b35624097b4d242b15553f, type: 3}
+  - {fileID: 2328806837387093558, guid: d3563702fd933dd4495afffa5de3e35b, type: 3}
+  - {fileID: 7722357964696889708, guid: 52e36c54f8ad4e44aaa04a086bdc6ac0, type: 3}
+  - {fileID: 3174899429725502218, guid: e77380a941735f24b83f9acc30c1cd04, type: 3}
+  - {fileID: 5211877591550336571, guid: e54e8474aeedf494196167103ada9ccc, type: 3}
+  - {fileID: 8162054245766892605, guid: 3f82326e14c21944980c6561ff9a1790, type: 3}
+  - {fileID: 377231490213159961, guid: e9b56923dae76c74192c4ccaf52f7de8, type: 3}
   decorPrefabs:
   - {fileID: 7541250299759639816, guid: dc1742d6a2a4006408960207539c84bb, type: 3}
   - {fileID: 402524150210057409, guid: 152f2e34f54059340b456cd3a7011005, type: 3}
   - {fileID: 962890281488180649, guid: 75d1151f6d94ef845a411c9e8632eae5, type: 3}
   - {fileID: 6352666833061404634, guid: 02bf80e65f30bec4caaf5fc29125c606, type: 3}
   - {fileID: 6101612759639009541, guid: 7f27eb938ba0c4a448b038a0816f9e86, type: 3}
-  treesPerChunk: {x: 10, y: 20}
-  rocksPerChunk: {x: 0, y: 2}
+  treesPerChunk: {x: 15, y: 20}
+  rocksPerChunk: {x: 5, y: 8}
   foliagePerChunk: {x: 1, y: 2}
   decorPerChunk: {x: 2, y: 2}
   minDistanceBetweenTrees: 3
