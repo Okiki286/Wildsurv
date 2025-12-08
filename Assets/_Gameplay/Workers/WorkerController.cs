@@ -84,6 +84,11 @@ namespace WildernessSurvival.Gameplay.Workers
         [PropertyRange(0.5f, 3f)]
         private float outfitChangeDuration = 1.0f;
 
+        [BoxGroup("Outfit Change")]
+        [SerializeField]
+        [Tooltip("VFX 'Puff' da riprodurre durante il cambio outfit (opzionale)")]
+        private ParticleSystem changeJobVFX;
+
         // ============================================
         // LINKED INSTANCE
         // ============================================
@@ -126,6 +131,9 @@ namespace WildernessSurvival.Gameplay.Workers
 
         [ShowInInspector, ReadOnly]
         private bool isChangingOutfit = false;
+
+        [ShowInInspector, ReadOnly]
+        private string currentVisualName = null;
 
         private Coroutine outfitChangeCoroutine;
 
@@ -278,20 +286,24 @@ namespace WildernessSurvival.Gameplay.Workers
                 return;
             }
 
+            // ═══════════════════════════════════════════════════════════
+            // SMART CHECK: Skip if already using this visual model
+            // ═══════════════════════════════════════════════════════════
+            if (!string.IsNullOrEmpty(currentVisualName) && modelPrefab.name == currentVisualName)
+            {
+                Debug.Log($"<color=gray>[WorkerController]</color> {gameObject.name}: Visual change skipped - same prefab '{currentVisualName}'");
+                return;
+            }
+
             pendingModelPrefab = modelPrefab;
             pendingAnimatorController = animController;
             
-            Debug.Log($"<color=cyan>[WorkerController]</color> {gameObject.name}: Visual change scheduled to {modelPrefab.name}");
+            Debug.Log($"<color=cyan>[WorkerController]</color> {gameObject.name}: Visual change scheduled to {modelPrefab.name} - will apply on arrival");
 
-            // Se già fermo, avvia subito
-            bool isStopped = agent == null || !agent.hasPath || agent.velocity.sqrMagnitude < 0.1f || isForcedIdle;
-
-            if (isStopped && !isChangingOutfit)
-            {
-                Debug.Log($"<color=yellow>[WorkerController]</color> Worker stopped - starting outfit change immediately");
-                isForcedIdle = false; // Unlock for coroutine
-                StartOutfitChange();
-            }
+            // ═══════════════════════════════════════════════════════════
+            // DELAYED CHANGE: Il cambio visivo avviene in OnArrivedAtDestination()
+            // NON avviamo subito anche se il worker è fermo
+            // ═══════════════════════════════════════════════════════════
         }
 
         private void StartOutfitChange()
@@ -322,7 +334,15 @@ namespace WildernessSurvival.Gameplay.Workers
             Debug.Log($"<color=magenta>[WorkerController]</color> {gameObject.name}: Starting outfit change...");
 
             // ═══════════════════════════════════════════════════════════
-            // 1. DISABILITA VISUAL ROOT (Effetto Sparizione)
+            // 1. VFX PUFF 1 (Sparizione)
+            // ═══════════════════════════════════════════════════════════
+            if (changeJobVFX != null)
+            {
+                changeJobVFX.Play();
+            }
+
+            // ═══════════════════════════════════════════════════════════
+            // 2. DISABILITA VISUAL ROOT (Effetto Sparizione)
             // ═══════════════════════════════════════════════════════════
             if (visualRoot != null)
             {
@@ -330,12 +350,12 @@ namespace WildernessSurvival.Gameplay.Workers
             }
 
             // ═══════════════════════════════════════════════════════════
-            // 2. ATTENDI
+            // 3. ATTENDI
             // ═══════════════════════════════════════════════════════════
             yield return new WaitForSeconds(outfitChangeDuration);
 
             // ═══════════════════════════════════════════════════════════
-            // 3. CLEAN: Distruggi tutti i figli di visualRoot
+            // 4. CLEAN: Distruggi tutti i figli di visualRoot
             // ═══════════════════════════════════════════════════════════
             if (visualRoot != null)
             {
@@ -346,18 +366,45 @@ namespace WildernessSurvival.Gameplay.Workers
             }
 
             // ═══════════════════════════════════════════════════════════
-            // 4. SPAWN: Istanzia nuovo modello come figlio di visualRoot
+            // 5. SPAWN: Istanzia nuovo modello come figlio di visualRoot
             // ═══════════════════════════════════════════════════════════
             if (pendingModelPrefab != null && visualRoot != null)
             {
+                // CRITICAL: Reset visualRoot position to ensure alignment with worker root
+                visualRoot.localPosition = Vector3.zero;
+                visualRoot.localRotation = Quaternion.identity;
+
                 GameObject newModel = Instantiate(pendingModelPrefab, visualRoot);
-                newModel.transform.localPosition = Vector3.zero;
-                newModel.transform.localRotation = Quaternion.identity;
+                
+                // ═══════════════════════════════════════════════════════════
+                // CRITICAL: Remove any WorkerController on spawned model
+                // Visual prefabs should NOT have WorkerController!
+                // If they do, their Awake() creates nested VisualRoots breaking hierarchy
+                // ═══════════════════════════════════════════════════════════
+                var strayControllers = newModel.GetComponentsInChildren<WorkerController>(true);
+                foreach (var strayCtrl in strayControllers)
+                {
+                    if (strayCtrl != this)
+                    {
+                        Debug.LogWarning($"<color=red>[WorkerController]</color> REMOVED stray WorkerController from spawned model '{newModel.name}'. Visual prefabs should be PURE 3D models!");
+                        Destroy(strayCtrl);
+                    }
+                }
+                
+                // CRITICAL: Force local transform reset to prevent offset issues
+                newModel.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
                 newModel.transform.localScale = Vector3.one;
                 newModel.name = $"Model_{pendingModelPrefab.name}";
 
+                Debug.Log($"<color=yellow>[WorkerController]</color> Spawned '{newModel.name}' at local pos {newModel.transform.localPosition}, visualRoot at {visualRoot.localPosition}");
+
                 // ═══════════════════════════════════════════════════════════
-                // 5. REBIND: Cerca e configura Animator
+                // 6. UPDATE CURRENT VISUAL NAME (per Smart Check)
+                // ═══════════════════════════════════════════════════════════
+                currentVisualName = pendingModelPrefab.name;
+
+                // ═══════════════════════════════════════════════════════════
+                // 7. REBIND: Cerca e configura Animator
                 // ═══════════════════════════════════════════════════════════
                 animator = newModel.GetComponentInChildren<Animator>();
 
@@ -391,11 +438,19 @@ namespace WildernessSurvival.Gameplay.Workers
             pendingAnimatorController = null;
 
             // ═══════════════════════════════════════════════════════════
-            // 6. ABILITA VISUAL ROOT (Effetto Apparizione)
+            // 8. ABILITA VISUAL ROOT (Effetto Apparizione)
             // ═══════════════════════════════════════════════════════════
             if (visualRoot != null)
             {
                 visualRoot.gameObject.SetActive(true);
+            }
+
+            // ═══════════════════════════════════════════════════════════
+            // 9. VFX PUFF 2 (Riapparizione)
+            // ═══════════════════════════════════════════════════════════
+            if (changeJobVFX != null)
+            {
+                changeJobVFX.Play();
             }
 
             isChangingOutfit = false;

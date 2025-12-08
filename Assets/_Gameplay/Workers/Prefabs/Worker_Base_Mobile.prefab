@@ -66,7 +66,7 @@ Animator:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8608382026145210704}
   m_Enabled: 1
-  m_Avatar: {fileID: 9000000, guid: fdfb5e1c4a1b339489c0eddebb1ab872, type: 3}
+  m_Avatar: {fileID: 9000000, guid: eb062aa776e44954d94c4c2f76ebc148, type: 3}
   m_Controller: {fileID: 9100000, guid: 6937849fa19d2aa43bf484d3b5acda1e, type: 2}
   m_CullingMode: 0
   m_UpdateMode: 0
@@ -94,12 +94,14 @@ MonoBehaviour:
   workerData: {fileID: 0}
   agent: {fileID: 8961791101605001212}
   animator: {fileID: 397660192086742160}
+  visualRoot: {fileID: 0}
   workWanderRadius: 3
   changeSpotInterval: 2.5
   navMeshSampleDistance: 2
   workAnimationSpeedThreshold: 0.1
   lookAtRotationSpeed: 5
-  idleStateName: Idle
+  outfitChangeDuration: 1
+  changeJobVFX: {fileID: 0}
 --- !u!1001 &397660192079356400
 PrefabInstance:
   m_ObjectHideFlags: 0

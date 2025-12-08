@@ -18,7 +18,7 @@ MonoBehaviour:
   description: 
   role: 1
   jobColor: {r: 0.4, g: 0.7, b: 0.3, a: 1}
-  visualModelPrefab: {fileID: 743376441357340771, guid: 47c26f30a9fe88141ba308c1b779550c, type: 3}
+  visualModelPrefab: {fileID: 7276128090910446708, guid: 2fd8e08c3aebdc846aac622ef0134da0, type: 3}
   animatorController: {fileID: 9100000, guid: 4fdb136680c429746aee7dcb850ca9f6, type: 2}
   productivityBonus: 1
   buildSpeedBonus: 1

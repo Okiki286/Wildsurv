@@ -45,7 +45,7 @@ namespace WildernessSurvival.Gameplay.Resources
 
         [TitleGroup("Debug")]
         [ToggleLeft]
-        [SerializeField] private bool debugMode = true;
+        [SerializeField] private bool debugMode = false;
 
         // ============================================
         // RUNTIME DATA
