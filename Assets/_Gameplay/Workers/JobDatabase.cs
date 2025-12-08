@@ -161,19 +161,19 @@ namespace WildernessSurvival.Gameplay.Workers
             InitializeCache();
         }
 
-        [Button("📋 Print All Jobs", ButtonSizes.Medium)]
+        [Button("Print All Jobs", ButtonSizes.Medium)]
         private void EditorPrintJobs()
         {
             Debug.Log($"=== JOB DATABASE ({allJobs?.Count ?? 0} jobs) ===");
-            
+
             if (allJobs != null)
             {
                 foreach (var job in allJobs)
                 {
                     if (job != null)
                     {
-                        string visual = job.VisualModelPrefab != null ? "✅" : "❌";
-                        Debug.Log($"  [{job.Role}] {job.JobName} - Visual: {visual}");
+                        string visualStatus = job.HasValidVisualSet ? "MeshSwap" : (job.UseLegacySystem ? "Legacy" : "NONE");
+                        Debug.Log($"  [{job.Role}] {job.JobName} - Visual: [{visualStatus}]");
                     }
                 }
             }

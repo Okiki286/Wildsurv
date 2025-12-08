@@ -501,7 +501,7 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         [TitleGroup("Job System Debug")]
-        [Button("🎭 Print Job Database", ButtonSizes.Medium), GUIColor(0.8f, 0.6f, 1f)]
+        [Button("Print Job Database", ButtonSizes.Medium), GUIColor(0.8f, 0.6f, 1f)]
         private void DebugPrintJobDatabase()
         {
             if (ActiveJobDatabase != null)
@@ -514,8 +514,8 @@ namespace WildernessSurvival.Gameplay.Workers
                 {
                     if (job != null)
                     {
-                        string visual = job.VisualModelPrefab != null ? "✅" : "❌";
-                        Debug.Log($"  - {job.JobName} ({job.Role}): Visual {visual}");
+                        string visualStatus = job.HasValidVisualSet ? "MeshSwap" : (job.UseLegacySystem ? "Legacy" : "NONE");
+                        Debug.Log($"  - {job.JobName} ({job.Role}): Visual [{visualStatus}]");
                     }
                 }
             }

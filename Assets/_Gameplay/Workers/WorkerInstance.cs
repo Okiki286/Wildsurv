@@ -126,14 +126,21 @@ namespace WildernessSurvival.Gameplay.Workers
         // ============================================
 
         /// <summary>
-        /// Cambia il job del worker e schedula il cambio visivo.
-        /// Il cambio visivo avverrà quando il worker è fermo.
+        /// Cambia il job del worker.
+        /// Il WorkerVisualController riceverà l'evento OnJobChanged e aggiornerà la skin.
         /// </summary>
         public void SetJob(WorkerJobData newJob)
         {
             if (newJob == null)
             {
                 Debug.LogWarning($"[WorkerInstance] {CustomName}: SetJob called with null. Ignoring.");
+                return;
+            }
+
+            // Skip se stesso job
+            if (CurrentJob == newJob)
+            {
+                Debug.Log($"<color=gray>[WorkerInstance]</color> {CustomName}: Already has job {newJob.JobName}. Skipping.");
                 return;
             }
 
@@ -144,18 +151,9 @@ namespace WildernessSurvival.Gameplay.Workers
                 $"{previousJob?.JobName ?? "None"} -> {newJob.JobName}");
 
             // ═══════════════════════════════════════════════════════════
-            // SCHEDULE VISUAL CHANGE
-            // Il WorkerController gestirà il timing del cambio
+            // FIRE EVENT - WorkerVisualController si sottoscrive a questo
+            // e gestirà automaticamente il cambio visivo (mesh swap o legacy)
             // ═══════════════════════════════════════════════════════════
-            if (PhysicalWorker != null && newJob.VisualModelPrefab != null)
-            {
-                PhysicalWorker.ScheduleVisualChange(newJob.VisualModelPrefab, newJob.AnimatorController);
-            }
-            else if (PhysicalWorker != null && newJob.VisualModelPrefab == null)
-            {
-                Debug.LogWarning($"[WorkerInstance] {CustomName}: Job {newJob.JobName} has no visual model prefab.");
-            }
-
             OnJobChanged?.Invoke(newJob);
         }
 

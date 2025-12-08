@@ -6,8 +6,8 @@ namespace WildernessSurvival.Gameplay.Workers
 {
     /// <summary>
     /// Definisce i dati di un Job per i worker.
-    /// Ogni job ha un ruolo, un modello visivo, statistiche e proprietà di combattimento.
-    /// NOTA: visualModelPrefab deve essere un modello 3D PURO, non un worker completo.
+    /// Ogni job ha un ruolo, statistiche gameplay e un WorkerVisualSet per la skin.
+    /// Sistema data-driven: basta creare nuovi JobData per aggiungere job.
     /// </summary>
     [CreateAssetMenu(fileName = "NewJobData", menuName = "Wilderness Survival/Worker Job Data")]
     public class WorkerJobData : ScriptableObject
@@ -36,10 +36,10 @@ namespace WildernessSurvival.Gameplay.Workers
         public string Description => description;
 
         // ============================================
-        // ROLE & VISUAL
+        // ROLE
         // ============================================
 
-        [TitleGroup("Role & Visual")]
+        [TitleGroup("Role")]
         [SerializeField]
         [Tooltip("Il ruolo associato a questo job (chiave per lookup)")]
         private WorkerRole role;
@@ -50,16 +50,33 @@ namespace WildernessSurvival.Gameplay.Workers
         private Color jobColor = Color.white;
         public Color JobColor => jobColor;
 
+        // ============================================
+        // VISUAL SET (Nuovo sistema mesh swap)
+        // ============================================
+
+        [TitleGroup("Visual Set")]
         [SerializeField]
-        [Tooltip("Il modello 3D PURO da istanziare come figlio di visualRoot. NON un worker completo!")]
-        [Required("Assegna un modello 3D visivo per questo job")]
+        [Tooltip("Preset visivo completo per questo job (mesh, tool, animator, colori)")]
+        [InlineProperty]
+        [HideLabel]
+        private WorkerVisualSet visualSet = new WorkerVisualSet();
+        public WorkerVisualSet VisualSet => visualSet;
+
+        // ============================================
+        // LEGACY SUPPORT (da rimuovere dopo migrazione)
+        // ============================================
+
+        [TitleGroup("Legacy (Deprecated)")]
+        [SerializeField]
+        [Tooltip("DEPRECATED: Usa VisualSet.animatorController invece")]
+        [InfoBox("Questo campo è deprecato. Migra a VisualSet.", InfoMessageType.Warning)]
         private GameObject visualModelPrefab;
         public GameObject VisualModelPrefab => visualModelPrefab;
 
         [SerializeField]
-        [Tooltip("AnimatorController da usare. Se null, usa quello del modello.")]
+        [Tooltip("DEPRECATED: Usa VisualSet.animatorController invece")]
         private RuntimeAnimatorController animatorController;
-        public RuntimeAnimatorController AnimatorController => animatorController;
+        public RuntimeAnimatorController AnimatorController => visualSet?.animatorController ?? animatorController;
 
         // ============================================
         // STATS
@@ -108,6 +125,24 @@ namespace WildernessSurvival.Gameplay.Workers
         // EDITOR VALIDATION
         // ============================================
 
+        // ============================================
+        // HELPER METHODS
+        // ============================================
+
+        /// <summary>
+        /// Verifica se questo job ha un visual set valido per il mesh swap.
+        /// </summary>
+        public bool HasValidVisualSet => visualSet != null && visualSet.HasValidMesh;
+
+        /// <summary>
+        /// Verifica se usare il sistema legacy (prefab swap) o il nuovo (mesh swap).
+        /// </summary>
+        public bool UseLegacySystem => !HasValidVisualSet && visualModelPrefab != null;
+
+        // ============================================
+        // EDITOR VALIDATION
+        // ============================================
+
 #if UNITY_EDITOR
         private void OnValidate()
         {
@@ -125,15 +160,38 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         [TitleGroup("Debug")]
-        [Button("📋 Print Job Info", ButtonSizes.Medium)]
+        [Button("Print Job Info", ButtonSizes.Medium)]
         private void DebugPrintInfo()
         {
+            string visualInfo = HasValidVisualSet
+                ? $"VisualSet (Body: {(visualSet.bodyMesh != null ? visualSet.bodyMesh.name : "None")})"
+                : (visualModelPrefab != null ? $"Legacy Prefab: {visualModelPrefab.name}" : "NONE");
+
             Debug.Log($"=== JOB: {jobName} ===\n" +
                      $"Role: {role}\n" +
-                     $"Visual: {(visualModelPrefab != null ? visualModelPrefab.name : "NONE")}\n" +
-                     $"Animator: {(animatorController != null ? animatorController.name : "From Model")}\n" +
+                     $"Visual: {visualInfo}\n" +
+                     $"Animator: {(AnimatorController != null ? AnimatorController.name : "None")}\n" +
+                     $"Tool: {(visualSet?.toolPrefab != null ? visualSet.toolPrefab.name : "None")}\n" +
                      $"Productivity: {productivityBonus:F2}x\n" +
                      $"Build Speed: {buildSpeedBonus:F2}x");
+        }
+
+        [TitleGroup("Debug")]
+        [Button("Validate Visual Set", ButtonSizes.Medium)]
+        private void DebugValidateVisualSet()
+        {
+            if (HasValidVisualSet)
+            {
+                Debug.Log($"<color=green>[{jobName}] VisualSet is valid and ready for mesh swap.</color>");
+            }
+            else if (UseLegacySystem)
+            {
+                Debug.LogWarning($"<color=yellow>[{jobName}] Using LEGACY prefab swap. Consider migrating to VisualSet.</color>");
+            }
+            else
+            {
+                Debug.LogError($"<color=red>[{jobName}] No valid visual configuration! Add VisualSet meshes or legacy prefab.</color>");
+            }
         }
 #endif
     }
