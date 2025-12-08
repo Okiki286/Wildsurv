@@ -5,6 +5,10 @@ using WildernessSurvival.Gameplay.Structures;
 
 namespace WildernessSurvival.Gameplay.Workers
 {
+    /// <summary>
+    /// Rappresenta un'istanza runtime di un worker.
+    /// Gestisce job, stats, assegnazione e stato.
+    /// </summary>
     [Serializable]
     public class WorkerInstance
     {
@@ -20,6 +24,19 @@ namespace WildernessSurvival.Gameplay.Workers
 
         [ShowInInspector, ReadOnly]
         public WorkerData Data { get; private set; }
+
+        // ============================================
+        // JOB SYSTEM
+        // ============================================
+
+        [ShowInInspector, ReadOnly]
+        [TitleGroup("Current Job")]
+        public WorkerJobData CurrentJob { get; private set; }
+
+        /// <summary>
+        /// Evento invocato quando il job cambia (per aggiornare UI, etc.)
+        /// </summary>
+        public event Action<WorkerJobData> OnJobChanged;
 
         // ============================================
         // ASSIGNMENT STATE
@@ -77,6 +94,88 @@ namespace WildernessSurvival.Gameplay.Workers
             CurrentHealth = MaxHealth;
             CurrentState = WorkerState.Idle;
             IsAtWorksite = false;
+
+            // Initialize with default job
+            InitializeDefaultJob();
+        }
+
+        /// <summary>
+        /// Inizializza il job di default dal database.
+        /// </summary>
+        private void InitializeDefaultJob()
+        {
+            var jobDb = JobDatabase.Instance;
+            if (jobDb != null)
+            {
+                CurrentJob = jobDb.GetDefaultJob();
+                
+                if (CurrentJob == null && Data != null)
+                {
+                    CurrentJob = jobDb.GetJobData(Data.DefaultRole);
+                }
+            }
+
+            if (CurrentJob != null)
+            {
+                Debug.Log($"<color=cyan>[WorkerInstance]</color> {CustomName} initialized with job: {CurrentJob.JobName}");
+            }
+        }
+
+        // ============================================
+        // JOB MANAGEMENT
+        // ============================================
+
+        /// <summary>
+        /// Cambia il job del worker e schedula il cambio visivo.
+        /// Il cambio visivo avverrà quando il worker è fermo.
+        /// </summary>
+        public void SetJob(WorkerJobData newJob)
+        {
+            if (newJob == null)
+            {
+                Debug.LogWarning($"[WorkerInstance] {CustomName}: SetJob called with null. Ignoring.");
+                return;
+            }
+
+            var previousJob = CurrentJob;
+            CurrentJob = newJob;
+
+            Debug.Log($"<color=green>[WorkerInstance]</color> {CustomName} job changed: " +
+                $"{previousJob?.JobName ?? "None"} -> {newJob.JobName}");
+
+            // ═══════════════════════════════════════════════════════════
+            // SCHEDULE VISUAL CHANGE
+            // Il WorkerController gestirà il timing del cambio
+            // ═══════════════════════════════════════════════════════════
+            if (PhysicalWorker != null && newJob.VisualModelPrefab != null)
+            {
+                PhysicalWorker.ScheduleVisualChange(newJob.VisualModelPrefab, newJob.AnimatorController);
+            }
+            else if (PhysicalWorker != null && newJob.VisualModelPrefab == null)
+            {
+                Debug.LogWarning($"[WorkerInstance] {CustomName}: Job {newJob.JobName} has no visual model prefab.");
+            }
+
+            OnJobChanged?.Invoke(newJob);
+        }
+
+        /// <summary>
+        /// Resetta il job al default (Villager).
+        /// </summary>
+        public void ResetToDefaultJob()
+        {
+            var jobDb = JobDatabase.Instance;
+            if (jobDb == null) return;
+
+            var defaultJob = jobDb.GetDefaultJob();
+            if (defaultJob != null)
+            {
+                SetJob(defaultJob);
+            }
+            else
+            {
+                Debug.LogWarning($"[WorkerInstance] {CustomName}: No default job in database.");
+            }
         }
 
         // ============================================
@@ -101,13 +200,11 @@ namespace WildernessSurvival.Gameplay.Workers
                 CurrentState = WorkerState.Working;
             }
 
-            Debug.Log($"<color=cyan>[WorkerInstance]</color> {CustomName} assigned to {structure.Data?.DisplayName}. IsAtWorksite: {IsAtWorksite}");
+            Debug.Log($"<color=cyan>[WorkerInstance]</color> {CustomName} assigned to {structure.Data?.DisplayName}");
         }
 
         /// <summary>
         /// Disassegna il worker dalla struttura.
-        /// NON chiama CommandMoveTo per evitare di sbloccare il worker se era stato forzato in IDLE.
-        /// Il movimento deve essere gestito esternamente (es. WorkerSystem).
         /// </summary>
         public void Unassign()
         {
@@ -115,17 +212,6 @@ namespace WildernessSurvival.Gameplay.Workers
             AssignedStructure = null;
             IsAtWorksite = false;
             CurrentState = WorkerState.Idle;
-
-            // IMPORTANTE: NON chiamare CommandMoveTo qui!
-            // Il worker è già stato forzato in IDLE da WorkerSystem.UnassignWorker.
-            // Chiamare CommandMoveTo sbloccherebbe il worker.
-            
-            // Se il PhysicalWorker esiste, assicurati solo che sia in stato corretto
-            if (PhysicalWorker != null)
-            {
-                // Il ForceIdle è già stato chiamato da WorkerSystem.UnassignWorker
-                // Non fare nulla qui, il worker è già fermo
-            }
 
             Debug.Log($"<color=orange>[WorkerInstance]</color> {CustomName} unassigned from {previousStructure?.Data?.DisplayName}");
         }
@@ -144,42 +230,80 @@ namespace WildernessSurvival.Gameplay.Workers
         // BONUS CALCULATIONS
         // ============================================
 
+        /// <summary>
+        /// Ottiene il bonus costruzione.
+        /// </summary>
         public float GetConstructionBonus()
         {
-            if (Data == null) return 1f;
-            return Data.BuildSpeedMultiplier * (1f + (Level - 1) * 0.1f);
+            float baseBuildSpeed = CurrentJob?.BuildSpeedBonus ?? Data?.BuildSpeedMultiplier ?? 1f;
+            return baseBuildSpeed * (1f + (Level - 1) * 0.1f);
         }
 
+        /// <summary>
+        /// Ottiene il bonus produzione.
+        /// </summary>
         public float GetProductionBonus(StructureData structureData)
         {
-            if (Data == null) return 0f;
-            return (Data.ProductivityMultiplier - 1f) * (1f + (Level - 1) * 0.05f);
+            float baseProductivity = CurrentJob?.ProductivityBonus ?? Data?.ProductivityMultiplier ?? 1f;
+            return (baseProductivity - 1f) * (1f + (Level - 1) * 0.05f);
         }
 
+        /// <summary>
+        /// Ottiene il bonus corrente generico.
+        /// </summary>
         public float GetCurrentBonus()
         {
-            if (Data == null) return 0f;
+            if (CurrentJob != null)
+            {
+                if (CurrentJob.Role == WorkerRole.Builder)
+                {
+                    return GetConstructionBonus();
+                }
+                return CurrentJob.ProductivityBonus - 1f;
+            }
 
-            if (Data.DefaultRole == WorkerRole.Builder)
-            {
-                return GetConstructionBonus();
-            }
-            else
-            {
-                return Data.ProductivityMultiplier - 1f;
-            }
+            if (Data == null) return 0f;
+            return Data.DefaultRole == WorkerRole.Builder ? GetConstructionBonus() : Data.ProductivityMultiplier - 1f;
         }
 
+        /// <summary>
+        /// Verifica se il worker è un match ideale per la struttura assegnata.
+        /// </summary>
         public bool IsIdealMatch()
         {
-            if (AssignedStructure == null || Data == null) return false;
-            return (AssignedStructure.Data.AllowedRoles & Data.DefaultRole) != 0;
+            if (AssignedStructure == null) return false;
+            WorkerRole effectiveRole = GetEffectiveRole();
+            if (effectiveRole == WorkerRole.None) return false;
+            return (AssignedStructure.Data.AllowedRoles & effectiveRole) != 0;
         }
 
+        /// <summary>
+        /// Verifica se questo worker è ideale per una struttura specifica.
+        /// </summary>
         public bool IsIdealMatchFor(StructureData structureData)
         {
-            if (structureData == null || Data == null) return false;
-            return (structureData.AllowedRoles & Data.DefaultRole) != 0;
+            if (structureData == null) return false;
+            WorkerRole effectiveRole = GetEffectiveRole();
+            if (effectiveRole == WorkerRole.None) return false;
+            return (structureData.AllowedRoles & effectiveRole) != 0;
+        }
+
+        /// <summary>
+        /// Ottiene il ruolo effettivo del worker.
+        /// </summary>
+        public WorkerRole GetEffectiveRole()
+        {
+            if (CurrentJob != null) return CurrentJob.Role;
+            if (Data != null) return Data.DefaultRole;
+            return WorkerRole.None;
+        }
+
+        /// <summary>
+        /// Ottiene la velocità di movimento effettiva.
+        /// </summary>
+        public float GetEffectiveMovementSpeed()
+        {
+            return CurrentJob?.MovementSpeed ?? Data?.MovementSpeed ?? 3.5f;
         }
 
         // ============================================
@@ -189,13 +313,8 @@ namespace WildernessSurvival.Gameplay.Workers
         public void TakeDamage(float damage)
         {
             if (!IsAlive) return;
-
             CurrentHealth = Mathf.Max(0, CurrentHealth - damage);
-
-            if (!IsAlive)
-            {
-                OnDeath();
-            }
+            if (!IsAlive) OnDeath();
         }
 
         public void Heal(float amount)
@@ -207,12 +326,10 @@ namespace WildernessSurvival.Gameplay.Workers
         private void OnDeath()
         {
             CurrentState = WorkerState.Dead;
-
             if (AssignedStructure != null)
             {
                 AssignedStructure.RemoveWorker(this);
             }
-
             Debug.Log($"<color=red>[WorkerInstance]</color> {CustomName} has died!");
         }
 
@@ -223,7 +340,6 @@ namespace WildernessSurvival.Gameplay.Workers
         public void AddExperience(float amount)
         {
             Experience += amount;
-
             float expToLevel = GetExpRequiredForLevel(Level + 1);
             while (Experience >= expToLevel && Level < 10)
             {
