@@ -1,6 +1,8 @@
 ﻿using UnityEngine;
 using UnityEngine.AI;
 using Sirenix.OdinInspector;
+using System.Collections;
+using System.Collections.Generic;
 
 namespace WildernessSurvival.Gameplay.Workers
 {
@@ -16,7 +18,8 @@ namespace WildernessSurvival.Gameplay.Workers
 
     /// <summary>
     /// Controller fisico per i worker nella scena.
-    /// Gestisce movimento, animazioni e work wandering.
+    /// Gestisce movimento, animazioni, work wandering e cambio visuale.
+    /// NOTA: Il NavMeshAgent è sulla root e NON viene mai toccato dal visual swap.
     /// </summary>
     [RequireComponent(typeof(NavMeshAgent))]
     public class WorkerController : MonoBehaviour
@@ -34,8 +37,14 @@ namespace WildernessSurvival.Gameplay.Workers
         private NavMeshAgent agent;
 
         [SerializeField]
-        [Tooltip("Animator del modello 3D. Se vuoto, cerca in children.")]
+        [Tooltip("Animator del modello 3D. Viene aggiornato automaticamente dopo visual swap.")]
         private Animator animator;
+
+        [TitleGroup("Visual Root")]
+        [SerializeField]
+        [Required("Assegna il Transform contenitore dei modelli visuali")]
+        [Tooltip("Transform contenitore sotto cui vengono istanziati i modelli 3D. NON è la root del worker!")]
+        private Transform visualRoot;
 
         // ============================================
         // MOVEMENT SETTINGS
@@ -43,19 +52,16 @@ namespace WildernessSurvival.Gameplay.Workers
 
         [BoxGroup("Movement Settings")]
         [SerializeField]
-        [Tooltip("Raggio entro cui il worker gironzola mentre lavora")]
         [PropertyRange(1f, 10f)]
         private float workWanderRadius = 3f;
 
         [BoxGroup("Movement Settings")]
         [SerializeField]
-        [Tooltip("Intervallo in secondi tra un cambio di posizione e l'altro durante il lavoro")]
         [PropertyRange(1f, 5f)]
         private float changeSpotInterval = 2.5f;
 
         [BoxGroup("Movement Settings")]
         [SerializeField]
-        [Tooltip("Distanza massima per il campionamento NavMesh")]
         [PropertyRange(1f, 5f)]
         private float navMeshSampleDistance = 2f;
 
@@ -65,15 +71,18 @@ namespace WildernessSurvival.Gameplay.Workers
 
         [BoxGroup("Animation Settings")]
         [SerializeField]
-        [Tooltip("Soglia di velocità sotto la quale l'animazione di lavoro si attiva")]
         [PropertyRange(0.01f, 0.5f)]
         private float workAnimationSpeedThreshold = 0.1f;
 
         [BoxGroup("Animation Settings")]
         [SerializeField]
-        [Tooltip("Velocità di rotazione verso la struttura mentre lavora")]
         [PropertyRange(1f, 10f)]
         private float lookAtRotationSpeed = 5f;
+
+        [BoxGroup("Outfit Change")]
+        [SerializeField]
+        [PropertyRange(0.5f, 3f)]
+        private float outfitChangeDuration = 1.0f;
 
         // ============================================
         // LINKED INSTANCE
@@ -90,11 +99,9 @@ namespace WildernessSurvival.Gameplay.Workers
         private MovementState currentMovementState = MovementState.Idle;
 
         [ShowInInspector, ReadOnly]
-        [LabelText("Is Patrolling Worksite")]
         private bool isPatrollingWorksite = false;
 
         [ShowInInspector, ReadOnly]
-        [LabelText("Is Forced Idle (BLOCKED)")]
         private bool isForcedIdle = false;
 
         [ShowInInspector, ReadOnly]
@@ -104,27 +111,38 @@ namespace WildernessSurvival.Gameplay.Workers
         private Vector3 targetPosition;
 
         [ShowInInspector, ReadOnly]
-        [LabelText("Is Playing Work Anim")]
         private bool isPlayingWorkAnimation = false;
+
+        // ============================================
+        // VISUAL CHANGE STATE
+        // ============================================
+
+        [TitleGroup("Visual Change")]
+        [ShowInInspector, ReadOnly]
+        private GameObject pendingModelPrefab;
+
+        [ShowInInspector, ReadOnly]
+        private RuntimeAnimatorController pendingAnimatorController;
+
+        [ShowInInspector, ReadOnly]
+        private bool isChangingOutfit = false;
+
+        private Coroutine outfitChangeCoroutine;
 
         // Work Wandering State
         private Vector3 currentWorkTargetCenter;
         private Vector3 structurePosition;
         private float workTimer;
-
-        // Cached speed for animation
         private float currentSpeed;
 
-        // Animator parameter hashes (optimization)
+        // Animator parameter hashes
         private static readonly int SpeedHash = Animator.StringToHash("Speed");
         private static readonly int IsWorkingHash = Animator.StringToHash("IsWorking");
         private static readonly int IsMovingHash = Animator.StringToHash("IsMoving");
         
-        // Flags to check if animator has these parameters
         private bool hasIsMovingParam = false;
         private bool hasIsWorkingParam = false;
         private bool hasSpeedParam = false;
-        private bool animatorChecked = false;
 
         // ============================================
         // PROPERTIES
@@ -134,6 +152,7 @@ namespace WildernessSurvival.Gameplay.Workers
         public bool IsAlive => linkedInstance?.IsAlive ?? true;
         public bool IsMoving => isMoving;
         public MovementState CurrentMovementState => currentMovementState;
+        public bool IsChangingOutfit => isChangingOutfit;
 
         // ============================================
         // LIFECYCLE
@@ -143,16 +162,54 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             agent = GetComponent<NavMeshAgent>();
             
+            // Auto-find or create visualRoot
+            if (visualRoot == null)
+            {
+                visualRoot = transform.Find("VisualRoot");
+                if (visualRoot == null)
+                {
+                    // Create VisualRoot
+                    GameObject visualRootObj = new GameObject("VisualRoot");
+                    visualRootObj.transform.SetParent(transform);
+                    visualRootObj.transform.localPosition = Vector3.zero;
+                    visualRootObj.transform.localRotation = Quaternion.identity;
+                    visualRoot = visualRootObj.transform;
+                    
+                    // ═══════════════════════════════════════════════════════════
+                    // CRITICO: Sposta i figli visuali esistenti sotto visualRoot
+                    // Altrimenti rimangono fuori e non vengono distrutti
+                    // ═══════════════════════════════════════════════════════════
+                    List<Transform> childrenToMove = new List<Transform>();
+                    foreach (Transform child in transform)
+                    {
+                        // Non spostare visualRoot stesso, e skip componenti NavMesh
+                        if (child != visualRoot && child.GetComponent<NavMeshAgent>() == null)
+                        {
+                            // Cerca se è un oggetto visuale (ha Renderer o Animator)
+                            if (child.GetComponentInChildren<Renderer>() != null || 
+                                child.GetComponentInChildren<Animator>() != null)
+                            {
+                                childrenToMove.Add(child);
+                            }
+                        }
+                    }
+                    
+                    foreach (Transform child in childrenToMove)
+                    {
+                        child.SetParent(visualRoot);
+                        Debug.Log($"<color=cyan>[WorkerController]</color> Moved '{child.name}' under VisualRoot");
+                    }
+                    
+                    Debug.Log($"<color=yellow>[WorkerController]</color> Created VisualRoot for {gameObject.name}, moved {childrenToMove.Count} children");
+                }
+            }
+
+            // Auto-find animator
             if (animator == null)
             {
                 animator = GetComponentInChildren<Animator>();
-                if (animator != null)
-                {
-                    Debug.Log($"<color=yellow>[WorkerController]</color> Animator trovato in children: {animator.gameObject.name}");
-                }
             }
             
-            // Check which animator parameters exist
             CheckAnimatorParameters();
 
             if (WorkerSystem.Instance != null)
@@ -161,29 +218,19 @@ namespace WildernessSurvival.Gameplay.Workers
             }
         }
         
-        /// <summary>
-        /// Checks which animator parameters exist to avoid errors.
-        /// </summary>
         private void CheckAnimatorParameters()
         {
-            if (animator == null || animator.runtimeAnimatorController == null)
-            {
-                animatorChecked = true;
-                return;
-            }
+            hasSpeedParam = false;
+            hasIsWorkingParam = false;
+            hasIsMovingParam = false;
+
+            if (animator == null || animator.runtimeAnimatorController == null) return;
             
             foreach (var param in animator.parameters)
             {
                 if (param.nameHash == SpeedHash) hasSpeedParam = true;
                 if (param.nameHash == IsWorkingHash) hasIsWorkingParam = true;
                 if (param.nameHash == IsMovingHash) hasIsMovingParam = true;
-            }
-            
-            animatorChecked = true;
-            
-            if (!hasIsMovingParam)
-            {
-                Debug.LogWarning($"[WorkerController] Animator missing 'IsMoving' parameter - animations may not work correctly");
             }
         }
 
@@ -195,13 +242,8 @@ namespace WildernessSurvival.Gameplay.Workers
             }
         }
 
-        // ============================================
-        // LATE UPDATE - Forza parametri Animator se bloccato
-        // ============================================
-
         private void LateUpdate()
         {
-            // Se siamo in ForceIdle, FORZA i parametri dell'Animator ogni frame
             if (isForcedIdle && animator != null)
             {
                 if (hasSpeedParam) animator.SetFloat(SpeedHash, 0f);
@@ -221,36 +263,176 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         // ============================================
+        // VISUAL CHANGE SYSTEM
+        // ============================================
+
+        /// <summary>
+        /// Schedula un cambio di modello visivo.
+        /// Se il worker è fermo, avvia subito. Altrimenti aspetta l'arrivo.
+        /// </summary>
+        public void ScheduleVisualChange(GameObject modelPrefab, RuntimeAnimatorController animController = null)
+        {
+            if (modelPrefab == null)
+            {
+                Debug.LogWarning($"[WorkerController] {gameObject.name}: ScheduleVisualChange called with null prefab.");
+                return;
+            }
+
+            pendingModelPrefab = modelPrefab;
+            pendingAnimatorController = animController;
+            
+            Debug.Log($"<color=cyan>[WorkerController]</color> {gameObject.name}: Visual change scheduled to {modelPrefab.name}");
+
+            // Se già fermo, avvia subito
+            bool isStopped = agent == null || !agent.hasPath || agent.velocity.sqrMagnitude < 0.1f || isForcedIdle;
+
+            if (isStopped && !isChangingOutfit)
+            {
+                Debug.Log($"<color=yellow>[WorkerController]</color> Worker stopped - starting outfit change immediately");
+                isForcedIdle = false; // Unlock for coroutine
+                StartOutfitChange();
+            }
+        }
+
+        private void StartOutfitChange()
+        {
+            if (isChangingOutfit || pendingModelPrefab == null) return;
+
+            if (outfitChangeCoroutine != null)
+            {
+                StopCoroutine(outfitChangeCoroutine);
+            }
+
+            outfitChangeCoroutine = StartCoroutine(ChangeOutfitRoutine());
+        }
+
+        /// <summary>
+        /// Coroutine per il cambio outfit.
+        /// 1. Disabilita visualRoot
+        /// 2. Attendi
+        /// 3. Distruggi figli di visualRoot
+        /// 4. Istanzia nuovo modello
+        /// 5. Rebind animator
+        /// 6. Abilita visualRoot
+        /// </summary>
+        private IEnumerator ChangeOutfitRoutine()
+        {
+            isChangingOutfit = true;
+
+            Debug.Log($"<color=magenta>[WorkerController]</color> {gameObject.name}: Starting outfit change...");
+
+            // ═══════════════════════════════════════════════════════════
+            // 1. DISABILITA VISUAL ROOT (Effetto Sparizione)
+            // ═══════════════════════════════════════════════════════════
+            if (visualRoot != null)
+            {
+                visualRoot.gameObject.SetActive(false);
+            }
+
+            // ═══════════════════════════════════════════════════════════
+            // 2. ATTENDI
+            // ═══════════════════════════════════════════════════════════
+            yield return new WaitForSeconds(outfitChangeDuration);
+
+            // ═══════════════════════════════════════════════════════════
+            // 3. CLEAN: Distruggi tutti i figli di visualRoot
+            // ═══════════════════════════════════════════════════════════
+            if (visualRoot != null)
+            {
+                for (int i = visualRoot.childCount - 1; i >= 0; i--)
+                {
+                    Destroy(visualRoot.GetChild(i).gameObject);
+                }
+            }
+
+            // ═══════════════════════════════════════════════════════════
+            // 4. SPAWN: Istanzia nuovo modello come figlio di visualRoot
+            // ═══════════════════════════════════════════════════════════
+            if (pendingModelPrefab != null && visualRoot != null)
+            {
+                GameObject newModel = Instantiate(pendingModelPrefab, visualRoot);
+                newModel.transform.localPosition = Vector3.zero;
+                newModel.transform.localRotation = Quaternion.identity;
+                newModel.transform.localScale = Vector3.one;
+                newModel.name = $"Model_{pendingModelPrefab.name}";
+
+                // ═══════════════════════════════════════════════════════════
+                // 5. REBIND: Cerca e configura Animator
+                // ═══════════════════════════════════════════════════════════
+                animator = newModel.GetComponentInChildren<Animator>();
+
+                if (animator != null)
+                {
+                    // Se c'è un controller override, usalo
+                    if (pendingAnimatorController != null)
+                    {
+                        animator.runtimeAnimatorController = pendingAnimatorController;
+                    }
+
+                    // Re-check parameters
+                    CheckAnimatorParameters();
+
+                    // Reset animator state to prevent T-pose
+                    if (hasSpeedParam) animator.SetFloat(SpeedHash, 0f);
+                    if (hasIsMovingParam) animator.SetBool(IsMovingHash, false);
+                    if (hasIsWorkingParam) animator.SetBool(IsWorkingHash, false);
+
+                    animator.Update(0f);
+
+                    Debug.Log($"<color=green>[WorkerController]</color> Animator rebound: {animator.gameObject.name}");
+                }
+                else
+                {
+                    Debug.LogWarning($"[WorkerController] No Animator found in new model {pendingModelPrefab.name}");
+                }
+            }
+
+            pendingModelPrefab = null;
+            pendingAnimatorController = null;
+
+            // ═══════════════════════════════════════════════════════════
+            // 6. ABILITA VISUAL ROOT (Effetto Apparizione)
+            // ═══════════════════════════════════════════════════════════
+            if (visualRoot != null)
+            {
+                visualRoot.gameObject.SetActive(true);
+            }
+
+            isChangingOutfit = false;
+            outfitChangeCoroutine = null;
+
+            Debug.Log($"<color=green>[WorkerController]</color> {gameObject.name}: Outfit change complete!");
+
+            // Riprendi pattugliamento se assegnato
+            if (linkedInstance != null && linkedInstance.IsAssigned)
+            {
+                isPatrollingWorksite = true;
+                workTimer = 0.5f;
+            }
+        }
+
+        // ============================================
         // UPDATE (chiamato da WorkerSystem)
         // ============================================
 
         public void ManualUpdate(float deltaTime)
         {
-            // ═══════════════════════════════════════════════════════════
-            // BLOCCO CRITICO: Se forzato in idle, FORZA stato e ritorna
-            // ═══════════════════════════════════════════════════════════
+            if (isChangingOutfit) return;
+
             if (isForcedIdle)
             {
-                // Forza parametri
                 if (animator != null)
                 {
                     if (hasSpeedParam) animator.SetFloat(SpeedHash, 0f);
                     if (hasIsWorkingParam) animator.SetBool(IsWorkingHash, false);
                     if (hasIsMovingParam) animator.SetBool(IsMovingHash, false);
                 }
-                return; // BLOCCO TOTALE
+                return;
             }
 
             if (agent == null || linkedInstance == null) return;
 
             currentSpeed = agent.velocity.magnitude;
-
-            if (currentMovementState == MovementState.Idle && !isPatrollingWorksite)
-            {
-                UpdateIdleState();
-                UpdateAnimations();
-                return;
-            }
 
             switch (currentMovementState)
             {
@@ -276,10 +458,6 @@ namespace WildernessSurvival.Gameplay.Workers
 
             UpdateAnimations();
         }
-
-        // ============================================
-        // STATE UPDATES
-        // ============================================
 
         private void UpdateIdleState()
         {
@@ -324,7 +502,6 @@ namespace WildernessSurvival.Gameplay.Workers
             }
 
             workTimer -= deltaTime;
-
             if (workTimer <= 0f)
             {
                 MoveToRandomWorkPoint();
@@ -337,24 +514,14 @@ namespace WildernessSurvival.Gameplay.Workers
             }
         }
 
-        // ============================================
-        // ROTATION TOWARDS STRUCTURE
-        // ============================================
-
         private void RotateTowardsStructure(float deltaTime)
         {
-            Vector3 directionToStructure = structurePosition - transform.position;
-            directionToStructure.y = 0;
+            Vector3 direction = structurePosition - transform.position;
+            direction.y = 0;
+            if (direction.sqrMagnitude < 0.01f) return;
 
-            if (directionToStructure.sqrMagnitude < 0.01f) return;
-
-            Quaternion targetRotation = Quaternion.LookRotation(directionToStructure);
-
-            transform.rotation = Quaternion.Slerp(
-                transform.rotation,
-                targetRotation,
-                lookAtRotationSpeed * deltaTime
-            );
+            Quaternion targetRotation = Quaternion.LookRotation(direction);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, lookAtRotationSpeed * deltaTime);
         }
 
         // ============================================
@@ -364,7 +531,6 @@ namespace WildernessSurvival.Gameplay.Workers
         private void OnArrivedAtDestination()
         {
             currentMovementState = MovementState.WorkingOnSite;
-            isPatrollingWorksite = true;
             currentWorkTargetCenter = transform.position;
             
             if (linkedInstance?.AssignedStructure != null)
@@ -376,36 +542,37 @@ namespace WildernessSurvival.Gameplay.Workers
                 structurePosition = targetPosition;
             }
             
+            // Check for pending visual change
+            if (pendingModelPrefab != null && !isChangingOutfit)
+            {
+                Debug.Log($"<color=cyan>[WorkerController]</color> Arrived - starting scheduled outfit change");
+                isPatrollingWorksite = false;
+                isForcedIdle = false;
+                StartOutfitChange();
+                return;
+            }
+
+            isPatrollingWorksite = true;
             workTimer = 0.5f;
 
-            if (linkedInstance != null)
+            if (linkedInstance != null && linkedInstance.IsAssigned && !linkedInstance.IsAtWorksite)
             {
-                if (linkedInstance.IsAssigned && !linkedInstance.IsAtWorksite)
-                {
-                    linkedInstance.IsAtWorksite = true;
-                    linkedInstance.SetState(WorkerState.Working);
-
-                    linkedInstance.AssignedStructure?.RecalculateBuildSpeed();
-                    linkedInstance.AssignedStructure?.RecalculateProduction();
-
-                    Debug.Log($"<color=green>[WorkerController]</color> {linkedInstance.CustomName} arrived at worksite!");
-                }
+                linkedInstance.IsAtWorksite = true;
+                linkedInstance.SetState(WorkerState.Working);
+                linkedInstance.AssignedStructure?.RecalculateBuildSpeed();
+                linkedInstance.AssignedStructure?.RecalculateProduction();
+                Debug.Log($"<color=green>[WorkerController]</color> {linkedInstance.CustomName} arrived at worksite!");
             }
         }
 
-        // ============================================
-        // WORK WANDERING
-        // ============================================
-
         private void MoveToRandomWorkPoint()
         {
-            if (!isPatrollingWorksite || isForcedIdle) return;
+            if (!isPatrollingWorksite || isForcedIdle || isChangingOutfit) return;
 
             Vector2 randomCircle = Random.insideUnitCircle * workWanderRadius;
             Vector3 randomPoint = currentWorkTargetCenter + new Vector3(randomCircle.x, 0f, randomCircle.y);
 
-            NavMeshHit hit;
-            if (NavMesh.SamplePosition(randomPoint, out hit, navMeshSampleDistance, NavMesh.AllAreas))
+            if (NavMesh.SamplePosition(randomPoint, out NavMeshHit hit, navMeshSampleDistance, NavMesh.AllAreas))
             {
                 agent.SetDestination(hit.position);
             }
@@ -419,17 +586,11 @@ namespace WildernessSurvival.Gameplay.Workers
         // MOVEMENT COMMANDS
         // ============================================
 
-        /// <summary>
-        /// Comanda il worker di muoversi verso una posizione.
-        /// SBLOCCA il worker se era in ForceIdle.
-        /// </summary>
         public void CommandMoveTo(Vector3 position)
         {
             if (agent == null) return;
 
-            // SBLOCCA IL WORKER
             isForcedIdle = false;
-            
             currentMovementState = MovementState.Traveling;
             isPatrollingWorksite = false;
             targetPosition = position;
@@ -449,9 +610,6 @@ namespace WildernessSurvival.Gameplay.Workers
             Debug.Log($"<color=cyan>[WorkerController]</color> {gameObject.name} traveling to {position}");
         }
 
-        /// <summary>
-        /// Ferma completamente il worker.
-        /// </summary>
         public void StopMovement()
         {
             if (agent == null) return;
@@ -467,42 +625,73 @@ namespace WildernessSurvival.Gameplay.Workers
             currentMovementState = MovementState.Idle;
         }
 
-        /// <summary>
-        /// Forza il worker a tornare allo stato Idle.
-        /// </summary>
         public void ResetToIdle()
         {
             ForceIdle();
         }
 
         /// <summary>
-        /// FORZA IL WORKER IN STATO IDLE COMPLETO.
-        /// BRUTALE: Blocca TUTTO - movimento, animazioni, update loop.
+        /// Forza idle MANTENENDO pending visual per permettere il cambio outfit.
+        /// </summary>
+        public void ForceIdleKeepPendingVisual()
+        {
+            if (outfitChangeCoroutine != null)
+            {
+                StopCoroutine(outfitChangeCoroutine);
+                outfitChangeCoroutine = null;
+            }
+            isChangingOutfit = false;
+
+            if (visualRoot != null && !visualRoot.gameObject.activeSelf)
+            {
+                visualRoot.gameObject.SetActive(true);
+            }
+
+            ForceIdleInternal();
+
+            // Se c'è pending visual, sblocca e avvia cambio
+            if (pendingModelPrefab != null)
+            {
+                Debug.Log($"<color=yellow>[WorkerController]</color> Pending visual detected - unlocking and starting outfit change");
+                isForcedIdle = false;
+                StartOutfitChange();
+            }
+        }
+
+        /// <summary>
+        /// Forza idle completo e CANCELLA pending visual.
         /// </summary>
         public void ForceIdle()
         {
-            Debug.Log($"<color=red>[WorkerController]</color> {gameObject.name} ForceIdle START");
+            if (outfitChangeCoroutine != null)
+            {
+                StopCoroutine(outfitChangeCoroutine);
+                outfitChangeCoroutine = null;
+            }
+            isChangingOutfit = false;
+            pendingModelPrefab = null;
+            pendingAnimatorController = null;
 
-            // ═══════════════════════════════════════════════════════════
-            // 1. BLOCCA TUTTO
-            // ═══════════════════════════════════════════════════════════
+            if (visualRoot != null && !visualRoot.gameObject.activeSelf)
+            {
+                visualRoot.gameObject.SetActive(true);
+            }
+
+            ForceIdleInternal();
+        }
+
+        private void ForceIdleInternal()
+        {
             isForcedIdle = true;
             isPatrollingWorksite = false;
             
-            // ═══════════════════════════════════════════════════════════
-            // 2. STOP NAVMESH AGENT - BRUTALE
-            // ═══════════════════════════════════════════════════════════
             if (agent != null)
             {
                 agent.isStopped = true;
                 agent.ResetPath();
                 agent.velocity = Vector3.zero;
-                // NON fare isStopped = false, lascialo fermo!
             }
 
-            // ═══════════════════════════════════════════════════════════
-            // 3. RESET STATO INTERNO
-            // ═══════════════════════════════════════════════════════════
             currentMovementState = MovementState.Idle;
             isMoving = false;
             isPlayingWorkAnimation = false;
@@ -511,26 +700,14 @@ namespace WildernessSurvival.Gameplay.Workers
             workTimer = 0f;
             currentSpeed = 0f;
 
-            // ═══════════════════════════════════════════════════════════
-            // 4. RESET ANIMATOR - TRIPLO ATTACCO
-            // ═══════════════════════════════════════════════════════════
             if (animator != null)
             {
-                // PRIMA: Imposta IsWorking a FALSE
                 if (hasIsWorkingParam) animator.SetBool(IsWorkingHash, false);
                 if (hasIsMovingParam) animator.SetBool(IsMovingHash, false);
                 if (hasSpeedParam) animator.SetFloat(SpeedHash, 0f);
-                
-                // SECONDO: Forza lo stato Idle con Play (layer 0, normalized time 0)
                 animator.Play("Idle", 0, 0f);
-                
-                // TERZO: Forza l'update dell'animator
                 animator.Update(0f);
-                
-                Debug.Log($"<color=red>[WorkerController]</color> Animator forced to Idle state");
             }
-
-            Debug.Log($"<color=red>[WorkerController]</color> {gameObject.name} FORCE IDLE COMPLETE - UPDATE BLOCKED");
         }
 
         // ============================================
@@ -539,8 +716,7 @@ namespace WildernessSurvival.Gameplay.Workers
 
         private void UpdateAnimations()
         {
-            if (animator == null) return;
-            if (isForcedIdle) return;
+            if (animator == null || isForcedIdle || isChangingOutfit) return;
 
             if (hasSpeedParam) animator.SetFloat(SpeedHash, currentSpeed);
 
@@ -558,45 +734,48 @@ namespace WildernessSurvival.Gameplay.Workers
 #if UNITY_EDITOR
         [TitleGroup("Debug Info")]
         [ShowInInspector, ReadOnly]
-        [ProgressBar(0, 5, ColorGetter = "GetSpeedBarColor")]
         private float DebugCurrentSpeed => currentSpeed;
 
         [ShowInInspector, ReadOnly]
-        private bool DebugAnimatorIsWorking => animator != null ? animator.GetBool(IsWorkingHash) : false;
+        private string DebugVisualRoot => visualRoot != null ? visualRoot.name : "NULL";
 
-        private Color GetSpeedBarColor(float value)
+        [ShowInInspector, ReadOnly]
+        private string DebugPendingVisual => pendingModelPrefab != null ? pendingModelPrefab.name : "None";
+
+        [TitleGroup("Debug")]
+        [Button("🎯 Force Work Patrol", ButtonSizes.Medium)]
+        private void DebugForceWorkWander()
         {
-            return value < workAnimationSpeedThreshold ? Color.green : Color.yellow;
+            if (!Application.isPlaying) return;
+            isForcedIdle = false;
+            if (agent != null) agent.isStopped = false;
+            currentWorkTargetCenter = transform.position;
+            structurePosition = transform.position + transform.forward * 3f;
+            currentMovementState = MovementState.WorkingOnSite;
+            isPatrollingWorksite = true;
+            workTimer = 0.1f;
+        }
+
+        [Button("🛑 Force Idle", ButtonSizes.Medium), GUIColor(1f, 0.3f, 0.3f)]
+        private void DebugForceIdle()
+        {
+            if (Application.isPlaying) ForceIdle();
+        }
+
+        [Button("🔓 Unlock Worker", ButtonSizes.Medium), GUIColor(0.3f, 1f, 0.3f)]
+        private void DebugUnlock()
+        {
+            if (!Application.isPlaying) return;
+            isForcedIdle = false;
+            if (agent != null) agent.isStopped = false;
         }
 
         private void OnDrawGizmosSelected()
         {
-            if (agent != null && agent.hasPath)
-            {
-                Gizmos.color = Color.yellow;
-                var path = agent.path;
-                for (int i = 0; i < path.corners.Length - 1; i++)
-                {
-                    Gizmos.DrawLine(path.corners[i], path.corners[i + 1]);
-                }
-            }
-
-            if (linkedInstance != null)
-            {
-                Gizmos.color = linkedInstance.IsAtWorksite ? Color.green : Color.red;
-                Gizmos.DrawWireSphere(transform.position + Vector3.up * 2f, 0.3f);
-            }
-
             if (currentMovementState == MovementState.WorkingOnSite && isPatrollingWorksite)
             {
                 Gizmos.color = new Color(0f, 1f, 0.5f, 0.3f);
                 Gizmos.DrawWireSphere(currentWorkTargetCenter, workWanderRadius);
-                
-                Gizmos.color = Color.cyan;
-                Gizmos.DrawSphere(currentWorkTargetCenter, 0.2f);
-
-                Gizmos.color = Color.magenta;
-                Gizmos.DrawLine(transform.position + Vector3.up, structurePosition + Vector3.up);
             }
 
             if (isForcedIdle)
@@ -604,70 +783,11 @@ namespace WildernessSurvival.Gameplay.Workers
                 Gizmos.color = Color.red;
                 Gizmos.DrawWireCube(transform.position + Vector3.up * 3f, Vector3.one * 0.5f);
             }
-        }
 
-        [TitleGroup("Debug")]
-        [Button("🎯 Force Work Patrol", ButtonSizes.Medium)]
-        private void DebugForceWorkWander()
-        {
-            if (Application.isPlaying)
+            if (isChangingOutfit)
             {
-                isForcedIdle = false;
-                if (agent != null) agent.isStopped = false;
-                currentWorkTargetCenter = transform.position;
-                structurePosition = transform.position + transform.forward * 3f;
-                currentMovementState = MovementState.WorkingOnSite;
-                isPatrollingWorksite = true;
-                workTimer = 0.1f;
-                Debug.Log("[WorkerController] Forced work patrol state!");
-            }
-        }
-
-        [Button("🛑 Force Idle (Brutal)", ButtonSizes.Medium), GUIColor(1f, 0.3f, 0.3f)]
-        private void DebugForceIdle()
-        {
-            if (Application.isPlaying)
-            {
-                ForceIdle();
-            }
-        }
-
-        [Button("🔓 Unlock Worker", ButtonSizes.Medium), GUIColor(0.3f, 1f, 0.3f)]
-        private void DebugUnlock()
-        {
-            if (Application.isPlaying)
-            {
-                isForcedIdle = false;
-                if (agent != null) agent.isStopped = false;
-                Debug.Log("[WorkerController] Worker unlocked!");
-            }
-        }
-
-        [Button("🔍 Find Animator", ButtonSizes.Medium)]
-        private void DebugFindAnimator()
-        {
-            animator = GetComponentInChildren<Animator>();
-            if (animator != null)
-            {
-                Debug.Log($"[WorkerController] Found Animator on: {animator.gameObject.name}");
-            }
-            else
-            {
-                Debug.LogWarning("[WorkerController] No Animator found in children!");
-            }
-        }
-
-        [Button("📊 Print Animator State", ButtonSizes.Medium)]
-        private void DebugPrintAnimatorState()
-        {
-            if (animator != null)
-            {
-                var stateInfo = animator.GetCurrentAnimatorStateInfo(0);
-                Debug.Log($"[WorkerController] Current Animator State:\n" +
-                         $"  IsWorking: {animator.GetBool(IsWorkingHash)}\n" +
-                         $"  Speed: {animator.GetFloat(SpeedHash)}\n" +
-                         $"  State Hash: {stateInfo.shortNameHash}\n" +
-                         $"  Normalized Time: {stateInfo.normalizedTime}");
+                Gizmos.color = Color.yellow;
+                Gizmos.DrawWireCube(transform.position + Vector3.up * 2.5f, Vector3.one * 0.4f);
             }
         }
 #endif

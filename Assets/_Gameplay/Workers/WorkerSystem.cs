@@ -8,23 +8,39 @@ namespace WildernessSurvival.Gameplay.Workers
 {
     /// <summary>
     /// Sistema centrale per la gestione dei worker.
-    /// Include Debugging avanzato per Auto-Assignment.
+    /// Gestisce spawn, assegnazione, job e tick loop.
     /// </summary>
     public class WorkerSystem : MonoBehaviour
     {
         public static WorkerSystem Instance { get; private set; }
 
         // ============================================
-        // CONFIGURAZIONE SPAWN
+        // SPAWN CONFIGURATION
         // ============================================
+
         [TitleGroup("Starting Workers")]
         [SerializeField]
-        [InfoBox("Trascina qui i WorkerData (es. Builder, Gatherer) da Assets/_Gameplay/Workers/Data", InfoMessageType.Info)]
+        [InfoBox("Trascina qui i WorkerData (es. Villager) da Assets/_Gameplay/Workers/Data", InfoMessageType.Info)]
         private List<WorkerData> availableWorkerTypes = new List<WorkerData>();
 
         [SerializeField]
         [Range(1, 10)]
         private int startingWorkerCount = 3;
+
+        // ============================================
+        // JOB DATABASE
+        // ============================================
+
+        [TitleGroup("Job System")]
+        [SerializeField]
+        [Tooltip("Riferimento opzionale al JobDatabase. Se vuoto, carica da Resources.")]
+        private JobDatabase jobDatabaseOverride;
+
+        [ShowInInspector, ReadOnly]
+        private JobDatabase ActiveJobDatabase => jobDatabaseOverride != null ? jobDatabaseOverride : JobDatabase.Instance;
+
+        [ShowInInspector, ReadOnly]
+        private bool IsJobSystemEnabled => ActiveJobDatabase != null && ActiveJobDatabase.IsConfigured;
 
         // ============================================
         // RUNTIME LISTS
@@ -37,7 +53,6 @@ namespace WildernessSurvival.Gameplay.Workers
         [ShowInInspector, ReadOnly]
         private List<WorkerController> physicalWorkers = new List<WorkerController>();
 
-        // Liste per la gestione logica (WorkerInstance)
         [ShowInInspector, ReadOnly]
         private List<WorkerInstance> allWorkerInstances = new List<WorkerInstance>();
 
@@ -51,18 +66,16 @@ namespace WildernessSurvival.Gameplay.Workers
         [SerializeField] private bool paused = false;
 
         [TitleGroup("Debug Settings")]
-        [SerializeField]
-        [Tooltip("Abilita log dettagliati per il sistema di auto-assegnazione")]
-        private bool debugAutoAssign = true;
+        [SerializeField] private bool debugAutoAssign = true;
+        [SerializeField] private bool debugJobSystem = true;
 
         // ============================================
-        // AUTO-ASSIGNMENT (FOREMAN)
+        // AUTO-ASSIGNMENT
         // ============================================
 
         [TitleGroup("Auto-Assignment")]
         [SerializeField]
         [PropertyRange(0.5f, 5f)]
-        [Tooltip("Intervallo in secondi per controllare auto-assegnazioni Builder")]
         private float autoAssignInterval = 1.0f;
 
         private float autoAssignTimer = 0f;
@@ -84,7 +97,15 @@ namespace WildernessSurvival.Gameplay.Workers
 
         private void Start()
         {
-            // Spawn dei worker iniziali al primo frame
+            if (IsJobSystemEnabled)
+            {
+                Debug.Log($"<color=green>[WorkerSystem]</color> Job System ENABLED. Database has {ActiveJobDatabase.AllJobs?.Count ?? 0} jobs.");
+            }
+            else
+            {
+                Debug.LogWarning("[WorkerSystem] Job System DISABLED.");
+            }
+
             SpawnStartingWorkers();
         }
 
@@ -94,18 +115,16 @@ namespace WildernessSurvival.Gameplay.Workers
 
             float dt = Time.deltaTime;
 
-            // 1. Structure Tick Loop (Construction + Production)
+            // Structure Tick Loop
             for (int i = activeStructures.Count - 1; i >= 0; i--)
             {
                 var structure = activeStructures[i];
                 if (structure != null)
                 {
-                    // Se in costruzione, chiama TickConstruction
                     if (structure.State == StructureState.Building)
                     {
                         structure.TickConstruction(dt);
                     }
-                    // Se operativa, chiama TickProduction
                     else if (structure.State == StructureState.Operating)
                     {
                         structure.TickProduction(dt);
@@ -117,7 +136,7 @@ namespace WildernessSurvival.Gameplay.Workers
                 }
             }
 
-            // 2. Worker Movement/Anim Loop
+            // Worker Tick Loop
             for (int i = physicalWorkers.Count - 1; i >= 0; i--)
             {
                 var worker = physicalWorkers[i];
@@ -131,7 +150,7 @@ namespace WildernessSurvival.Gameplay.Workers
                 }
             }
 
-            // 3. Auto-Assignment Loop (Foreman)
+            // Auto-Assignment Loop
             autoAssignTimer += dt;
             if (autoAssignTimer >= autoAssignInterval)
             {
@@ -148,7 +167,7 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (availableWorkerTypes == null || availableWorkerTypes.Count == 0)
             {
-                Debug.LogError("❌ [WorkerSystem] Nessun WorkerData assegnato in 'Available Worker Types'! Non posso spawnare worker.");
+                Debug.LogError("❌ [WorkerSystem] No WorkerData in 'Available Worker Types'!");
                 return;
             }
 
@@ -156,7 +175,6 @@ namespace WildernessSurvival.Gameplay.Workers
 
             for (int i = 0; i < startingWorkerCount; i++)
             {
-                // Prendi un tipo a caso o ciclico
                 var typeToSpawn = availableWorkerTypes[i % availableWorkerTypes.Count];
                 if (typeToSpawn != null)
                 {
@@ -173,17 +191,13 @@ namespace WildernessSurvival.Gameplay.Workers
             allWorkerInstances.Add(newWorker);
             availableWorkers.Add(newWorker);
 
-            // Spawn Fisico
             if (data.Prefab != null)
             {
-                // Posizione di spawn casuale attorno al centro
                 Vector3 spawnPos = GetRandomSpawnPosition();
-
                 GameObject workerObj = Instantiate(data.Prefab, spawnPos, Quaternion.identity);
                 workerObj.name = $"Worker_{data.DisplayName}_{newWorker.InstanceId.Substring(0, 4)}";
 
                 WorkerController controller = workerObj.GetComponent<WorkerController>();
-
                 if (controller != null)
                 {
                     newWorker.PhysicalWorker = controller;
@@ -196,10 +210,6 @@ namespace WildernessSurvival.Gameplay.Workers
                     Debug.LogError($"<color=red>[WorkerSystem]</color> Prefab {data.Prefab.name} missing WorkerController!");
                 }
             }
-            else
-            {
-                Debug.LogWarning($"<color=yellow>[WorkerSystem]</color> {data.DisplayName} has no prefab. Virtual worker created.");
-            }
 
             return newWorker;
         }
@@ -210,8 +220,7 @@ namespace WildernessSurvival.Gameplay.Workers
             Vector3 randomPoint = center + Random.insideUnitSphere * 5f;
             randomPoint.y = 0;
 
-            UnityEngine.AI.NavMeshHit hit;
-            if (UnityEngine.AI.NavMesh.SamplePosition(randomPoint, out hit, 5.0f, UnityEngine.AI.NavMesh.AllAreas))
+            if (UnityEngine.AI.NavMesh.SamplePosition(randomPoint, out UnityEngine.AI.NavMeshHit hit, 5.0f, UnityEngine.AI.NavMesh.AllAreas))
             {
                 return hit.position;
             }
@@ -219,7 +228,7 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         // ============================================
-        // WORKER MANAGEMENT
+        // WORKER ASSIGNMENT
         // ============================================
 
         public List<WorkerInstance> GetAvailableWorkers() => new List<WorkerInstance>(availableWorkers);
@@ -230,6 +239,10 @@ namespace WildernessSurvival.Gameplay.Workers
             return assignedWorkers.FindAll(w => w.AssignedStructure == structure);
         }
 
+        /// <summary>
+        /// Assegna un worker a una struttura.
+        /// Determina il job appropriato in base allo stato della struttura.
+        /// </summary>
         public bool AssignWorker(WorkerInstance worker, StructureController structure)
         {
             if (worker == null || structure == null) return false;
@@ -240,27 +253,89 @@ namespace WildernessSurvival.Gameplay.Workers
             {
                 availableWorkers.Remove(worker);
                 if (!assignedWorkers.Contains(worker)) assignedWorkers.Add(worker);
+
+                // ═══════════════════════════════════════════════════════════
+                // DYNAMIC JOB ASSIGNMENT
+                // ═══════════════════════════════════════════════════════════
+                AssignJobForStructure(worker, structure);
+
                 return true;
             }
             return false;
         }
 
         /// <summary>
-        /// Disassegna un worker dalla sua struttura.
-        /// IMPORTANTE: Chiama ForceIdle sul physical worker per fermare movimento/animazioni.
+        /// Assegna il job appropriato in base allo stato della struttura.
+        /// Building -> Builder
+        /// Operating -> Ruolo della struttura
+        /// </summary>
+        private void AssignJobForStructure(WorkerInstance worker, StructureController structure)
+        {
+            if (!IsJobSystemEnabled) return;
+
+            WorkerRole targetRole;
+
+            if (structure.State == StructureState.Building)
+            {
+                targetRole = WorkerRole.Builder;
+                if (debugJobSystem)
+                {
+                    Debug.Log($"<color=orange>[WorkerSystem]</color> Structure BUILDING - {worker.CustomName} -> BUILDER");
+                }
+            }
+            else
+            {
+                targetRole = GetPrimaryRoleFromStructure(structure.Data);
+                if (debugJobSystem)
+                {
+                    Debug.Log($"<color=cyan>[WorkerSystem]</color> Structure OPERATING - {worker.CustomName} -> {targetRole}");
+                }
+            }
+
+            WorkerJobData jobData = ActiveJobDatabase.GetJobData(targetRole);
+            if (jobData != null)
+            {
+                worker.SetJob(jobData);
+                if (debugJobSystem)
+                {
+                    Debug.Log($"<color=magenta>[WorkerSystem]</color> {worker.CustomName} assigned job: {jobData.JobName}");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"[WorkerSystem] No job found for role {targetRole}");
+            }
+        }
+
+        private WorkerRole GetPrimaryRoleFromStructure(StructureData structureData)
+        {
+            if (structureData == null) return WorkerRole.None;
+
+            WorkerRole roles = structureData.AllowedRoles;
+
+            if ((roles & WorkerRole.Gatherer) != 0) return WorkerRole.Gatherer;
+            if ((roles & WorkerRole.Builder) != 0) return WorkerRole.Builder;
+            if ((roles & WorkerRole.Guard) != 0) return WorkerRole.Guard;
+            if ((roles & WorkerRole.Scout) != 0) return WorkerRole.Scout;
+            if ((roles & WorkerRole.Crafter) != 0) return WorkerRole.Crafter;
+            if ((roles & WorkerRole.Researcher) != 0) return WorkerRole.Researcher;
+
+            return WorkerRole.None;
+        }
+
+        /// <summary>
+        /// Disassegna un worker.
+        /// ORDINE CRITICO:
+        /// 1. Rimuovi dalla struttura
+        /// 2. Aggiorna liste
+        /// 3. Reset job a Villager
+        /// 4. ForceIdle mantenendo pending visual
         /// </summary>
         public void UnassignWorker(WorkerInstance worker)
         {
             if (worker == null) return;
 
-            // 1. Forza il worker fisico in stato IDLE
-            if (worker.PhysicalWorker != null)
-            {
-                worker.PhysicalWorker.ForceIdle();
-                Debug.Log($"<color=orange>[WorkerSystem]</color> {worker.CustomName} physical worker forced to idle.");
-            }
-
-            // 2. Rimuovi dalla struttura
+            // 1. Rimuovi dalla struttura
             if (worker.AssignedStructure != null)
             {
                 worker.AssignedStructure.RemoveWorker(worker);
@@ -270,15 +345,33 @@ namespace WildernessSurvival.Gameplay.Workers
                 worker.Unassign();
             }
 
-            // 3. Aggiorna le liste
+            // 2. Aggiorna liste
             assignedWorkers.Remove(worker);
             if (!availableWorkers.Contains(worker)) availableWorkers.Add(worker);
+
+            // 3. Reset job a Villager
+            if (IsJobSystemEnabled)
+            {
+                var defaultJob = ActiveJobDatabase.GetDefaultJob();
+                if (defaultJob != null)
+                {
+                    worker.SetJob(defaultJob);
+                    if (debugJobSystem)
+                    {
+                        Debug.Log($"<color=cyan>[WorkerSystem]</color> {worker.CustomName} reset to: {defaultJob.JobName}");
+                    }
+                }
+            }
+
+            // 4. ForceIdle mantenendo pending visual
+            if (worker.PhysicalWorker != null)
+            {
+                worker.PhysicalWorker.ForceIdleKeepPendingVisual();
+            }
+
+            Debug.Log($"<color=orange>[WorkerSystem]</color> {worker.CustomName} unassigned and reset.");
         }
 
-        /// <summary>
-        /// Disassegna tutti i worker da una struttura specifica.
-        /// Utile quando una struttura viene completata o distrutta.
-        /// </summary>
         public void UnassignAllWorkersFromStructure(StructureController structure)
         {
             if (structure == null) return;
@@ -299,85 +392,51 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         // ============================================
-        // AUTO-ASSIGNMENT LOGIC (DEBUGGED)
+        // AUTO-ASSIGNMENT
         // ============================================
 
-        /// <summary>
-        /// Controlla e assegna automaticamente Builder disponibili a strutture in costruzione.
-        /// Chiamato periodicamente dal loop Update.
-        /// </summary>
         private void CheckAutoAssignments()
         {
-            // 1. Trova strutture prioritarie: State == Building E ha slot liberi
             var buildingStructures = activeStructures
                 .Where(s => s != null && s.State == StructureState.Building && s.HasFreeWorkerSlot())
                 .ToList();
 
-            // 2. Trova worker disponibili: non assegnati E ruolo Builder
-            var availableBuilders = availableWorkers
-                .Where(w => w != null &&
-                            w.AssignedStructure == null &&
-                            w.Data != null &&
-                            w.Data.DefaultRole == WorkerRole.Builder)
+            // MODIFICA: Usa TUTTI i worker disponibili, non solo i Builder.
+            // Quando un worker viene assegnato a una struttura in costruzione,
+            // diventerà automaticamente Builder grazie ad AssignJobForStructure().
+            var workersToAssign = availableWorkers
+                .Where(w => w != null && w.AssignedStructure == null)
                 .ToList();
 
-            // LOG DIAGNOSTICO INIZIALE
             if (debugAutoAssign)
             {
-                Debug.Log($"<color=orange>[WorkerSystem]</color> Checking Auto-Assign... " +
-                          $"Found <b>{buildingStructures.Count}</b> structures needing workers, " +
-                          $"<b>{availableBuilders.Count}</b> idle builders.");
+                Debug.Log($"<color=orange>[WorkerSystem]</color> Auto-Assign: {buildingStructures.Count} structures, {workersToAssign.Count} available workers");
             }
 
-            if (buildingStructures.Count == 0 || availableBuilders.Count == 0) return;
-
-            if (debugAutoAssign) Debug.Log("<color=orange>[WorkerSystem]</color> Attempting match...");
-
-            // 3. Match: Assegna builder a strutture
-            int assignmentCount = 0;
+            if (buildingStructures.Count == 0 || workersToAssign.Count == 0) return;
 
             foreach (var structure in buildingStructures)
             {
-                // Se non ci sono più builder disponibili, esci
-                if (availableBuilders.Count == 0) break;
+                if (workersToAssign.Count == 0) break;
 
-                // Controlla se la struttura ha ancora slot liberi
-                while (structure.HasFreeWorkerSlot() && availableBuilders.Count > 0)
+                while (structure.HasFreeWorkerSlot() && workersToAssign.Count > 0)
                 {
-                    var builder = availableBuilders[0];
-                    availableBuilders.RemoveAt(0);
+                    var worker = workersToAssign[0];
+                    workersToAssign.RemoveAt(0);
 
-                    // Tenta l'assegnazione
-                    bool success = AssignWorker(builder, structure);
-
-                    if (success)
+                    if (AssignWorker(worker, structure))
                     {
-                        assignmentCount++;
                         if (debugAutoAssign)
                         {
-                            Debug.Log($"<color=green>[WorkerSystem]</color> SUCCESS: Auto-assigned {builder.CustomName} to {structure.name}");
-                        }
-                    }
-                    else
-                    {
-                        // LOG DI FALLIMENTO CRITICO
-                        if (debugAutoAssign)
-                        {
-                            Debug.LogWarning($"<color=red>[WorkerSystem]</color> FAILED to assign worker {builder.CustomName} to {structure.name} via logic! " +
-                                             $"Check StructureController.AssignWorker() conditions (Max workers reached? Resource check?).");
+                            Debug.Log($"<color=green>[WorkerSystem]</color> Auto-assigned {worker.CustomName} to {structure.name}");
                         }
                     }
                 }
             }
-
-            if (assignmentCount > 0 && debugAutoAssign)
-            {
-                Debug.Log($"<color=green>[WorkerSystem]</color> Cycle Complete: Auto-assigned {assignmentCount} builders this tick.");
-            }
         }
 
         // ============================================
-        // REGISTRATION API
+        // REGISTRATION
         // ============================================
 
         public void RegisterStructure(StructureController structure)
@@ -404,6 +463,7 @@ namespace WildernessSurvival.Gameplay.Workers
         // DEBUG TOOLS
         // ============================================
 
+#if UNITY_EDITOR
         [TitleGroup("Editor Tools")]
         [Button("Spawn Random Worker", ButtonSizes.Large), GUIColor(0.4f, 0.8f, 1f)]
         private void DebugSpawnRandom()
@@ -413,10 +473,6 @@ namespace WildernessSurvival.Gameplay.Workers
                 var randomType = availableWorkerTypes[Random.Range(0, availableWorkerTypes.Count)];
                 CreateWorkerInstance(randomType);
             }
-            else
-            {
-                Debug.LogError("No worker types configured!");
-            }
         }
 
         [Button("🛑 Force All Workers Idle", ButtonSizes.Medium), GUIColor(1f, 0.5f, 0.3f)]
@@ -424,39 +480,55 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             foreach (var worker in physicalWorkers)
             {
-                if (worker != null)
-                {
-                    worker.ForceIdle();
-                }
+                if (worker != null) worker.ForceIdle();
             }
-            Debug.Log($"<color=orange>[WorkerSystem]</color> Forced ALL {physicalWorkers.Count} workers to idle.");
-        }
-
-#if UNITY_EDITOR
-        [Button("Find All Actors in Scene", ButtonSizes.Medium)]
-        private void FindAllActors()
-        {
-            activeStructures = new List<StructureController>(FindObjectsByType<StructureController>(FindObjectsSortMode.None));
-            physicalWorkers = new List<WorkerController>(FindObjectsByType<WorkerController>(FindObjectsSortMode.None));
-            Debug.Log($"Found {activeStructures.Count} structures and {physicalWorkers.Count} workers.");
         }
 
         [Button("📊 Print Worker Status", ButtonSizes.Medium)]
         private void DebugPrintWorkerStatus()
         {
             Debug.Log($"=== WORKER STATUS ===\n" +
-                     $"Total Instances: {allWorkerInstances.Count}\n" +
+                     $"Total: {allWorkerInstances.Count}\n" +
                      $"Available: {availableWorkers.Count}\n" +
-                     $"Assigned: {assignedWorkers.Count}\n" +
-                     $"Physical Workers: {physicalWorkers.Count}");
+                     $"Assigned: {assignedWorkers.Count}");
 
             foreach (var worker in allWorkerInstances)
             {
-                string status = worker.IsAssigned 
-                    ? $"Assigned to {worker.AssignedStructure?.name ?? "NULL"}" 
-                    : "Available";
-                Debug.Log($"  - {worker.CustomName}: {status}");
+                string status = worker.IsAssigned ? $"Assigned to {worker.AssignedStructure?.name}" : "Available";
+                string job = worker.CurrentJob != null ? worker.CurrentJob.JobName : "None";
+                Debug.Log($"  - {worker.CustomName}: {status} [Job: {job}]");
             }
+        }
+
+        [TitleGroup("Job System Debug")]
+        [Button("🎭 Print Job Database", ButtonSizes.Medium), GUIColor(0.8f, 0.6f, 1f)]
+        private void DebugPrintJobDatabase()
+        {
+            if (ActiveJobDatabase != null)
+            {
+                Debug.Log($"=== JOB DATABASE ===\n" +
+                         $"Jobs: {ActiveJobDatabase.AllJobs?.Count ?? 0}\n" +
+                         $"Default: {ActiveJobDatabase.DefaultVillagerJob?.JobName ?? "NOT SET"}");
+
+                foreach (var job in ActiveJobDatabase.AllJobs)
+                {
+                    if (job != null)
+                    {
+                        string visual = job.VisualModelPrefab != null ? "✅" : "❌";
+                        Debug.Log($"  - {job.JobName} ({job.Role}): Visual {visual}");
+                    }
+                }
+            }
+        }
+
+        [Button("🔄 Reset All Jobs to Default", ButtonSizes.Medium), GUIColor(1f, 0.7f, 0.3f)]
+        private void DebugResetAllJobs()
+        {
+            foreach (var worker in allWorkerInstances)
+            {
+                worker.ResetToDefaultJob();
+            }
+            Debug.Log($"[WorkerSystem] Reset jobs for {allWorkerInstances.Count} workers.");
         }
 #endif
     }
