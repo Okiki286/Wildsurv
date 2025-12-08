@@ -2818,8 +2818,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cb470fa4d453b34c827e310e8abccc9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  dayNightSystem: {fileID: 0}
-  resourceSystem: {fileID: 0}
+  dayNightSystem: {fileID: 1940877765}
+  resourceSystem: {fileID: 1376966935}
   targetFrameRate: 60
   disableVSync: 1
   onGameInitialized: {fileID: 0}
@@ -3907,14 +3907,14 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 721dd21a5ff974d428d0f08704031da1, type: 2}
   startingResources:
   - resource: {fileID: 11400000, guid: a7ed9af0dd233ce48acfe30eb4a63e12, type: 2}
-    amount: 100
+    amount: 300
   - resource: {fileID: 11400000, guid: 430c360c194d3e44088545986d31a0c0, type: 2}
-    amount: 50
+    amount: 500
   - resource: {fileID: 11400000, guid: 721dd21a5ff974d428d0f08704031da1, type: 2}
-    amount: 75
+    amount: 750
   onResourceChanged: {fileID: 0}
   onResourceInsufficient: {fileID: 0}
-  debugMode: 1
+  debugMode: 0
 --- !u!1 &1399314982
 GameObject:
   m_ObjectHideFlags: 0
