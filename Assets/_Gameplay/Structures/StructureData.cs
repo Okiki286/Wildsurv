@@ -67,7 +67,7 @@ namespace WildernessSurvival.Gameplay.Structures
         [HorizontalGroup("Classificazione/Row2")]
         [LabelWidth(80)]
         [ToggleLeft]
-        [Tooltip("Ãˆ unica? (una sola nel campo)")]
+        [Tooltip("È unica? (una sola nel campo)")]
         [SerializeField] private bool isUnique = false;
 
         // ============================================
@@ -292,7 +292,7 @@ namespace WildernessSurvival.Gameplay.Structures
         }
 
         [TitleGroup("Debug")]
-        [Button("ðŸ“Š Print Stats", ButtonSizes.Medium)]
+        [Button("📊 Print Stats", ButtonSizes.Medium)]
         private void DebugPrintStats()
         {
             Debug.Log($"=== {displayName} ===\n" +
@@ -303,7 +303,7 @@ namespace WildernessSurvival.Gameplay.Structures
                 $"Grid Size: {gridSize}");
         }
 
-        [Button("ðŸ“ˆ Preview Levels", ButtonSizes.Medium)]
+        [Button("📈 Preview Levels", ButtonSizes.Medium)]
         private void DebugPreviewLevels()
         {
             Debug.Log($"=== {displayName} Level Progression ===");
@@ -328,19 +328,19 @@ namespace WildernessSurvival.Gameplay.Structures
 
     public enum StructureCategory
     {
-        [LabelText("ðŸŒ² Resource")]
+        [LabelText("🌲 Resource")]
         Resource,
 
-        [LabelText("ðŸ›¡ï¸ Defense")]
+        [LabelText("🛡️ Defense")]
         Defense,
 
-        [LabelText("âš™ï¸ Utility")]
+        [LabelText("⚙️ Utility")]
         Utility,
 
-        [LabelText("ðŸ”¬ Tech")]
+        [LabelText("🔬 Tech")]
         Tech,
 
-        [LabelText("ðŸ  Meta")]
+        [LabelText("🏠 Meta")]
         Meta
     }
 
@@ -349,22 +349,22 @@ namespace WildernessSurvival.Gameplay.Structures
     {
         None = 0,
 
-        [LabelText("â›ï¸ Gatherer")]
+        [LabelText("⛏️ Gatherer")]
         Gatherer = 1 << 0,
 
-        [LabelText("ðŸ”¨ Builder")]
+        [LabelText("🔨 Builder")]
         Builder = 1 << 1,
 
-        [LabelText("âš”ï¸ Guard")]
+        [LabelText("⚔️ Guard")]
         Guard = 1 << 2,
 
-        [LabelText("ðŸ”­ Scout")]
+        [LabelText("🔭 Scout")]
         Scout = 1 << 3,
 
-        [LabelText("âš—ï¸ Crafter")]
+        [LabelText("⚗️ Crafter")]
         Crafter = 1 << 4,
 
-        [LabelText("ðŸŽ“ Researcher")]
+        [LabelText("🎓 Researcher")]
         Researcher = 1 << 5
     }
 

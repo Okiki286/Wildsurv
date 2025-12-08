@@ -220,6 +220,22 @@ namespace WildernessSurvival.Gameplay.Workers
             
             CheckAnimatorParameters();
 
+            // ═══════════════════════════════════════════════════════════
+            // INITIALIZE currentVisualName from existing visual model
+            // This enables Smart Check to work from the first spawn
+            // ═══════════════════════════════════════════════════════════
+            if (visualRoot != null && visualRoot.childCount > 0)
+            {
+                Transform firstChild = visualRoot.GetChild(0);
+                // Clean up name: remove "Model_" prefix, "(Clone)" suffix for consistent comparison
+                string childName = firstChild.name;
+                if (childName.StartsWith("Model_"))
+                    childName = childName.Substring(6); // Remove "Model_"
+                childName = childName.Replace("(Clone)", "").Trim();
+                currentVisualName = childName;
+                Debug.Log($"<color=cyan>[WorkerController]</color> Initialized currentVisualName: '{currentVisualName}'");
+            }
+
             if (WorkerSystem.Instance != null)
             {
                 WorkerSystem.Instance.RegisterWorker(this);
@@ -374,29 +390,44 @@ namespace WildernessSurvival.Gameplay.Workers
                 visualRoot.localPosition = Vector3.zero;
                 visualRoot.localRotation = Quaternion.identity;
 
+                // ═══════════════════════════════════════════════════════════
+                // CRITICAL FIX: Instantiate as INACTIVE to prevent Awake()
+                // Then remove stray components, THEN activate
+                // ═══════════════════════════════════════════════════════════
+                
+                // Temporarily disable prefab before instantiation
+                bool wasActive = pendingModelPrefab.activeSelf;
+                pendingModelPrefab.SetActive(false);
+                
                 GameObject newModel = Instantiate(pendingModelPrefab, visualRoot);
                 
-                // ═══════════════════════════════════════════════════════════
-                // CRITICAL: Remove any WorkerController on spawned model
-                // Visual prefabs should NOT have WorkerController!
-                // If they do, their Awake() creates nested VisualRoots breaking hierarchy
-                // ═══════════════════════════════════════════════════════════
+                // Restore prefab state
+                pendingModelPrefab.SetActive(wasActive);
+                
+                // Remove stray WorkerControllers BEFORE activating
                 var strayControllers = newModel.GetComponentsInChildren<WorkerController>(true);
                 foreach (var strayCtrl in strayControllers)
                 {
                     if (strayCtrl != this)
                     {
-                        Debug.LogWarning($"<color=red>[WorkerController]</color> REMOVED stray WorkerController from spawned model '{newModel.name}'. Visual prefabs should be PURE 3D models!");
+                        Debug.LogWarning($"<color=red>[WorkerController]</color> REMOVED stray WorkerController from '{newModel.name}'. Visual prefabs should be PURE 3D models!");
+                        #if UNITY_EDITOR
+                        DestroyImmediate(strayCtrl);
+                        #else
                         Destroy(strayCtrl);
+                        #endif
                     }
                 }
                 
-                // CRITICAL: Force local transform reset to prevent offset issues
+                // NOW activate the model (Awake will run but no stray WorkerController)
+                newModel.SetActive(true);
+                
+                // Force local transform reset
                 newModel.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
                 newModel.transform.localScale = Vector3.one;
                 newModel.name = $"Model_{pendingModelPrefab.name}";
 
-                Debug.Log($"<color=yellow>[WorkerController]</color> Spawned '{newModel.name}' at local pos {newModel.transform.localPosition}, visualRoot at {visualRoot.localPosition}");
+                Debug.Log($"<color=yellow>[WorkerController]</color> Spawned '{newModel.name}' at local pos {newModel.transform.localPosition}");
 
                 // ═══════════════════════════════════════════════════════════
                 // 6. UPDATE CURRENT VISUAL NAME (per Smart Check)
