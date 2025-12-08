@@ -16,6 +16,10 @@ UserSettings/
 *.pidb
 *.booproj
 
+# Large NavMesh files (exceed GitHub 100MB limit)
+Assets/test2/NavMesh-Plane.asset
+**/NavMesh-*.asset
+
 Assets/Pure Poly/
 Assets/ToonyTinyPeople/
 Assets/ThirdParty/
