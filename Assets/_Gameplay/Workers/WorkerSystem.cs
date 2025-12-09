@@ -62,6 +62,10 @@ namespace WildernessSurvival.Gameplay.Workers
         [ShowInInspector, ReadOnly]
         private List<WorkerInstance> assignedWorkers = new List<WorkerInstance>();
 
+        // Cached lists to avoid LINQ allocations in auto-assignment
+        private readonly List<StructureController> cachedBuildingStructures = new List<StructureController>(32);
+        private readonly List<WorkerInstance> cachedWorkersToAssign = new List<WorkerInstance>(64);
+
         [TitleGroup("Global Settings")]
         [SerializeField] private bool paused = false;
 
@@ -410,32 +414,56 @@ namespace WildernessSurvival.Gameplay.Workers
 
         private void CheckAutoAssignments()
         {
-            var buildingStructures = activeStructures
-                .Where(s => s != null && s.State == StructureState.Building && s.HasFreeWorkerSlot())
-                .ToList();
+            // Clear cached lists
+            cachedBuildingStructures.Clear();
+            cachedWorkersToAssign.Clear();
 
-            // MODIFICA: Usa TUTTI i worker disponibili, non solo i Builder.
-            // Quando un worker viene assegnato a una struttura in costruzione,
-            // diventerà automaticamente Builder grazie ad AssignJobForStructure().
-            var workersToAssign = availableWorkers
-                .Where(w => w != null && w.AssignedStructure == null)
-                .ToList();
+            // 1) Collect structures that are in Building state and have free worker slots
+            for (int i = 0; i < activeStructures.Count; i++)
+            {
+                var structure = activeStructures[i];
+                if (structure == null) continue;
+                if (structure.State == StructureState.Building && structure.HasFreeWorkerSlot())
+                {
+                    cachedBuildingStructures.Add(structure);
+                }
+            }
+
+            // 2) Collect all available workers that are not currently assigned
+            for (int i = 0; i < availableWorkers.Count; i++)
+            {
+                var worker = availableWorkers[i];
+                if (worker == null) continue;
+                if (worker.AssignedStructure == null)
+                {
+                    cachedWorkersToAssign.Add(worker);
+                }
+            }
 
             if (debugAutoAssign)
             {
-                Debug.Log($"<color=orange>[WorkerSystem]</color> Auto-Assign: {buildingStructures.Count} structures, {workersToAssign.Count} available workers");
+                Debug.Log($"<color=orange>[WorkerSystem]</color> Auto-Assign: " +
+                          $"{cachedBuildingStructures.Count} structures, " +
+                          $"{cachedWorkersToAssign.Count} available workers");
             }
 
-            if (buildingStructures.Count == 0 || workersToAssign.Count == 0) return;
+            if (cachedBuildingStructures.Count == 0 || cachedWorkersToAssign.Count == 0)
+                return;
 
-            foreach (var structure in buildingStructures)
+            int workerIndex = 0;
+
+            // 3) Assign workers round-robin to structures that need them
+            for (int s = 0; s < cachedBuildingStructures.Count; s++)
             {
-                if (workersToAssign.Count == 0) break;
+                var structure = cachedBuildingStructures[s];
+                if (structure == null) continue;
 
-                while (structure.HasFreeWorkerSlot() && workersToAssign.Count > 0)
+                while (structure.HasFreeWorkerSlot() && workerIndex < cachedWorkersToAssign.Count)
                 {
-                    var worker = workersToAssign[0];
-                    workersToAssign.RemoveAt(0);
+                    var worker = cachedWorkersToAssign[workerIndex];
+                    workerIndex++;
+
+                    if (worker == null) continue;
 
                     if (AssignWorker(worker, structure))
                     {
@@ -445,6 +473,9 @@ namespace WildernessSurvival.Gameplay.Workers
                         }
                     }
                 }
+
+                if (workerIndex >= cachedWorkersToAssign.Count)
+                    break;
             }
         }
 

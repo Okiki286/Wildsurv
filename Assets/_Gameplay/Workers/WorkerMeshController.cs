@@ -100,7 +100,8 @@ namespace WildernessSurvival.Gameplay.Workers
             // ═══════════════════════════════════════════════════════════
             if (bodyRenderer != null && visualSet.bodyMaterialOverride != null)
             {
-                bodyRenderer.material = visualSet.bodyMaterialOverride;
+                // Use sharedMaterial to avoid per-instance material allocations at runtime.
+                bodyRenderer.sharedMaterial = visualSet.bodyMaterialOverride;
             }
 
             // ═══════════════════════════════════════════════════════════
@@ -126,12 +127,12 @@ namespace WildernessSurvival.Gameplay.Workers
 
             foreach (var renderer in tintableRenderers)
             {
-                if (renderer != null && renderer.material != null)
+                if (renderer == null) continue;
+
+                var mat = renderer.sharedMaterial;
+                if (mat != null && mat.HasProperty(colorPropertyName))
                 {
-                    if (renderer.material.HasProperty(colorPropertyName))
-                    {
-                        renderer.material.SetColor(colorPropertyName, color);
-                    }
+                    mat.SetColor(colorPropertyName, color);
                 }
             }
         }

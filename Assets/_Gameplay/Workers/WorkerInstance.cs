@@ -296,12 +296,20 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         /// <summary>
-        /// Ottiene il bonus produzione.
+        /// Ottiene il moltiplicatore di produzione finale (>= 1).
+        /// Usa il bonus del job se presente, altrimenti il multiplier di base del worker.
+        /// Applica anche un piccolo scaling per livello.
         /// </summary>
         public float GetProductionBonus(StructureData structureData)
         {
             float baseProductivity = CurrentJob?.ProductivityBonus ?? Data?.ProductivityMultiplier ?? 1f;
-            return (baseProductivity - 1f) * (1f + (Level - 1) * 0.05f);
+
+            // 5% per livello sopra il livello 1
+            float levelMultiplier = 1f + (Level - 1) * 0.05f;
+
+            // Ritorniamo un MULTIPLICATORE, non un delta:
+            // es: base 1.2 * livello 1.1 = 1.32x produzione
+            return baseProductivity * levelMultiplier;
         }
 
         /// <summary>

@@ -259,16 +259,16 @@ namespace WildernessSurvival.Gameplay.Workers
             // ═══════════════════════════════════════════════════════════
             PlayChangeVFX(newJob.VisualSet);
 
-            isTransitioning = false;
-            transitionCoroutine = null;
-
             // ═══════════════════════════════════════════════════════════
-            // 8. NOTIFICA COMPLETAMENTO TRANSIZIONE
+            // 8. NOTIFICA COMPLETAMENTO TRANSIZIONE (ALWAYS CALLED)
             // ═══════════════════════════════════════════════════════════
             if (linkedInstance != null)
             {
                 linkedInstance.CompleteJobTransition();
             }
+
+            isTransitioning = false;
+            transitionCoroutine = null;
 
 #if UNITY_EDITOR
             Debug.Log($"<color=green>[WorkerVisualController]</color> Transition to {newJob.JobName} complete!");
