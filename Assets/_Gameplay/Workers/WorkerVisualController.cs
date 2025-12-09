@@ -6,57 +6,35 @@ using WildernessSurvival.Gameplay.Structures;
 namespace WildernessSurvival.Gameplay.Workers
 {
     /// <summary>
-    /// Controller dedicato alla gestione visuale del worker.
-    /// Si sottoscrive a OnJobChanged e aggiorna mesh, tool, animator e colori.
-    /// Supporta sia il nuovo sistema mesh swap che il legacy prefab swap.
+    /// ORCHESTRATORE per la gestione visuale del worker.
+    /// Delega le responsabilità ai controller specializzati:
+    /// - WorkerMeshController: gestisce mesh, materials, colors
+    /// - WorkerAnimatorController: gestisce animator e parametri
+    /// - WorkerToolController: gestisce tool socket ed equipaggiamento
+    ///
+    /// Si sottoscrive a OnJobChanged e coordina la transizione visiva.
     /// </summary>
+    [RequireComponent(typeof(WorkerMeshController))]
+    [RequireComponent(typeof(WorkerAnimatorController))]
+    [RequireComponent(typeof(WorkerToolController))]
     public class WorkerVisualController : MonoBehaviour
     {
         // ============================================
-        // MESH RENDERERS
+        // SUB-CONTROLLERS
         // ============================================
 
-        [TitleGroup("Mesh Renderers")]
-        [SerializeField]
-        [Tooltip("SkinnedMeshRenderer per la testa (opzionale)")]
-        private SkinnedMeshRenderer headRenderer;
+        [TitleGroup("Sub-Controllers")]
+        [SerializeField, ReadOnly]
+        [Tooltip("Gestisce mesh, materials e colors")]
+        private WorkerMeshController meshController;
 
-        [SerializeField]
-        [Tooltip("SkinnedMeshRenderer per il corpo")]
-        [Required("Assegna il renderer del corpo")]
-        private SkinnedMeshRenderer bodyRenderer;
+        [SerializeField, ReadOnly]
+        [Tooltip("Gestisce animator e parametri")]
+        private WorkerAnimatorController animatorController;
 
-        [SerializeField]
-        [Tooltip("SkinnedMeshRenderer per le gambe (opzionale)")]
-        private SkinnedMeshRenderer legsRenderer;
-
-        // ============================================
-        // TOOL SOCKET
-        // ============================================
-
-        [TitleGroup("Tool Socket")]
-        [SerializeField]
-        [Tooltip("Transform dove attachare il tool (es. mano destra)")]
-        [Required("Assegna il socket per il tool")]
-        private Transform toolSocket;
-
-        [SerializeField]
-        [Tooltip("Tool correntemente equipaggiato (runtime)")]
-        [ReadOnly]
-        private GameObject currentToolInstance;
-
-        // ============================================
-        // ANIMATOR
-        // ============================================
-
-        [TitleGroup("Animation")]
-        [SerializeField]
-        [Tooltip("Animator del worker")]
-        private Animator animator;
-
-        [SerializeField]
-        [Tooltip("AnimatorController di default (Idle/Villager)")]
-        private RuntimeAnimatorController defaultAnimatorController;
+        [SerializeField, ReadOnly]
+        [Tooltip("Gestisce tool socket e equipaggiamento")]
+        private WorkerToolController toolController;
 
         // ============================================
         // VFX
@@ -70,19 +48,6 @@ namespace WildernessSurvival.Gameplay.Workers
         [SerializeField]
         [Tooltip("Transform dove spawnare VFX aggiuntivi")]
         private Transform vfxSpawnPoint;
-
-        // ============================================
-        // COLOR TINT SUPPORT
-        // ============================================
-
-        [TitleGroup("Color Tint")]
-        [SerializeField]
-        [Tooltip("Renderer per elementi colorabili (fascia, mantello, ecc.)")]
-        private Renderer[] tintableRenderers;
-
-        [SerializeField]
-        [Tooltip("Nome della property color nel material")]
-        private string colorPropertyName = "_Color";
 
         // ============================================
         // DATABASE REFERENCE
@@ -125,15 +90,9 @@ namespace WildernessSurvival.Gameplay.Workers
 
         public bool IsTransitioning => isTransitioning;
         public WorkerJobData CurrentJobData => currentJobData;
-
-        // Animator parameter hashes
-        private static readonly int SpeedHash = Animator.StringToHash("Speed");
-        private static readonly int IsWorkingHash = Animator.StringToHash("IsWorking");
-        private static readonly int IsMovingHash = Animator.StringToHash("IsMoving");
-
-        private bool hasSpeedParam = false;
-        private bool hasIsWorkingParam = false;
-        private bool hasIsMovingParam = false;
+        public WorkerAnimatorController AnimatorController => animatorController;
+        public WorkerMeshController MeshController => meshController;
+        public WorkerToolController ToolController => toolController;
 
         // ============================================
         // LIFECYCLE
@@ -141,17 +100,10 @@ namespace WildernessSurvival.Gameplay.Workers
 
         private void Awake()
         {
-            // Auto-find animator se non assegnato
-            if (animator == null)
-            {
-                animator = GetComponentInChildren<Animator>();
-            }
-
-            // Auto-find tool socket se non assegnato
-            if (toolSocket == null)
-            {
-                toolSocket = FindToolSocket();
-            }
+            // Auto-find sub-controllers
+            meshController = GetComponent<WorkerMeshController>();
+            animatorController = GetComponent<WorkerAnimatorController>();
+            toolController = GetComponent<WorkerToolController>();
 
             // Auto-create legacy visual root se necessario
             if (legacyVisualRoot == null)
@@ -163,21 +115,20 @@ namespace WildernessSurvival.Gameplay.Workers
                 }
             }
 
-            CheckAnimatorParameters();
-        }
-
-        private Transform FindToolSocket()
-        {
-            // Cerca socket comuni per nome
-            string[] socketNames = { "ToolSocket", "RightHand", "Hand_R", "Weapon_Socket", "ItemSocket" };
-
-            foreach (var name in socketNames)
+#if UNITY_EDITOR
+            if (meshController == null)
             {
-                var socket = transform.FindDeepChild(name);
-                if (socket != null) return socket;
+                Debug.LogError("[WorkerVisualController] WorkerMeshController not found! Add it to the GameObject.");
             }
-
-            return null;
+            if (animatorController == null)
+            {
+                Debug.LogError("[WorkerVisualController] WorkerAnimatorController not found! Add it to the GameObject.");
+            }
+            if (toolController == null)
+            {
+                Debug.LogError("[WorkerVisualController] WorkerToolController not found! Add it to the GameObject.");
+            }
+#endif
         }
 
         private void OnDestroy()
@@ -201,7 +152,9 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (instance == null)
             {
+#if UNITY_EDITOR
                 Debug.LogWarning("[WorkerVisualController] Initialize called with null instance.");
+#endif
                 return;
             }
 
@@ -220,7 +173,9 @@ namespace WildernessSurvival.Gameplay.Workers
                 ApplyVisualSet(linkedInstance.CurrentJob, immediate: true);
             }
 
+#if UNITY_EDITOR
             Debug.Log($"<color=cyan>[WorkerVisualController]</color> Initialized for {instance.CustomName}");
+#endif
         }
 
         // ============================================
@@ -231,11 +186,15 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (newJob == null)
             {
+#if UNITY_EDITOR
                 Debug.LogWarning("[WorkerVisualController] HandleJobChanged called with null job.");
+#endif
                 return;
             }
 
+#if UNITY_EDITOR
             Debug.Log($"<color=magenta>[WorkerVisualController]</color> Job changed to: {newJob.JobName}");
+#endif
 
             // Avvia transizione visiva
             if (transitionCoroutine != null)
@@ -265,14 +224,12 @@ namespace WildernessSurvival.Gameplay.Workers
             PlayChangeVFX(newJob.VisualSet);
 
             // ═══════════════════════════════════════════════════════════
-            // 2. FADE OUT / HIDE (opzionale)
+            // 2. FADE OUT / HIDE
             // ═══════════════════════════════════════════════════════════
-            if (bodyRenderer != null)
+            if (meshController != null)
             {
-                bodyRenderer.enabled = false;
+                meshController.HideRenderers();
             }
-            if (headRenderer != null) headRenderer.enabled = false;
-            if (legsRenderer != null) legsRenderer.enabled = false;
 
             // ═══════════════════════════════════════════════════════════
             // 3. WAIT
@@ -292,9 +249,10 @@ namespace WildernessSurvival.Gameplay.Workers
             // ═══════════════════════════════════════════════════════════
             // 6. FADE IN / SHOW
             // ═══════════════════════════════════════════════════════════
-            if (bodyRenderer != null) bodyRenderer.enabled = true;
-            if (headRenderer != null && newJob.VisualSet?.headMesh != null) headRenderer.enabled = true;
-            if (legsRenderer != null && newJob.VisualSet?.legsMesh != null) legsRenderer.enabled = true;
+            if (meshController != null)
+            {
+                meshController.ShowRenderers(newJob.VisualSet);
+            }
 
             // ═══════════════════════════════════════════════════════════
             // 7. VFX PUFF (Riapparizione)
@@ -304,11 +262,22 @@ namespace WildernessSurvival.Gameplay.Workers
             isTransitioning = false;
             transitionCoroutine = null;
 
+            // ═══════════════════════════════════════════════════════════
+            // 8. NOTIFICA COMPLETAMENTO TRANSIZIONE
+            // ═══════════════════════════════════════════════════════════
+            if (linkedInstance != null)
+            {
+                linkedInstance.CompleteJobTransition();
+            }
+
+#if UNITY_EDITOR
             Debug.Log($"<color=green>[WorkerVisualController]</color> Transition to {newJob.JobName} complete!");
+#endif
         }
 
         /// <summary>
         /// Applica il visual set di un job.
+        /// ORCHESTRATORE: delega ai sub-controllers.
         /// </summary>
         private void ApplyVisualSet(WorkerJobData job, bool immediate)
         {
@@ -322,7 +291,7 @@ namespace WildernessSurvival.Gameplay.Workers
             // ═══════════════════════════════════════════════════════════
             if (job.HasValidVisualSet)
             {
-                ApplyMeshSwap(job.VisualSet);
+                ApplyMeshSwapSystem(job.VisualSet);
             }
             else if (job.UseLegacySystem)
             {
@@ -330,65 +299,54 @@ namespace WildernessSurvival.Gameplay.Workers
             }
             else
             {
+#if UNITY_EDITOR
                 Debug.LogWarning($"[WorkerVisualController] Job {job.JobName} has no valid visual configuration!");
+#endif
             }
         }
 
         // ============================================
-        // MESH SWAP SYSTEM (Nuovo)
+        // MESH SWAP SYSTEM (Nuovo) - ORCHESTRATORE
         // ============================================
 
-        private void ApplyMeshSwap(WorkerVisualSet visualSet)
+        /// <summary>
+        /// Applica mesh swap delegando ai sub-controllers.
+        /// </summary>
+        private void ApplyMeshSwapSystem(WorkerVisualSet visualSet)
         {
             if (visualSet == null) return;
 
             // ═══════════════════════════════════════════════════════════
-            // MESHES
+            // DELEGA A MESH CONTROLLER
             // ═══════════════════════════════════════════════════════════
-            if (headRenderer != null && visualSet.headMesh != null)
+            if (meshController != null)
             {
-                headRenderer.sharedMesh = visualSet.headMesh;
-            }
-
-            if (bodyRenderer != null && visualSet.bodyMesh != null)
-            {
-                bodyRenderer.sharedMesh = visualSet.bodyMesh;
-            }
-
-            if (legsRenderer != null && visualSet.legsMesh != null)
-            {
-                legsRenderer.sharedMesh = visualSet.legsMesh;
+                meshController.ApplyMeshSwap(visualSet);
             }
 
             // ═══════════════════════════════════════════════════════════
-            // MATERIALS
+            // DELEGA A TOOL CONTROLLER
             // ═══════════════════════════════════════════════════════════
-            if (bodyRenderer != null && visualSet.bodyMaterialOverride != null)
+            if (toolController != null)
             {
-                bodyRenderer.material = visualSet.bodyMaterialOverride;
+                toolController.EquipTool(
+                    visualSet.toolPrefab,
+                    visualSet.toolPositionOffset,
+                    visualSet.toolRotationOffset
+                );
             }
 
             // ═══════════════════════════════════════════════════════════
-            // TOOL
+            // DELEGA AD ANIMATOR CONTROLLER
             // ═══════════════════════════════════════════════════════════
-            UpdateTool(visualSet.toolPrefab, visualSet.toolPositionOffset, visualSet.toolRotationOffset);
-
-            // ═══════════════════════════════════════════════════════════
-            // ANIMATOR
-            // ═══════════════════════════════════════════════════════════
-            if (animator != null && visualSet.animatorController != null)
+            if (animatorController != null && visualSet.animatorController != null)
             {
-                animator.runtimeAnimatorController = visualSet.animatorController;
-                CheckAnimatorParameters();
-                ResetAnimatorState();
+                animatorController.SetAnimatorController(visualSet.animatorController);
             }
 
-            // ═══════════════════════════════════════════════════════════
-            // COLOR TINT
-            // ═══════════════════════════════════════════════════════════
-            ApplyColorTint(visualSet.roleColorTint);
-
+#if UNITY_EDITOR
             Debug.Log($"<color=cyan>[WorkerVisualController]</color> Applied mesh swap for {currentJobName}");
+#endif
         }
 
         // ============================================
@@ -399,7 +357,9 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (legacyVisualRoot == null)
             {
+#if UNITY_EDITOR
                 Debug.LogError("[WorkerVisualController] Legacy prefab swap requested but no legacyVisualRoot assigned!");
+#endif
                 return;
             }
 
@@ -417,84 +377,21 @@ namespace WildernessSurvival.Gameplay.Workers
                 newModel.transform.localRotation = Quaternion.identity;
                 newModel.name = $"Model_{job.JobName}";
 
-                // Rebind animator
-                animator = newModel.GetComponentInChildren<Animator>();
-                if (animator != null)
+                // Rebind animator nel nuovo modello
+                var newAnimator = newModel.GetComponentInChildren<Animator>();
+                if (newAnimator != null && animatorController != null)
                 {
-                    if (job.AnimatorController != null)
-                    {
-                        animator.runtimeAnimatorController = job.AnimatorController;
-                    }
-                    CheckAnimatorParameters();
-                    ResetAnimatorState();
+                    // Sostituisci l'animator nell'AnimatorController
+                    // (necessita di reflection o rebuild del component)
+                    // Per ora, loggare warning
+#if UNITY_EDITOR
+                    Debug.LogWarning("[WorkerVisualController] Legacy mode: animator rebinding not fully supported. Consider migrating to mesh swap.");
+#endif
                 }
 
+#if UNITY_EDITOR
                 Debug.Log($"<color=yellow>[WorkerVisualController]</color> Applied LEGACY prefab swap for {job.JobName}");
-            }
-        }
-
-        // ============================================
-        // TOOL MANAGEMENT
-        // ============================================
-
-        private void UpdateTool(GameObject toolPrefab, Vector3 posOffset, Vector3 rotOffset)
-        {
-            // Distruggi tool corrente
-            if (currentToolInstance != null)
-            {
-                Destroy(currentToolInstance);
-                currentToolInstance = null;
-            }
-
-            // Spawn nuovo tool
-            if (toolPrefab != null && toolSocket != null)
-            {
-                currentToolInstance = Instantiate(toolPrefab, toolSocket);
-                currentToolInstance.transform.localPosition = posOffset;
-                currentToolInstance.transform.localRotation = Quaternion.Euler(rotOffset);
-                currentToolInstance.name = $"Tool_{toolPrefab.name}";
-
-                Debug.Log($"<color=cyan>[WorkerVisualController]</color> Equipped tool: {toolPrefab.name}");
-            }
-        }
-
-        /// <summary>
-        /// Forza l'equipaggiamento di un tool specifico (override temporaneo).
-        /// </summary>
-        public void ForceEquipTool(GameObject toolPrefab)
-        {
-            UpdateTool(toolPrefab, Vector3.zero, Vector3.zero);
-        }
-
-        /// <summary>
-        /// Rimuove il tool corrente.
-        /// </summary>
-        public void UnequipTool()
-        {
-            if (currentToolInstance != null)
-            {
-                Destroy(currentToolInstance);
-                currentToolInstance = null;
-            }
-        }
-
-        // ============================================
-        // COLOR TINT
-        // ============================================
-
-        private void ApplyColorTint(Color color)
-        {
-            if (tintableRenderers == null || tintableRenderers.Length == 0) return;
-
-            foreach (var renderer in tintableRenderers)
-            {
-                if (renderer != null && renderer.material != null)
-                {
-                    if (renderer.material.HasProperty(colorPropertyName))
-                    {
-                        renderer.material.SetColor(colorPropertyName, color);
-                    }
-                }
+#endif
             }
         }
 
@@ -519,58 +416,54 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         // ============================================
-        // ANIMATOR HELPERS
+        // PUBLIC API (chiamate da WorkerController)
         // ============================================
-
-        private void CheckAnimatorParameters()
-        {
-            hasSpeedParam = false;
-            hasIsWorkingParam = false;
-            hasIsMovingParam = false;
-
-            if (animator == null || animator.runtimeAnimatorController == null) return;
-
-            foreach (var param in animator.parameters)
-            {
-                if (param.nameHash == SpeedHash) hasSpeedParam = true;
-                if (param.nameHash == IsWorkingHash) hasIsWorkingParam = true;
-                if (param.nameHash == IsMovingHash) hasIsMovingParam = true;
-            }
-        }
-
-        private void ResetAnimatorState()
-        {
-            if (animator == null) return;
-
-            if (hasSpeedParam) animator.SetFloat(SpeedHash, 0f);
-            if (hasIsMovingParam) animator.SetBool(IsMovingHash, false);
-            if (hasIsWorkingParam) animator.SetBool(IsWorkingHash, false);
-
-            animator.Update(0f);
-        }
 
         /// <summary>
         /// Aggiorna i parametri dell'animator (chiamato da WorkerController).
+        /// DELEGA AD AnimatorController.
         /// </summary>
         public void UpdateAnimator(float speed, bool isMoving, bool isWorking)
         {
-            if (animator == null || isTransitioning) return;
-
-            if (hasSpeedParam) animator.SetFloat(SpeedHash, speed);
-            if (hasIsMovingParam) animator.SetBool(IsMovingHash, isMoving);
-            if (hasIsWorkingParam) animator.SetBool(IsWorkingHash, isWorking);
+            if (animatorController != null && !isTransitioning)
+            {
+                animatorController.UpdateAnimator(speed, isMoving, isWorking);
+            }
         }
 
         /// <summary>
         /// Forza lo stato idle dell'animator.
+        /// DELEGA AD AnimatorController.
         /// </summary>
         public void ForceIdleAnimation()
         {
-            ResetAnimatorState();
-            if (animator != null)
+            if (animatorController != null)
             {
-                animator.Play("Idle", 0, 0f);
-                animator.Update(0f);
+                animatorController.ForceIdleAnimation();
+            }
+        }
+
+        /// <summary>
+        /// Forza l'equipaggiamento di un tool specifico (override temporaneo).
+        /// DELEGA A ToolController.
+        /// </summary>
+        public void ForceEquipTool(GameObject toolPrefab)
+        {
+            if (toolController != null)
+            {
+                toolController.EquipTool(toolPrefab);
+            }
+        }
+
+        /// <summary>
+        /// Rimuove il tool corrente.
+        /// DELEGA A ToolController.
+        /// </summary>
+        public void UnequipTool()
+        {
+            if (toolController != null)
+            {
+                toolController.UnequipTool();
             }
         }
 
@@ -610,31 +503,10 @@ namespace WildernessSurvival.Gameplay.Workers
             Debug.Log($"=== VISUAL STATE ===\n" +
                      $"Current Job: {currentJobName}\n" +
                      $"Is Transitioning: {isTransitioning}\n" +
-                     $"Body Mesh: {(bodyRenderer?.sharedMesh?.name ?? "None")}\n" +
-                     $"Tool: {(currentToolInstance?.name ?? "None")}\n" +
-                     $"Animator: {(animator?.runtimeAnimatorController?.name ?? "None")}");
+                     $"Body Mesh: {(meshController?.BodyRenderer?.sharedMesh?.name ?? "None")}\n" +
+                     $"Tool: {(toolController?.CurrentTool?.name ?? "None")}\n" +
+                     $"Animator: {(animatorController?.CurrentController?.name ?? "None")}");
         }
 #endif
-    }
-
-    // ============================================
-    // EXTENSION METHODS
-    // ============================================
-
-    public static class TransformExtensions
-    {
-        /// <summary>
-        /// Cerca ricorsivamente un figlio per nome.
-        /// </summary>
-        public static Transform FindDeepChild(this Transform parent, string name)
-        {
-            foreach (Transform child in parent)
-            {
-                if (child.name == name) return child;
-                var result = child.FindDeepChild(name);
-                if (result != null) return result;
-            }
-            return null;
-        }
     }
 }

@@ -171,7 +171,9 @@ namespace WildernessSurvival.Gameplay.Workers
                 visualController.Initialize(instance);
             }
 
+#if UNITY_EDITOR
             Debug.Log($"<color=cyan>[WorkerController]</color> Linked to instance: {instance?.CustomName}");
+#endif
         }
 
         // ============================================
@@ -314,7 +316,10 @@ namespace WildernessSurvival.Gameplay.Workers
                 linkedInstance.SetState(WorkerState.Working);
                 linkedInstance.AssignedStructure?.RecalculateBuildSpeed();
                 linkedInstance.AssignedStructure?.RecalculateProduction();
+
+#if UNITY_EDITOR
                 Debug.Log($"<color=green>[WorkerController]</color> {linkedInstance.CustomName} arrived at worksite!");
+#endif
             }
         }
 
@@ -360,7 +365,9 @@ namespace WildernessSurvival.Gameplay.Workers
                 linkedInstance.SetState(WorkerState.Moving);
             }
 
+#if UNITY_EDITOR
             Debug.Log($"<color=cyan>[WorkerController]</color> {gameObject.name} traveling to {position}");
+#endif
         }
 
         public void StopMovement()

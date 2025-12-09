@@ -33,10 +33,23 @@ namespace WildernessSurvival.Gameplay.Workers
         [TitleGroup("Current Job")]
         public WorkerJobData CurrentJob { get; private set; }
 
+        [ShowInInspector, ReadOnly]
+        [TitleGroup("Current Job")]
+        public WorkerJobData PendingJob { get; private set; }
+
+        [ShowInInspector, ReadOnly]
+        [TitleGroup("Current Job")]
+        public bool IsJobChanging { get; private set; } = false;
+
         /// <summary>
         /// Evento invocato quando il job cambia (per aggiornare UI, etc.)
         /// </summary>
         public event Action<WorkerJobData> OnJobChanged;
+
+        /// <summary>
+        /// Evento invocato quando la transizione visiva è completata.
+        /// </summary>
+        public event Action OnJobTransitionComplete;
 
         // ============================================
         // ASSIGNMENT STATE
@@ -127,34 +140,79 @@ namespace WildernessSurvival.Gameplay.Workers
 
         /// <summary>
         /// Cambia il job del worker.
+        /// Se il worker è già in transizione, salva il job come pending.
         /// Il WorkerVisualController riceverà l'evento OnJobChanged e aggiornerà la skin.
         /// </summary>
         public void SetJob(WorkerJobData newJob)
         {
             if (newJob == null)
             {
+#if UNITY_EDITOR
                 Debug.LogWarning($"[WorkerInstance] {CustomName}: SetJob called with null. Ignoring.");
+#endif
                 return;
             }
 
             // Skip se stesso job
             if (CurrentJob == newJob)
             {
+#if UNITY_EDITOR
                 Debug.Log($"<color=gray>[WorkerInstance]</color> {CustomName}: Already has job {newJob.JobName}. Skipping.");
+#endif
+                return;
+            }
+
+            // ═══════════════════════════════════════════════════════════
+            // JOB PENDING BUFFER
+            // Se il worker è in transizione, salva come pending
+            // ═══════════════════════════════════════════════════════════
+            if (IsJobChanging)
+            {
+                PendingJob = newJob;
+#if UNITY_EDITOR
+                Debug.Log($"<color=yellow>[WorkerInstance]</color> {CustomName} is changing job. " +
+                    $"Buffering {newJob.JobName} as pending.");
+#endif
                 return;
             }
 
             var previousJob = CurrentJob;
             CurrentJob = newJob;
+            IsJobChanging = true;
 
+#if UNITY_EDITOR
             Debug.Log($"<color=green>[WorkerInstance]</color> {CustomName} job changed: " +
                 $"{previousJob?.JobName ?? "None"} -> {newJob.JobName}");
+#endif
 
             // ═══════════════════════════════════════════════════════════
             // FIRE EVENT - WorkerVisualController si sottoscrive a questo
             // e gestirà automaticamente il cambio visivo (mesh swap o legacy)
             // ═══════════════════════════════════════════════════════════
             OnJobChanged?.Invoke(newJob);
+        }
+
+        /// <summary>
+        /// Notifica che la transizione visiva è completata.
+        /// Chiamato dal WorkerVisualController.
+        /// </summary>
+        public void CompleteJobTransition()
+        {
+            IsJobChanging = false;
+            OnJobTransitionComplete?.Invoke();
+
+            // Se c'è un job pending, applicalo ora
+            if (PendingJob != null)
+            {
+                var pending = PendingJob;
+                PendingJob = null;
+
+#if UNITY_EDITOR
+                Debug.Log($"<color=magenta>[WorkerInstance]</color> {CustomName} applying pending job: {pending.JobName}");
+#endif
+
+                SetJob(pending);
+            }
         }
 
         /// <summary>

@@ -97,6 +97,7 @@ namespace WildernessSurvival.Gameplay.Workers
 
         private void Start()
         {
+#if UNITY_EDITOR
             if (IsJobSystemEnabled)
             {
                 Debug.Log($"<color=green>[WorkerSystem]</color> Job System ENABLED. Database has {ActiveJobDatabase.AllJobs?.Count ?? 0} jobs.");
@@ -105,6 +106,7 @@ namespace WildernessSurvival.Gameplay.Workers
             {
                 Debug.LogWarning("[WorkerSystem] Job System DISABLED.");
             }
+#endif
 
             SpawnStartingWorkers();
         }
@@ -167,11 +169,15 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (availableWorkerTypes == null || availableWorkerTypes.Count == 0)
             {
+#if UNITY_EDITOR
                 Debug.LogError("❌ [WorkerSystem] No WorkerData in 'Available Worker Types'!");
+#endif
                 return;
             }
 
+#if UNITY_EDITOR
             Debug.Log($"<color=cyan>[WorkerSystem]</color> Spawning {startingWorkerCount} starting workers...");
+#endif
 
             for (int i = 0; i < startingWorkerCount; i++)
             {
@@ -203,11 +209,14 @@ namespace WildernessSurvival.Gameplay.Workers
                     newWorker.PhysicalWorker = controller;
                     controller.LinkToInstance(newWorker);
                     RegisterWorker(controller);
+
+#if UNITY_EDITOR
                     Debug.Log($"<color=green>[WorkerSystem]</color> Spawned {data.DisplayName} at {spawnPos}");
+#endif
                 }
                 else
                 {
-                    Debug.LogError($"<color=red>[WorkerSystem]</color> Prefab {data.Prefab.name} missing WorkerController!");
+                    Debug.LogError($"[WorkerSystem] Prefab {data.Prefab.name} missing WorkerController!");
                 }
             }
 
@@ -369,7 +378,9 @@ namespace WildernessSurvival.Gameplay.Workers
                 worker.PhysicalWorker.ForceIdleKeepPendingVisual();
             }
 
+#if UNITY_EDITOR
             Debug.Log($"<color=orange>[WorkerSystem]</color> {worker.CustomName} unassigned and reset.");
+#endif
         }
 
         public void UnassignAllWorkersFromStructure(StructureController structure)
@@ -385,10 +396,12 @@ namespace WildernessSurvival.Gameplay.Workers
                 UnassignWorker(worker);
             }
 
+#if UNITY_EDITOR
             if (workersToUnassign.Count > 0)
             {
                 Debug.Log($"<color=orange>[WorkerSystem]</color> Unassigned {workersToUnassign.Count} workers from {structure.name}");
             }
+#endif
         }
 
         // ============================================
