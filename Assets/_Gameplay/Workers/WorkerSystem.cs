@@ -207,6 +207,7 @@ namespace WildernessSurvival.Gameplay.Workers
                 GameObject workerObj = Instantiate(data.Prefab, spawnPos, Quaternion.identity);
                 workerObj.name = $"Worker_{data.DisplayName}_{newWorker.InstanceId.Substring(0, 4)}";
 
+
                 WorkerController controller = workerObj.GetComponent<WorkerController>();
                 if (controller != null)
                 {

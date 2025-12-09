@@ -352,8 +352,49 @@ namespace WildernessSurvival.Gameplay.Workers
             }
 
             // ═══════════════════════════════════════════════════════════
-            // 1. MESH SWAP (con fallback robusti)
+            // PRIORITÀ 1: FULL BODY MESH (Synty Polygon Support)
             // ═══════════════════════════════════════════════════════════
+
+            if (visualSet.fullBodyMesh != null)
+            {
+                // Full body mesh override: applica al renderer principale (bodyRenderer)
+                // e ignora completamente head/legs
+                if (bodyRenderer != null)
+                {
+                    bodyRenderer.sharedMesh = visualSet.fullBodyMesh;
+
+#if UNITY_EDITOR
+                    Debug.Log($"<color=cyan>[WorkerMeshController]</color> Applied FULL BODY mesh: {visualSet.fullBodyMesh.name}", this);
+#endif
+                }
+
+                // Nascondi head e legs renderer se esistono (mesh unificata)
+                if (headRenderer != null && headRenderer != bodyRenderer)
+                {
+                    headRenderer.enabled = false;
+                }
+                if (legsRenderer != null && legsRenderer != bodyRenderer)
+                {
+                    legsRenderer.enabled = false;
+                }
+
+                // Material override (se presente) - gestito normalmente
+                if (visualSet.bodyMaterialOverride != null)
+                {
+                    ApplyMaterialOverride(visualSet.bodyMaterialOverride);
+                }
+
+                // EARLY RETURN: non processare logica modulare head/body/legs
+                return;
+            }
+
+            // ═══════════════════════════════════════════════════════════
+            // PRIORITÀ 2: MODULAR MESH SWAP (Head/Body/Legs)
+            // ═══════════════════════════════════════════════════════════
+
+            // Assicurati che i renderer modulari siano visibili
+            if (headRenderer != null) headRenderer.enabled = true;
+            if (legsRenderer != null) legsRenderer.enabled = true;
 
             // Head mesh (opzionale)
             if (headRenderer != null)
@@ -410,7 +451,7 @@ namespace WildernessSurvival.Gameplay.Workers
             // Non applicarlo qui per evitare duplicazione.
 
 #if UNITY_EDITOR
-            Debug.Log($"<color=cyan>[WorkerMeshController]</color> Applied mesh swap", this);
+            Debug.Log($"<color=cyan>[WorkerMeshController]</color> Applied modular mesh swap", this);
 #endif
         }
 

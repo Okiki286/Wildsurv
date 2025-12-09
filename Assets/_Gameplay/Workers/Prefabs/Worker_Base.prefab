@@ -9,6 +9,12 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 6294237521367961827}
+  - component: {fileID: 6224006661869588631}
+  - component: {fileID: 1025433487259319620}
+  - component: {fileID: 7864385076451903681}
+  - component: {fileID: 7677676679544152727}
+  - component: {fileID: 7102835873941967243}
+  - component: {fileID: 4793774768727292189}
   m_Layer: 0
   m_Name: Worker_Base
   m_TagString: Untagged
@@ -29,10 +35,128 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 2937360707700794183}
+  - {fileID: 3490244994536606321}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1001 &2937360707700931027
+--- !u!195 &6224006661869588631
+NavMeshAgent:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6468794182606962327}
+  m_Enabled: 1
+  m_AgentTypeID: 0
+  m_Radius: 0.5
+  m_Speed: 3.5
+  m_Acceleration: 8
+  avoidancePriority: 50
+  m_AngularSpeed: 120
+  m_StoppingDistance: 0
+  m_AutoTraverseOffMeshLink: 1
+  m_AutoBraking: 1
+  m_AutoRepath: 1
+  m_Height: 2
+  m_BaseOffset: 0
+  m_WalkableMask: 4294967295
+  m_ObstacleAvoidanceType: 4
+--- !u!114 &1025433487259319620
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6468794182606962327}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f664754f14cc46c4ebe5e053ca43b844, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  workerData: {fileID: 11400000, guid: 5ff67a874ed78f249b566257178f3a37, type: 2}
+  agent: {fileID: 0}
+  visualController: {fileID: 4793774768727292189}
+  workWanderRadius: 3
+  changeSpotInterval: 2.5
+  navMeshSampleDistance: 2
+  workAnimationSpeedThreshold: 0.1
+  lookAtRotationSpeed: 5
+--- !u!114 &7864385076451903681
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6468794182606962327}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c9309bd6b293af346b000f5ea986d852, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  headRenderer: {fileID: 0}
+  bodyRenderer: {fileID: 3490244994540215129}
+  legsRenderer: {fileID: 0}
+  tintableRenderers: []
+  colorPropertyNames:
+  - _BaseColor
+  - _Color
+  lodGroup: {fileID: 0}
+  applyTintToLODs: 1
+--- !u!114 &7677676679544152727
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6468794182606962327}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7b25450b71edd4143824354b86494c8e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  animator: {fileID: 3490244994544330117}
+  defaultAnimatorController: {fileID: 0}
+  speedParamName: Speed
+  isMovingParamName: IsMoving
+  isWorkingParamName: IsWorking
+  isAttackingParamName: IsAttacking
+  hasWeaponParamName: HasWeapon
+--- !u!114 &7102835873941967243
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6468794182606962327}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c7e6c75b003596749bf527d222222e52, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  rightHandSocket: {fileID: 0}
+  leftHandSocket: {fileID: 0}
+  defaultToolSide: 1
+  debugToolPrefab: {fileID: 0}
+--- !u!114 &4793774768727292189
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6468794182606962327}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d239f8e201e6b93458bb39c64fc14363, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  meshController: {fileID: 0}
+  animatorController: {fileID: 0}
+  toolController: {fileID: 0}
+  rolePalette: {fileID: 0}
+  useRuntimeTransitions: 1
+  changeJobVFX: {fileID: 0}
+  vfxSpawnPoint: {fileID: 0}
+  legacyVisualRoot: {fileID: 0}
+--- !u!1001 &3490244994537001189
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -87,108 +211,20 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 100104, guid: 9d545e43681431348908eab98e78aa45, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 305258207335643022}
-    - targetCorrespondingSourceObject: {fileID: 100104, guid: 9d545e43681431348908eab98e78aa45, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 8096042699524351350}
-    - targetCorrespondingSourceObject: {fileID: 100104, guid: 9d545e43681431348908eab98e78aa45, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 2316339502846895628}
-    - targetCorrespondingSourceObject: {fileID: 100104, guid: 9d545e43681431348908eab98e78aa45, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 8774845352587602304}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 9d545e43681431348908eab98e78aa45, type: 3}
---- !u!137 &2937360707695751791 stripped
-SkinnedMeshRenderer:
-  m_CorrespondingSourceObject: {fileID: 13700028, guid: 9d545e43681431348908eab98e78aa45, type: 3}
-  m_PrefabInstance: {fileID: 2937360707700931027}
-  m_PrefabAsset: {fileID: 0}
---- !u!4 &2937360707700794183 stripped
+--- !u!4 &3490244994536606321 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 400020, guid: 9d545e43681431348908eab98e78aa45, type: 3}
-  m_PrefabInstance: {fileID: 2937360707700931027}
+  m_PrefabInstance: {fileID: 3490244994537001189}
   m_PrefabAsset: {fileID: 0}
---- !u!1 &2937360707701030619 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 100104, guid: 9d545e43681431348908eab98e78aa45, type: 3}
-  m_PrefabInstance: {fileID: 2937360707700931027}
+--- !u!137 &3490244994540215129 stripped
+SkinnedMeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 13700028, guid: 9d545e43681431348908eab98e78aa45, type: 3}
+  m_PrefabInstance: {fileID: 3490244994537001189}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &305258207335643022
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
+--- !u!95 &3490244994544330117 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 9500000, guid: 9d545e43681431348908eab98e78aa45, type: 3}
+  m_PrefabInstance: {fileID: 3490244994537001189}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2937360707701030619}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c9309bd6b293af346b000f5ea986d852, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  headRenderer: {fileID: 0}
-  bodyRenderer: {fileID: 2937360707695751791}
-  legsRenderer: {fileID: 0}
-  tintableRenderers: []
-  colorPropertyNames:
-  - _BaseColor
-  - _Color
-  lodGroup: {fileID: 0}
-  applyTintToLODs: 1
---- !u!114 &8096042699524351350
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2937360707701030619}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7b25450b71edd4143824354b86494c8e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  animator: {fileID: 0}
-  defaultAnimatorController: {fileID: 0}
-  speedParamName: Speed
-  isMovingParamName: IsMoving
-  isWorkingParamName: IsWorking
-  isAttackingParamName: IsAttacking
-  hasWeaponParamName: HasWeapon
---- !u!114 &2316339502846895628
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2937360707701030619}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c7e6c75b003596749bf527d222222e52, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  rightHandSocket: {fileID: 0}
-  leftHandSocket: {fileID: 0}
-  defaultToolSide: 1
-  debugToolPrefab: {fileID: 0}
---- !u!114 &8774845352587602304
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2937360707701030619}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d239f8e201e6b93458bb39c64fc14363, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  meshController: {fileID: 0}
-  animatorController: {fileID: 0}
-  toolController: {fileID: 0}
-  rolePalette: {fileID: 0}
-  useRuntimeTransitions: 1
-  changeJobVFX: {fileID: 0}
-  vfxSpawnPoint: {fileID: 0}
-  legacyVisualRoot: {fileID: 0}
