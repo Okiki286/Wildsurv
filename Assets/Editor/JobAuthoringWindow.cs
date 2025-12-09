@@ -117,6 +117,12 @@ namespace WildernessSurvival.Editor
         // VISUAL SETTINGS (ADVANCED EDITOR)
         // ============================================
 
+        // Placeholder per creare il gruppo Visual Settings richiesto dai button
+        [VerticalGroup("Browser/Right")]
+        [TitleGroup("Browser/Right/Visual Settings")]
+        [HideInInspector]
+        private bool visualSettingsGroupPlaceholder;
+
         // ============================================
         // PREVIEW
         // ============================================
@@ -476,8 +482,7 @@ namespace WildernessSurvival.Editor
         // VISUAL SETTINGS ACTIONS
         // ============================================
 
-        [VerticalGroup("Browser/Right")]
-        [ButtonGroup("Browser/Right/Visual Settings/Actions")]
+        [VerticalGroup("Browser/Right/Visual Settings")]
         [Button("Apply Role Color from Palette", ButtonSizes.Medium), GUIColor(0.8f, 0.6f, 1f)]
         [EnableIf("@selectedJob != null && rolePalette != null")]
         private void ApplyRoleColorToSelectedJob()

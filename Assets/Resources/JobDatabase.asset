@@ -13,6 +13,5 @@ MonoBehaviour:
   m_Name: JobDatabase
   m_EditorClassIdentifier: 
   allJobs:
-  - {fileID: 11400000, guid: d8f010717ec950e4d96131cf10b03fd4, type: 2}
-  - {fileID: 11400000, guid: 428d9b14a59cafa4cb5a624d66f1e3f9, type: 2}
-  defaultVillagerJob: {fileID: 11400000, guid: d8f010717ec950e4d96131cf10b03fd4, type: 2}
+  - {fileID: 11400000, guid: 3f146af521975074dad1c918cdcddc32, type: 2}
+  defaultVillagerJob: {fileID: 11400000, guid: 3f146af521975074dad1c918cdcddc32, type: 2}

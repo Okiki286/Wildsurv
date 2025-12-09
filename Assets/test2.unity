@@ -1417,7 +1417,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   availableWorkerTypes:
-  - {fileID: 11400000, guid: dd5176467422ab04eaf680f7f43427be, type: 2}
+  - {fileID: 11400000, guid: 5ff67a874ed78f249b566257178f3a37, type: 2}
   startingWorkerCount: 3
   jobDatabaseOverride: {fileID: 11400000, guid: a655d95d23505a74c847a5223b81a0e0, type: 2}
   paused: 0
@@ -2203,6 +2203,11 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 50, y: -30, z: 0}
+--- !u!95 &876586176 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 2937360707691531443, guid: 58b845dbc293b044298568b4d4c6a657, type: 3}
+  m_PrefabInstance: {fileID: 1278649190376261701}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &902780595
 GameObject:
   m_ObjectHideFlags: 0
@@ -6374,6 +6379,71 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 2b48b67692e29ad4b9620227f9297920, type: 3}
+--- !u!1001 &1278649190376261701
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 6294237521367961827, guid: 58b845dbc293b044298568b4d4c6a657, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -7.1599007
+      objectReference: {fileID: 0}
+    - target: {fileID: 6294237521367961827, guid: 58b845dbc293b044298568b4d4c6a657, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 1.5634327
+      objectReference: {fileID: 0}
+    - target: {fileID: 6294237521367961827, guid: 58b845dbc293b044298568b4d4c6a657, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 3.231946
+      objectReference: {fileID: 0}
+    - target: {fileID: 6294237521367961827, guid: 58b845dbc293b044298568b4d4c6a657, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6294237521367961827, guid: 58b845dbc293b044298568b4d4c6a657, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6294237521367961827, guid: 58b845dbc293b044298568b4d4c6a657, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6294237521367961827, guid: 58b845dbc293b044298568b4d4c6a657, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6294237521367961827, guid: 58b845dbc293b044298568b4d4c6a657, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6294237521367961827, guid: 58b845dbc293b044298568b4d4c6a657, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6294237521367961827, guid: 58b845dbc293b044298568b4d4c6a657, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6468794182606962327, guid: 58b845dbc293b044298568b4d4c6a657, type: 3}
+      propertyPath: m_Name
+      value: Worker_Base
+      objectReference: {fileID: 0}
+    - target: {fileID: 8096042699524351350, guid: 58b845dbc293b044298568b4d4c6a657, type: 3}
+      propertyPath: animator
+      value: 
+      objectReference: {fileID: 876586176}
+    - target: {fileID: 8096042699524351350, guid: 58b845dbc293b044298568b4d4c6a657, type: 3}
+      propertyPath: defaultAnimatorController
+      value: 
+      objectReference: {fileID: 9100000, guid: 6937849fa19d2aa43bf484d3b5acda1e, type: 2}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 58b845dbc293b044298568b4d4c6a657, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -6389,3 +6459,4 @@ SceneRoots:
   - {fileID: 1442863883}
   - {fileID: 618029705}
   - {fileID: 22996937816166300}
+  - {fileID: 1278649190376261701}
