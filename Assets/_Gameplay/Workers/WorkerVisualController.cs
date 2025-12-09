@@ -300,7 +300,7 @@ namespace WildernessSurvival.Gameplay.Workers
             else
             {
                 // Applicazione immediata (editor, setup iniziale)
-                ApplyVisualSetInternal(jobData.VisualSet, jobData.Role, immediate: true);
+                ApplyVisualSetInternal(jobData.VisualSet, jobData.Role, immediate: true, jobData: jobData);
                 currentJobData = jobData;
                 currentJobName = jobData.JobName;
 
@@ -344,7 +344,7 @@ namespace WildernessSurvival.Gameplay.Workers
             // ═══════════════════════════════════════════════════════════
             // 3. APPLY VISUAL SET (al centro della transizione)
             // ═══════════════════════════════════════════════════════════
-            ApplyVisualSetInternal(visualSet, newJob.Role, immediate: false);
+            ApplyVisualSetInternal(visualSet, newJob.Role, immediate: false, jobData: newJob);
             currentJobData = newJob;
             currentJobName = newJob.JobName;
 
@@ -395,7 +395,7 @@ namespace WildernessSurvival.Gameplay.Workers
         /// - No LINQ
         /// - Solo sharedMaterial
         /// </summary>
-        private void ApplyVisualSetInternal(WorkerVisualSet visualSet, WorkerRole role, bool immediate)
+        private void ApplyVisualSetInternal(WorkerVisualSet visualSet, WorkerRole role, bool immediate, WorkerJobData jobData = null)
         {
             if (visualSet == null)
             {
@@ -437,9 +437,18 @@ namespace WildernessSurvival.Gameplay.Workers
             // ═══════════════════════════════════════════════════════════
             // 4. ANIMATOR (via AnimatorController)
             // ═══════════════════════════════════════════════════════════
-            if (animatorController != null && visualSet.animatorController != null)
+            if (animatorController != null)
             {
-                animatorController.SetAnimatorController(visualSet.animatorController);
+                // Se abbiamo il JobData completo, usa ApplyJobAnimator (gestisce fallback automatici)
+                if (jobData != null)
+                {
+                    animatorController.ApplyJobAnimator(jobData);
+                }
+                // Altrimenti fallback al metodo legacy (solo se c'è un controller nel VisualSet)
+                else if (visualSet.animatorController != null)
+                {
+                    animatorController.SetAnimatorController(visualSet.animatorController);
+                }
             }
 
 #if UNITY_EDITOR
