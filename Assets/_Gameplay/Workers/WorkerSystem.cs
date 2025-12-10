@@ -185,10 +185,22 @@ namespace WildernessSurvival.Gameplay.Workers
 
             for (int i = 0; i < startingWorkerCount; i++)
             {
-                var typeToSpawn = availableWorkerTypes[i % availableWorkerTypes.Count];
-                if (typeToSpawn != null)
+                try
                 {
-                    CreateWorkerInstance(typeToSpawn);
+                    var typeToSpawn = availableWorkerTypes[i % availableWorkerTypes.Count];
+                    if (typeToSpawn != null)
+                    {
+                        CreateWorkerInstance(typeToSpawn);
+                        Debug.Log($"<color=green>[WorkerSystem]</color> Successfully spawned worker {i + 1}/{startingWorkerCount}");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[WorkerSystem] Worker type at index {i % availableWorkerTypes.Count} is null!");
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogError($"[WorkerSystem] Exception spawning worker {i + 1}: {ex.Message}\n{ex.StackTrace}");
                 }
             }
         }

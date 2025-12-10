@@ -165,36 +165,95 @@ namespace WildernessSurvival.Gameplay.Workers
 
         /// <summary>
         /// Check se il nome corrisponde a un socket di mano destra.
+        /// Supporta: Synty Polygon, Mixamo, Unity Humanoid, convenzioni comuni.
         /// Zero allocations - usa Contains inline.
         /// </summary>
         private bool IsRightHandSocket(string name)
         {
-            // Common right hand socket names (case-insensitive check)
             string lowerName = name.ToLower();
 
+            // ═══════════════════════════════════════════════════════════
+            // SYNTY POLYGON NAMING (es. "Hand_R", "RightHand", "R_Hand")
+            // ═══════════════════════════════════════════════════════════
+            if (lowerName == "hand_r" || lowerName == "r_hand" || lowerName == "righthand")
+                return true;
+
+            // Synty con suffisso (es. "Character_Hand_R")
+            if (lowerName.EndsWith("hand_r") || lowerName.EndsWith("_r_hand"))
+                return true;
+
+            // ═══════════════════════════════════════════════════════════
+            // MIXAMO NAMING (es. "mixamorig:RightHand")
+            // ═══════════════════════════════════════════════════════════
+            if (lowerName.Contains("mixamorig") && lowerName.Contains("right"))
+                return true;
+
+            // ═══════════════════════════════════════════════════════════
+            // UNITY HUMANOID / GENERIC NAMING
+            // ═══════════════════════════════════════════════════════════
+            if (lowerName.Contains("right") && lowerName.Contains("hand"))
+                return true;
+
+            // ═══════════════════════════════════════════════════════════
+            // COMMON CONVENTIONS
+            // ═══════════════════════════════════════════════════════════
             return lowerName.Contains("hand_r") ||
-                   lowerName.Contains("righthand") ||
-                   lowerName.Contains("right_hand") ||
-                   lowerName.Contains("r_hand") ||
                    lowerName.Contains("hand.r") ||
+                   lowerName.Contains("r_hand") ||
+                   lowerName.Contains("r.hand") ||
                    lowerName.Contains("socket_weapon_r") ||
+                   lowerName.Contains("weapon_r") ||
+                   lowerName.Contains("toolsocket_r") ||
                    lowerName.Contains("toolsocket") ||
-                   lowerName.Contains("weaponsocket");
+                   lowerName.Contains("weaponsocket") ||
+                   // Wrist fallback (alcuni modelli usano wrist invece di hand)
+                   lowerName.Contains("wrist_r") ||
+                   lowerName.Contains("rightwrist");
         }
 
         /// <summary>
         /// Check se il nome corrisponde a un socket di mano sinistra.
+        /// Supporta: Synty Polygon, Mixamo, Unity Humanoid, convenzioni comuni.
         /// </summary>
         private bool IsLeftHandSocket(string name)
         {
             string lowerName = name.ToLower();
 
+            // ═══════════════════════════════════════════════════════════
+            // SYNTY POLYGON NAMING
+            // ═══════════════════════════════════════════════════════════
+            if (lowerName == "hand_l" || lowerName == "l_hand" || lowerName == "lefthand")
+                return true;
+
+            // Synty con suffisso
+            if (lowerName.EndsWith("hand_l") || lowerName.EndsWith("_l_hand"))
+                return true;
+
+            // ═══════════════════════════════════════════════════════════
+            // MIXAMO NAMING
+            // ═══════════════════════════════════════════════════════════
+            if (lowerName.Contains("mixamorig") && lowerName.Contains("left"))
+                return true;
+
+            // ═══════════════════════════════════════════════════════════
+            // UNITY HUMANOID / GENERIC NAMING
+            // ═══════════════════════════════════════════════════════════
+            if (lowerName.Contains("left") && lowerName.Contains("hand"))
+                return true;
+
+            // ═══════════════════════════════════════════════════════════
+            // COMMON CONVENTIONS
+            // ═══════════════════════════════════════════════════════════
             return lowerName.Contains("hand_l") ||
-                   lowerName.Contains("lefthand") ||
-                   lowerName.Contains("left_hand") ||
-                   lowerName.Contains("l_hand") ||
                    lowerName.Contains("hand.l") ||
-                   lowerName.Contains("socket_weapon_l");
+                   lowerName.Contains("l_hand") ||
+                   lowerName.Contains("l.hand") ||
+                   lowerName.Contains("socket_weapon_l") ||
+                   lowerName.Contains("weapon_l") ||
+                   lowerName.Contains("toolsocket_l") ||
+                   // Wrist fallback
+                   lowerName.Contains("wrist_l") ||
+                   lowerName.Contains("leftwrist");
         }
 
         // ============================================
@@ -549,6 +608,41 @@ namespace WildernessSurvival.Gameplay.Workers
 
             ForceEquipToolPrefab(debugToolPrefab, ToolSide.LeftHand, Vector3.zero, Vector3.zero, Vector3.one);
             Debug.Log($"[WorkerToolController] Equipped debug tool {debugToolPrefab.name} on LEFT hand.", this);
+        }
+
+        [TitleGroup("Debug")]
+        [Button("🦴 Print All Bones", ButtonSizes.Medium), GUIColor(1f, 0.8f, 0.4f)]
+        private void DebugPrintAllBones()
+        {
+            Transform[] allChildren = GetComponentsInChildren<Transform>(includeInactive: true);
+            
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            sb.AppendLine($"=== ALL BONES/TRANSFORMS ({allChildren.Length} total) ===");
+            
+            int handCandidates = 0;
+            foreach (var child in allChildren)
+            {
+                string indicator = "";
+                if (IsRightHandSocket(child.name))
+                {
+                    indicator = " ◄── RIGHT HAND";
+                    handCandidates++;
+                }
+                else if (IsLeftHandSocket(child.name))
+                {
+                    indicator = " ◄── LEFT HAND";
+                    handCandidates++;
+                }
+                
+                sb.AppendLine($"  {child.name}{indicator}");
+            }
+            
+            sb.AppendLine($"\n=== SUMMARY ===");
+            sb.AppendLine($"Hand candidates found: {handCandidates}");
+            sb.AppendLine($"Current Right Socket: {(rightHandSocket != null ? rightHandSocket.name : "NONE")}");
+            sb.AppendLine($"Current Left Socket: {(leftHandSocket != null ? leftHandSocket.name : "NONE")}");
+            
+            Debug.Log(sb.ToString(), this);
         }
 #endif
     }

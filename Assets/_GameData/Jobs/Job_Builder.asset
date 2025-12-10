@@ -19,6 +19,8 @@ MonoBehaviour:
   role: 2
   jobColor: {r: 1, g: 1, b: 1, a: 1}
   visualSet:
+    fullBodyMesh: {fileID: 4300022, guid: 9d545e43681431348908eab98e78aa45, type: 3}
+    fullBodyAnimatorOverride: {fileID: 9100000, guid: 6937849fa19d2aa43bf484d3b5acda1e, type: 2}
     headMesh: {fileID: 0}
     bodyMesh: {fileID: 4300022, guid: 9d545e43681431348908eab98e78aa45, type: 3}
     legsMesh: {fileID: 0}

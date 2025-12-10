@@ -30,7 +30,7 @@ MonoBehaviour:
   requiresBuilder: 1
   workerSlots: 2
   heroSlots: 0
-  allowedRoles: 1
+  allowedRoles: 33
   producesResourceId: 
   baseProductionRate: 5
   attackDamage: 10

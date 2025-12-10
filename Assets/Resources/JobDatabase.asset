@@ -14,4 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   allJobs:
   - {fileID: 11400000, guid: 3f146af521975074dad1c918cdcddc32, type: 2}
+  - {fileID: 11400000, guid: a9755bca448c09d45bb1a91a268da5ff, type: 2}
+  - {fileID: 11400000, guid: 40a3e57b9f823e549b13c338b70913f1, type: 2}
+  - {fileID: 11400000, guid: 1c23a1bb41d50654989f154e668b4584, type: 2}
+  - {fileID: 11400000, guid: 4aaafc22392d0ef45aa5de42ae778a12, type: 2}
+  - {fileID: 11400000, guid: 65e967bfd33f46641a0cce89f96cff22, type: 2}
   defaultVillagerJob: {fileID: 11400000, guid: 3f146af521975074dad1c918cdcddc32, type: 2}

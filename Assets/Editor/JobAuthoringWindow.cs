@@ -94,6 +94,13 @@ namespace WildernessSurvival.Editor
         [HorizontalGroup("Browser", 0.35f)]
         [VerticalGroup("Browser/Left")]
         [TitleGroup("Browser/Left/Jobs List")]
+        [ShowInInspector]
+        [LabelText("Seleziona Job")]
+        [ValueDropdown("allJobs", IsUniqueList = true)]
+        [OnValueChanged("OnJobSelected")]
+        private WorkerJobData selectedJobFromDropdown;
+
+        [VerticalGroup("Browser/Left")]
         [ListDrawerSettings(
             ShowIndexLabels = false,
             DraggableItems = false,
@@ -102,7 +109,19 @@ namespace WildernessSurvival.Editor
             OnTitleBarGUI = "DrawJobListToolbar"
         )]
         [ShowInInspector]
+        [InfoBox("Usa il dropdown sopra per selezionare un job, oppure fai doppio-click qui.", InfoMessageType.None)]
         private List<WorkerJobData> allJobs = new List<WorkerJobData>();
+
+        private void OnJobSelected()
+        {
+            if (selectedJobFromDropdown != null)
+            {
+                selectedJob = selectedJobFromDropdown;
+#if UNITY_EDITOR
+                Debug.Log($"<color=cyan>[JobAuthoringWindow]</color> Selected job: {selectedJob.JobName}");
+#endif
+            }
+        }
 
         [HorizontalGroup("Browser")]
         [VerticalGroup("Browser/Right")]
@@ -583,6 +602,13 @@ namespace WildernessSurvival.Editor
             previewInstance = (GameObject)PrefabUtility.InstantiatePrefab(workerPreviewPrefab);
             previewInstance.name = $"Preview_{selectedJob.JobName}";
             previewInstance.transform.position = Vector3.zero;
+
+            // Force-init MeshController (Awake non viene chiamato in Editor)
+            var meshController = previewInstance.GetComponent<WorkerMeshController>();
+            if (meshController != null)
+            {
+                meshController.Initialize();
+            }
 
             // Cerca WorkerVisualController
             var visualController = previewInstance.GetComponent<WorkerVisualController>();
