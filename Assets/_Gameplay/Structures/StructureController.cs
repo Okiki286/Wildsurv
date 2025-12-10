@@ -92,6 +92,17 @@ namespace WildernessSurvival.Gameplay.Structures
         [ShowInInspector, ReadOnly]
         public WorkerInstance CurrentBuilder { get; private set; }
 
+        [BoxGroup("Workers/Building")]
+        [SerializeField]
+        [Tooltip("Distanza dal centro a cui i worker si fermano per lavorare (raggio sul piano XZ)")]
+        [PropertyRange(0.5f, 10f)]
+        private float workRadius = 1.5f;
+
+        [BoxGroup("Workers/Building")]
+        [SerializeField]
+        [Tooltip("Punti preferiti dove i worker si posizionano per lavorare (opzionale)")]
+        private Transform[] workSpots;
+
         [BoxGroup("Workers/Stats")]
         [ReadOnly, ShowInInspector]
         [PropertyRange(0f, 3f)]
@@ -155,6 +166,15 @@ namespace WildernessSurvival.Gameplay.Structures
         public int WorkerCount => workerCount;
         public List<WorkerController> AssignedWorkers => assignedWorkers;
         public int AssignedWorkerInstanceCount => assignedWorkerInstances.Count;
+
+        /// <summary>
+        /// Distanza dal centro a cui i worker si fermano per lavorare
+        /// </summary>
+        public float WorkRadius
+        {
+            get => workRadius;
+            set => workRadius = Mathf.Max(0.1f, value);
+        }
 
         // ============================================
         // UNITY LIFECYCLE
@@ -870,6 +890,109 @@ namespace WildernessSurvival.Gameplay.Structures
             if (buildProgress >= 0.5f) return Color.yellow;
             return Color.red;
         }
+
+        // ============================================
+        // WORKER POSITIONING
+        // ============================================
+
+        /// <summary>
+        /// Calcola la posizione di lavoro sul perimetro della struttura verso il worker.
+        /// Usa un raggio configurabile per mantenere i worker fuori dal modello.
+        /// </summary>
+        /// <param name="fromPosition">Posizione del worker che si sta avvicinando</param>
+        /// <returns>Posizione sul perimetro dove il worker dovrebbe fermarsi</returns>
+        public Vector3 GetWorkPosition(Vector3 fromPosition)
+        {
+            Vector3 center = transform.position;
+            Vector3 dir = fromPosition - center;
+            dir.y = 0f; // Lavoriamo sul piano XZ
+
+            // Se il worker è troppo vicino al centro (o sopra), usa una direzione di fallback
+            if (dir.sqrMagnitude < 0.01f)
+            {
+                // Fallback: usa una direzione casuale
+                float angle = UnityEngine.Random.Range(0f, 360f) * Mathf.Deg2Rad;
+                dir = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+            }
+            else
+            {
+                dir.Normalize();
+            }
+
+            return center + dir * workRadius;
+        }
+
+        /// <summary>
+        /// Trova il work spot più vicino al worker, oppure usa GetWorkPosition come fallback.
+        /// </summary>
+        /// <param name="fromPosition">Posizione del worker</param>
+        /// <returns>Posizione del work spot più vicino</returns>
+        public Vector3 GetClosestWorkSpot(Vector3 fromPosition)
+        {
+            // Se non ci sono work spots definiti, usa il raggio
+            if (workSpots == null || workSpots.Length == 0)
+            {
+                return GetWorkPosition(fromPosition);
+            }
+
+            Transform best = null;
+            float bestDist = float.MaxValue;
+
+            // Trova lo spot più vicino al worker
+            foreach (var spot in workSpots)
+            {
+                if (spot == null) continue;
+
+                float d = (spot.position - fromPosition).sqrMagnitude;
+                if (d < bestDist)
+                {
+                    bestDist = d;
+                    best = spot;
+                }
+            }
+
+            return best != null ? best.position : GetWorkPosition(fromPosition);
+        }
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// Visualizza il work radius e i work spots nell'editor
+        /// </summary>
+        private void OnDrawGizmosSelected()
+        {
+            // Disegna il cerchio del work radius
+            Gizmos.color = new Color(0f, 1f, 0f, 0.3f);
+            DrawCircle(transform.position, workRadius, 32);
+
+            // Disegna i work spots
+            if (workSpots != null)
+            {
+                Gizmos.color = Color.yellow;
+                foreach (var spot in workSpots)
+                {
+                    if (spot != null)
+                    {
+                        Gizmos.DrawWireSphere(spot.position, 0.3f);
+                        Gizmos.DrawLine(transform.position, spot.position);
+                    }
+                }
+            }
+        }
+
+        private void DrawCircle(Vector3 center, float radius, int segments)
+        {
+            float angleStep = 360f / segments;
+            Vector3 prevPoint = center + new Vector3(radius, 0f, 0f);
+
+            for (int i = 1; i <= segments; i++)
+            {
+                float angle = angleStep * i * Mathf.Deg2Rad;
+                Vector3 newPoint = center + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
+                Gizmos.DrawLine(prevPoint, newPoint);
+                prevPoint = newPoint;
+            }
+        }
+#endif
 
         [TitleGroup("Debug Actions")]
         [ButtonGroup("Debug Actions/Row1")]

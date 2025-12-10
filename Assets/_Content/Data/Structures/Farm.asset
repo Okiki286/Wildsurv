@@ -15,7 +15,7 @@ MonoBehaviour:
   structureId: farm
   displayName: Farm
   icon: {fileID: 0}
-  prefab: {fileID: 9051408422575919793, guid: ef94952c73678d24ea69a1654e8291a7, type: 3}
+  prefab: {fileID: 1338993972888386726, guid: 6a3270c75d6fcc64399b92927fc87ac9, type: 3}
   description: 
   category: 0
   tier: 1

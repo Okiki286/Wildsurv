@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using WildernessSurvival.Gameplay.Resources;
 using WildernessSurvival.Gameplay.Workers;
+using WildernessSurvival.UI;
 
 namespace WildernessSurvival.Gameplay.Structures
 {
@@ -227,6 +228,23 @@ namespace WildernessSurvival.Gameplay.Structures
             }
             controller.Initialize(data);
 
+            // ═══════════════════════════════════════════════════════════
+            // ASSICURA COMPONENTI GAMEPLAY (se mancano dal prefab)
+            // ═══════════════════════════════════════════════════════════
+            var clickHandler = structureObj.GetComponent<StructureClickHandler>();
+            if (clickHandler == null)
+            {
+                structureObj.AddComponent<StructureClickHandler>();
+                Debug.Log($"<color=yellow>[StructureSystem]</color> Added missing StructureClickHandler to {data.DisplayName}");
+            }
+
+            var statusUI = structureObj.GetComponent<StructureStatusUI>();
+            if (statusUI == null)
+            {
+                structureObj.AddComponent<StructureStatusUI>();
+                Debug.Log($"<color=yellow>[StructureSystem]</color> Added missing StructureStatusUI to {data.DisplayName}");
+            }
+
             // 🔧 Aggiungi collider per overlap detection
             BoxCollider collider = structureObj.GetComponent<BoxCollider>();
             if (collider == null)
@@ -416,9 +434,11 @@ namespace WildernessSurvival.Gameplay.Structures
                 return false;
             }
 
-            // 2. Verifica overlap con altre strutture (NON-BLOCKING)
-            // Overlap è ora solo un warning, non impedisce il piazzamento
-            HasOverlap(position, data.GridSize); // Log warning se overlap presente
+            // 2. Verifica overlap con altre strutture (BLOCKING)
+            if (HasOverlap(position, data.GridSize))
+            {
+                return false;
+            }
 
             // 3. Verifica risorse (gestito esternamente da BuildMode)
             return true;
@@ -452,8 +472,9 @@ namespace WildernessSurvival.Gameplay.Structures
         }
 
         /// <summary>
-        /// Verifica overlap con altre strutture (NON-BLOCKING)
-        /// Logga warnings ma permette comunque il piazzamento
+        /// Verifica overlap con altre strutture (BLOCKING)
+        /// Blocca il piazzamento se viene rilevata una struttura nell'area
+        /// NOTA: Esclude le preview (IsPreview=true o controller disabilitato)
         /// </summary>
         private bool HasOverlap(Vector3 position, Vector2Int gridSize)
         {
@@ -467,20 +488,27 @@ namespace WildernessSurvival.Gameplay.Structures
             int layerMask = ~groundLayer; // Inverte mask per escludere Ground
             Collider[] colliders = Physics.OverlapBox(boxCenter, boxSize / 2f, Quaternion.identity, layerMask);
 
-            // Log warning se trova overlap, ma NON blocca il piazzamento
-            foreach (var col in colliders)
+            // Controlla se c'è overlap con strutture esistenti
+            for (int i = 0; i < colliders.Length; i++)
             {
-                // Controlla se è una struttura
-                var structure = col.GetComponent<StructureController>();
+                var structure = colliders[i].GetComponent<StructureController>();
                 if (structure != null)
                 {
-                    // ⚠️ WARNING: overlap rilevato ma non bloccante
-                    Debug.LogWarning($"<color=yellow>[StructureSystem]</color> ⚠️ Overlap detected with {structure.Data.DisplayName} (placement allowed)");
+                    // ═══════════════════════════════════════════════════════════
+                    // ESCLUDI PREVIEW: Non contare le preview come overlap
+                    // ═══════════════════════════════════════════════════════════
+                    if (structure.IsPreview || !structure.enabled)
+                    {
+                        continue; // Salta le preview
+                    }
+
+                    // ❌ BLOCKING: overlap rilevato con struttura REALE
+                    Debug.LogWarning($"<color=red>[StructureSystem]</color> ❌ Overlap detected with {structure.Data.DisplayName} – placement blocked");
+                    return true; // Overlap trovato, blocca piazzamento
                 }
             }
 
-            // Ritorna sempre false per permettere il piazzamento
-            // (Il valore di ritorno non viene più usato per bloccare in ValidatePlacement)
+            // Nessun overlap con strutture reali
             return false;
         }
 

@@ -110,8 +110,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   structureData: {fileID: 11400000, guid: 811bc85d6e0797d4a8cafdb864617741, type: 2}
+  IsPreview: 0
   visualRoot: {fileID: 6414669399810881659}
   vfxSpawnPoint: {fileID: 0}
+  workRadius: 1.5
+  workSpots: []
 --- !u!65 &1054085412293432845
 BoxCollider:
   m_ObjectHideFlags: 0

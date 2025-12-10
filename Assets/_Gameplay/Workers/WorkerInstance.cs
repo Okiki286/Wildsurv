@@ -248,7 +248,10 @@ namespace WildernessSurvival.Gameplay.Workers
             if (PhysicalWorker != null)
             {
                 CurrentState = WorkerState.Moving;
-                PhysicalWorker.CommandMoveTo(structure.transform.position);
+
+                // Usa GetClosestWorkSpot per posizionare il worker sul perimetro
+                Vector3 workPosition = structure.GetClosestWorkSpot(PhysicalWorker.transform.position);
+                PhysicalWorker.CommandMoveTo(workPosition);
             }
             else
             {
