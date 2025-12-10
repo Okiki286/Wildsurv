@@ -35,7 +35,7 @@ namespace WildernessSurvival.Gameplay.Workers
 
         [ShowInInspector, ReadOnly]
         [TitleGroup("Current Job")]
-        public WorkerJobData PendingJob { get; private set; }
+        public WorkerJobData PendingJob { get; set; }
 
         [ShowInInspector, ReadOnly]
         [TitleGroup("Current Job")]

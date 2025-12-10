@@ -72,17 +72,24 @@ namespace WildernessSurvival.Gameplay.Workers
         [TitleGroup("Debug Settings")]
         [SerializeField] private bool debugAutoAssign = true;
         [SerializeField] private bool debugJobSystem = true;
+        [SerializeField] private bool debugForeman = false;
 
         // ============================================
-        // AUTO-ASSIGNMENT
+        // AUTO-ASSIGNMENT (EVENT-DRIVEN)
         // ============================================
 
         [TitleGroup("Auto-Assignment")]
         [SerializeField]
         [PropertyRange(0.5f, 5f)]
-        private float autoAssignInterval = 1.0f;
+        [Tooltip("Throttling interval - prevents auto-assignment from running too frequently")]
+        private float autoAssignInterval = 0.5f;
 
-        private float autoAssignTimer = 0f;
+        private float _nextAutoAssignTime;
+        private bool _autoAssignDirty = false;
+
+        // Event-driven queues for Foreman
+        private readonly List<StructureController> _pendingBuildStructures = new List<StructureController>();
+        private readonly List<WorkerInstance> _idleBuilders = new List<WorkerInstance>();
 
         // Properties
         public int WorkerInstanceCount => allWorkerInstances.Count;
@@ -97,6 +104,13 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (Instance == null) Instance = this;
             else Destroy(gameObject);
+        }
+
+        private void OnDestroy()
+        {
+            _pendingBuildStructures.Clear();
+            _idleBuilders.Clear();
+            _autoAssignDirty = false;
         }
 
         private void Start()
@@ -156,12 +170,11 @@ namespace WildernessSurvival.Gameplay.Workers
                 }
             }
 
-            // Auto-Assignment Loop
-            autoAssignTimer += dt;
-            if (autoAssignTimer >= autoAssignInterval)
+            // Auto-Assignment Loop (Event-Driven with Throttling)
+            if (_autoAssignDirty && Time.time >= _nextAutoAssignTime)
             {
-                autoAssignTimer = 0f;
-                CheckAutoAssignments();
+                TryAutoAssignBuilders();
+                _nextAutoAssignTime = Time.time + autoAssignInterval;
             }
         }
 
@@ -213,6 +226,8 @@ namespace WildernessSurvival.Gameplay.Workers
             allWorkerInstances.Add(newWorker);
             availableWorkers.Add(newWorker);
 
+            bool spawnSuccessful = false;
+
             if (data.Prefab != null)
             {
                 Vector3 spawnPos = GetRandomSpawnPosition();
@@ -226,6 +241,7 @@ namespace WildernessSurvival.Gameplay.Workers
                     newWorker.PhysicalWorker = controller;
                     controller.LinkToInstance(newWorker);
                     RegisterWorker(controller);
+                    spawnSuccessful = true;
 
 #if UNITY_EDITOR
                     Debug.Log($"<color=green>[WorkerSystem]</color> Spawned {data.DisplayName} at {spawnPos}");
@@ -235,6 +251,13 @@ namespace WildernessSurvival.Gameplay.Workers
                 {
                     Debug.LogError($"[WorkerSystem] Prefab {data.Prefab.name} missing WorkerController!");
                 }
+            }
+
+            // Notify Foreman: newly spawned worker is available as idle builder (event-driven)
+            // ONLY if spawn was successful (has valid PhysicalWorker)
+            if (spawnSuccessful && !newWorker.IsAssigned && newWorker.PhysicalWorker != null)
+            {
+                NotifyWorkerBecameIdleBuilder(newWorker);
             }
 
             return newWorker;
@@ -280,6 +303,9 @@ namespace WildernessSurvival.Gameplay.Workers
                 availableWorkers.Remove(worker);
                 if (!assignedWorkers.Contains(worker)) assignedWorkers.Add(worker);
 
+                // Notify Foreman that worker is no longer idle (event-driven)
+                NotifyWorkerNoLongerIdleBuilder(worker);
+
                 // ═══════════════════════════════════════════════════════════
                 // DYNAMIC JOB ASSIGNMENT
                 // ═══════════════════════════════════════════════════════════
@@ -306,7 +332,7 @@ namespace WildernessSurvival.Gameplay.Workers
                 targetRole = WorkerRole.Builder;
                 if (debugJobSystem)
                 {
-                    Debug.Log($"<color=orange>[WorkerSystem]</color> Structure BUILDING - {worker.CustomName} -> BUILDER");
+                    Debug.Log($"<color=orange>[WorkerSystem]</color> Structure BUILDING - {worker.CustomName} -> BUILDER (pending)");
                 }
             }
             else
@@ -314,17 +340,18 @@ namespace WildernessSurvival.Gameplay.Workers
                 targetRole = GetPrimaryRoleFromStructure(structure.Data);
                 if (debugJobSystem)
                 {
-                    Debug.Log($"<color=cyan>[WorkerSystem]</color> Structure OPERATING - {worker.CustomName} -> {targetRole}");
+                    Debug.Log($"<color=cyan>[WorkerSystem]</color> Structure OPERATING - {worker.CustomName} -> {targetRole} (pending)");
                 }
             }
 
             WorkerJobData jobData = ActiveJobDatabase.GetJobData(targetRole);
             if (jobData != null)
             {
-                worker.SetJob(jobData);
+                // Set as PENDING job - il cambio visual avverrà quando il worker arriva alla struttura
+                worker.PendingJob = jobData;
                 if (debugJobSystem)
                 {
-                    Debug.Log($"<color=magenta>[WorkerSystem]</color> {worker.CustomName} assigned job: {jobData.JobName}");
+                    Debug.Log($"<color=magenta>[WorkerSystem]</color> {worker.CustomName} pending job: {jobData.JobName} (visual will change on arrival)");
                 }
             }
             else
@@ -395,6 +422,12 @@ namespace WildernessSurvival.Gameplay.Workers
                 worker.PhysicalWorker.ForceIdleKeepPendingVisual();
             }
 
+            // 5. Notify Foreman if worker can build (event-driven)
+            if (!worker.IsAssigned)
+            {
+                NotifyWorkerBecameIdleBuilder(worker);
+            }
+
 #if UNITY_EDITOR
             Debug.Log($"<color=orange>[WorkerSystem]</color> {worker.CustomName} unassigned and reset.");
 #endif
@@ -422,9 +455,183 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         // ============================================
-        // AUTO-ASSIGNMENT
+        // AUTO-ASSIGNMENT (EVENT-DRIVEN)
         // ============================================
 
+        /// <summary>
+        /// Event-driven auto-assignment. Only called when structures or workers are queued.
+        /// Throttled by autoAssignInterval to prevent excessive calls.
+        /// </summary>
+        private void TryAutoAssignBuilders()
+        {
+            _autoAssignDirty = false;
+
+            // Clean up invalid entries in queues
+            for (int i = _pendingBuildStructures.Count - 1; i >= 0; i--)
+            {
+                var structure = _pendingBuildStructures[i];
+                if (structure == null || structure.State != StructureState.Building || !structure.HasFreeWorkerSlot())
+                {
+                    _pendingBuildStructures.RemoveAt(i);
+                }
+            }
+
+            for (int i = _idleBuilders.Count - 1; i >= 0; i--)
+            {
+                var worker = _idleBuilders[i];
+                if (worker == null || worker.IsAssigned)
+                {
+                    _idleBuilders.RemoveAt(i);
+                }
+            }
+
+            if (_pendingBuildStructures.Count == 0 || _idleBuilders.Count == 0)
+            {
+                if (debugForeman)
+                {
+                    Debug.Log($"<color=orange>[WorkerSystem]</color> Foreman: no work to do (structures={_pendingBuildStructures.Count}, idleBuilders={_idleBuilders.Count})");
+                }
+                return;
+            }
+
+            int assignments = 0;
+
+            // Simple 1:1 assignment: match structures with available idle builders
+            for (int i = _pendingBuildStructures.Count - 1; i >= 0; i--)
+            {
+                var structure = _pendingBuildStructures[i];
+                if (structure == null || structure.State != StructureState.Building)
+                {
+                    _pendingBuildStructures.RemoveAt(i);
+                    continue;
+                }
+
+                // Assign workers while structure has free slots and we have idle builders
+                while (structure.HasFreeWorkerSlot() && _idleBuilders.Count > 0)
+                {
+                    var worker = _idleBuilders[_idleBuilders.Count - 1];
+                    _idleBuilders.RemoveAt(_idleBuilders.Count - 1);
+
+                    if (worker == null || worker.IsAssigned)
+                        continue;
+
+                    // Use existing AssignWorker logic
+                    if (AssignWorker(worker, structure))
+                    {
+                        assignments++;
+                        if (debugForeman)
+                        {
+                            Debug.Log($"<color=green>[WorkerSystem]</color> Foreman auto-assigned {worker.CustomName} to {structure.name}");
+                        }
+                    }
+                }
+
+                // If structure is full, remove from queue
+                if (!structure.HasFreeWorkerSlot())
+                {
+                    _pendingBuildStructures.RemoveAt(i);
+                }
+            }
+
+            if (debugForeman)
+            {
+                Debug.Log($"<color=orange>[WorkerSystem]</color> Foreman: {assignments} assignments, remaining structures={_pendingBuildStructures.Count}, idleBuilders={_idleBuilders.Count}");
+            }
+
+            // If there's still work to be done, keep dirty flag set
+            if (_pendingBuildStructures.Count > 0 && _idleBuilders.Count > 0)
+            {
+                _autoAssignDirty = true;
+            }
+        }
+
+        // ============================================
+        // FOREMAN EVENT NOTIFICATIONS (PUBLIC API)
+        // ============================================
+
+        /// <summary>
+        /// Register a structure that needs builders (called when entering Building state).
+        /// </summary>
+        public void RegisterStructureNeedingBuilders(StructureController structure)
+        {
+            if (structure == null)
+                return;
+
+            if (!_pendingBuildStructures.Contains(structure))
+            {
+                _pendingBuildStructures.Add(structure);
+                _autoAssignDirty = true;
+
+                if (debugForeman)
+                {
+                    Debug.Log($"<color=cyan>[WorkerSystem]</color> Foreman: Structure {structure.name} registered for builders");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Unregister a structure that no longer needs builders (completed/destroyed).
+        /// </summary>
+        public void UnregisterStructureNeedingBuilders(StructureController structure)
+        {
+            if (structure == null)
+                return;
+
+            if (_pendingBuildStructures.Remove(structure))
+            {
+                if (debugForeman)
+                {
+                    Debug.Log($"<color=cyan>[WorkerSystem]</color> Foreman: Structure {structure.name} unregistered from builders queue");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Notify that a worker became idle and is available as a builder.
+        /// </summary>
+        public void NotifyWorkerBecameIdleBuilder(WorkerInstance worker)
+        {
+            if (worker == null)
+                return;
+
+            if (!_idleBuilders.Contains(worker))
+            {
+                _idleBuilders.Add(worker);
+                _autoAssignDirty = true;
+
+                if (debugForeman)
+                {
+                    Debug.Log($"<color=yellow>[WorkerSystem]</color> Foreman: Worker {worker.CustomName} is now idle builder");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Notify that a worker is no longer an idle builder (assigned or changed role).
+        /// </summary>
+        public void NotifyWorkerNoLongerIdleBuilder(WorkerInstance worker)
+        {
+            if (worker == null)
+                return;
+
+            if (_idleBuilders.Remove(worker))
+            {
+                if (debugForeman)
+                {
+                    Debug.Log($"<color=yellow>[WorkerSystem]</color> Foreman: Worker {worker.CustomName} no longer idle builder");
+                }
+            }
+        }
+
+        // ============================================
+        // LEGACY AUTO-ASSIGNMENT (DEPRECATED)
+        // ============================================
+
+        /// <summary>
+        /// Legacy polling-based auto-assignment (DEPRECATED - use event-driven system).
+        /// Kept for backward compatibility but not called by Update anymore.
+        /// </summary>
+        [System.Obsolete("Use event-driven system with RegisterStructureNeedingBuilders/NotifyWorkerBecameIdleBuilder instead")]
         private void CheckAutoAssignments()
         {
             // Clear cached lists

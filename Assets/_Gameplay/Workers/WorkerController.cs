@@ -314,6 +314,14 @@ namespace WildernessSurvival.Gameplay.Workers
             {
                 linkedInstance.IsAtWorksite = true;
                 linkedInstance.SetState(WorkerState.Working);
+
+                // Attiva il pending job ora che il worker è arrivato (cambio visual)
+                if (linkedInstance.PendingJob != null)
+                {
+                    linkedInstance.SetJob(linkedInstance.PendingJob);
+                    linkedInstance.PendingJob = null;
+                }
+
                 linkedInstance.AssignedStructure?.RecalculateBuildSpeed();
                 linkedInstance.AssignedStructure?.RecalculateProduction();
 
@@ -430,6 +438,12 @@ namespace WildernessSurvival.Gameplay.Workers
             if (visualController != null)
             {
                 visualController.ForceIdleAnimation();
+            }
+
+            // Notify Foreman: worker is now idle and available (event-driven)
+            if (linkedInstance != null && !linkedInstance.IsAssigned && WorkerSystem.Instance != null)
+            {
+                WorkerSystem.Instance.NotifyWorkerBecameIdleBuilder(linkedInstance);
             }
         }
 

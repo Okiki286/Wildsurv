@@ -37,18 +37,23 @@ namespace WildernessSurvival.Gameplay.Workers
         // ============================================
 
         [TitleGroup("Mesh Components")]
-        [InfoBox("Renderer per mesh swap modulare. Auto-detected se non assegnati.", InfoMessageType.None)]
+        [InfoBox("Supporta sia mesh modulari (head/body/legs) che mesh intere (fullBodyRenderer).\n" +
+                 "Se usi mesh intere, assegna solo fullBodyRenderer e lascia gli altri vuoti.", InfoMessageType.Info)]
 
         [SerializeField]
-        [Tooltip("SkinnedMeshRenderer per la testa (opzionale)")]
+        [Tooltip("SkinnedMeshRenderer per mesh intera (full-body). Usalo se hai un'unica mesh per tutto il personaggio.")]
+        private SkinnedMeshRenderer fullBodyRenderer;
+
+        [SerializeField]
+        [Tooltip("SkinnedMeshRenderer per la testa (opzionale, solo se usi sistema modulare)")]
         private SkinnedMeshRenderer headRenderer;
 
         [SerializeField]
-        [Tooltip("SkinnedMeshRenderer per il corpo (required)")]
+        [Tooltip("SkinnedMeshRenderer per il corpo (opzionale, solo se usi sistema modulare)")]
         private SkinnedMeshRenderer bodyRenderer;
 
         [SerializeField]
-        [Tooltip("SkinnedMeshRenderer per le gambe (opzionale)")]
+        [Tooltip("SkinnedMeshRenderer per le gambe (opzionale, solo se usi sistema modulare)")]
         private SkinnedMeshRenderer legsRenderer;
 
         // ============================================
@@ -84,9 +89,11 @@ namespace WildernessSurvival.Gameplay.Workers
         // ============================================
 
         // Original state per reset
+        private Mesh originalFullBodyMesh;
         private Mesh originalHeadMesh;
         private Mesh originalBodyMesh;
         private Mesh originalLegsMesh;
+        private Material[] originalFullBodyMaterials;
         private Material[] originalBodyMaterials;
         private Material[] originalHeadMaterials;
         private Material[] originalLegsMaterials;
@@ -104,10 +111,12 @@ namespace WildernessSurvival.Gameplay.Workers
         // PROPERTIES (public read-only access)
         // ============================================
 
+        public SkinnedMeshRenderer FullBodyRenderer => fullBodyRenderer;
         public SkinnedMeshRenderer HeadRenderer => headRenderer;
         public SkinnedMeshRenderer BodyRenderer => bodyRenderer;
         public SkinnedMeshRenderer LegsRenderer => legsRenderer;
         public bool IsInitialized => isInitialized;
+        public bool IsFullBodyMode => fullBodyRenderer != null;
 
         // ============================================
         // LIFECYCLE
@@ -158,14 +167,10 @@ namespace WildernessSurvival.Gameplay.Workers
 
         /// <summary>
         /// Rileva automaticamente i mesh components se non assegnati.
-        /// Cerca per nome (Head/Body/Leg) o per gerarchia.
+        /// Supporta sia sistema full-body che modulare.
         /// </summary>
         private void DetectMeshComponents()
         {
-            // Se già assegnati tutti, skip
-            if (headRenderer != null && bodyRenderer != null && legsRenderer != null)
-                return;
-
             // Ottieni tutti i SkinnedMeshRenderer nei figli
             SkinnedMeshRenderer[] renderers = GetComponentsInChildren<SkinnedMeshRenderer>(true);
 
@@ -177,11 +182,46 @@ namespace WildernessSurvival.Gameplay.Workers
                 return;
             }
 
-            // Auto-assign per nome (fallback: primi 3 renderer)
+            // Se c'è solo UN renderer → full-body mode
+            if (renderers.Length == 1 && fullBodyRenderer == null)
+            {
+                fullBodyRenderer = renderers[0];
+#if UNITY_EDITOR
+                Debug.Log($"[WorkerMeshController] Full-body mode detected: {fullBodyRenderer.name}", this);
+#endif
+                return;
+            }
+
+            // Se fullBodyRenderer è già assegnato, usa solo quello
+            if (fullBodyRenderer != null)
+            {
+#if UNITY_EDITOR
+                Debug.Log($"[WorkerMeshController] Using full-body renderer: {fullBodyRenderer.name}", this);
+#endif
+                return;
+            }
+
+            // Altrimenti, modalità modulare (head/body/legs)
+            // Se già assegnati tutti, skip
+            if (headRenderer != null && bodyRenderer != null && legsRenderer != null)
+                return;
+
+            // Auto-assign per nome
             for (int i = 0; i < renderers.Length; i++)
             {
                 SkinnedMeshRenderer smr = renderers[i];
                 string name = smr.gameObject.name.ToLower();
+
+                // Full-body detection (se contiene "full", "complete", "character")
+                if (fullBodyRenderer == null &&
+                    (name.Contains("full") || name.Contains("complete") || name.Contains("character") || name.Contains("whole")))
+                {
+                    fullBodyRenderer = smr;
+#if UNITY_EDITOR
+                    Debug.Log($"[WorkerMeshController] Full-body renderer detected: {fullBodyRenderer.name}", this);
+#endif
+                    return; // Usa solo full-body
+                }
 
                 // Head detection
                 if (headRenderer == null && (name.Contains("head") || name.Contains("testa") || name.Contains("face")))
@@ -206,7 +246,7 @@ namespace WildernessSurvival.Gameplay.Workers
             }
 
             // Fallback: assegna primi renderer trovati se ancora null
-            if (bodyRenderer == null && renderers.Length > 0)
+            if (fullBodyRenderer == null && bodyRenderer == null && renderers.Length > 0)
             {
                 bodyRenderer = renderers[0];
             }
@@ -222,7 +262,14 @@ namespace WildernessSurvival.Gameplay.Workers
             }
 
 #if UNITY_EDITOR
-            Debug.Log($"[WorkerMeshController] Detected: Head={headRenderer?.name}, Body={bodyRenderer?.name}, Legs={legsRenderer?.name}", this);
+            if (fullBodyRenderer != null)
+            {
+                Debug.Log($"[WorkerMeshController] Full-body mode: {fullBodyRenderer.name}", this);
+            }
+            else
+            {
+                Debug.Log($"[WorkerMeshController] Modular mode: Head={headRenderer?.name}, Body={bodyRenderer?.name}, Legs={legsRenderer?.name}", this);
+            }
 #endif
         }
 
@@ -231,7 +278,14 @@ namespace WildernessSurvival.Gameplay.Workers
         /// </summary>
         private void CacheOriginalState()
         {
-            // Cache meshes
+            // Cache full-body (priorità)
+            if (fullBodyRenderer != null)
+            {
+                originalFullBodyMesh = fullBodyRenderer.sharedMesh;
+                originalFullBodyMaterials = fullBodyRenderer.sharedMaterials;
+            }
+
+            // Cache meshes modulari (solo se non full-body)
             if (headRenderer != null)
             {
                 originalHeadMesh = headRenderer.sharedMesh;
@@ -352,36 +406,48 @@ namespace WildernessSurvival.Gameplay.Workers
             }
 
             // ═══════════════════════════════════════════════════════════
-            // PRIORITÀ 1: FULL BODY MESH (Synty Polygon Support)
+            // PRIORITÀ 1: FULL BODY MESH (Single Mesh Support)
             // ═══════════════════════════════════════════════════════════
 
             if (visualSet.fullBodyMesh != null)
             {
-                // Full body mesh override: applica al renderer principale (bodyRenderer)
-                // e ignora completamente head/legs
-                if (bodyRenderer != null)
+                // Usa fullBodyRenderer se disponibile, altrimenti fallback a bodyRenderer
+                SkinnedMeshRenderer targetRenderer = fullBodyRenderer != null ? fullBodyRenderer : bodyRenderer;
+
+                if (targetRenderer != null)
                 {
-                    bodyRenderer.sharedMesh = visualSet.fullBodyMesh;
+                    targetRenderer.sharedMesh = visualSet.fullBodyMesh;
+                    targetRenderer.enabled = true;
 
 #if UNITY_EDITOR
-                    Debug.Log($"<color=cyan>[WorkerMeshController]</color> Applied FULL BODY mesh: {visualSet.fullBodyMesh.name}", this);
+                    Debug.Log($"<color=cyan>[WorkerMeshController]</color> Applied FULL BODY mesh: {visualSet.fullBodyMesh.name} to {targetRenderer.name}", this);
+#endif
+                }
+                else
+                {
+#if UNITY_EDITOR
+                    Debug.LogWarning("[WorkerMeshController] No fullBodyRenderer or bodyRenderer available for full-body mesh!", this);
 #endif
                 }
 
-                // Nascondi head e legs renderer se esistono (mesh unificata)
-                if (headRenderer != null && headRenderer != bodyRenderer)
+                // Nascondi renderer modulari se esistono (mesh unificata)
+                if (headRenderer != null && headRenderer != targetRenderer)
                 {
                     headRenderer.enabled = false;
                 }
-                if (legsRenderer != null && legsRenderer != bodyRenderer)
+                if (bodyRenderer != null && bodyRenderer != targetRenderer)
+                {
+                    bodyRenderer.enabled = false;
+                }
+                if (legsRenderer != null && legsRenderer != targetRenderer)
                 {
                     legsRenderer.enabled = false;
                 }
 
-                // Material override (se presente) - gestito normalmente
-                if (visualSet.bodyMaterialOverride != null)
+                // Material override (se presente) - applica al fullBodyRenderer
+                if (visualSet.bodyMaterialOverride != null && targetRenderer != null)
                 {
-                    ApplyMaterialOverride(visualSet.bodyMaterialOverride);
+                    targetRenderer.sharedMaterial = visualSet.bodyMaterialOverride;
                 }
 
                 // EARLY RETURN: non processare logica modulare head/body/legs

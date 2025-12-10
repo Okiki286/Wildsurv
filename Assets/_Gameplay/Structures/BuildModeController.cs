@@ -183,13 +183,19 @@ namespace WildernessSurvival.Gameplay.Structures
             // ═══════════════════════════════════════════════════════════
             // PARENT/CHILD PATTERN: Crea un wrapper vuoto per il pivot
             // ═══════════════════════════════════════════════════════════
-            
+
             // 1. Crea il parent wrapper (questo è quello che seguirà il mouse)
             currentPreview = new GameObject($"Preview_{structure.StructureId}");
-            
-            // 2. Istanzia il prefab come figlio
+
+            // 2. Istanzia il prefab come figlio (INATTIVO per evitare Awake prematura)
+            bool originalPrefabState = structure.Prefab.activeSelf;
+            structure.Prefab.SetActive(false);
+
             GameObject visualChild = Instantiate(structure.Prefab, currentPreview.transform);
             visualChild.name = "Visual";
+
+            // Ripristina stato originale del prefab
+            structure.Prefab.SetActive(originalPrefabState);
             
             // 3. Calcola l'offset per centrare il visual sul parent
             Renderer[] renderers = visualChild.GetComponentsInChildren<Renderer>();
@@ -213,13 +219,15 @@ namespace WildernessSurvival.Gameplay.Structures
                 col.enabled = false;
 
             // ═══════════════════════════════════════════════════════════
-            // DISABILITA COMPONENTI CHE NON DEVONO ESSERE ATTIVI NEL PREVIEW
+            // CONFIGURA PREVIEW (mentre è ancora inattivo)
             // ═══════════════════════════════════════════════════════════
 
-            // Disabilita StructureController (impedisce inizializzazione)
+            // Marca la struttura come preview PRIMA di attivarla
+            // Questo impedisce l'inizializzazione e la registrazione con il Foreman
             var structureController = visualChild.GetComponent<StructureController>();
             if (structureController != null)
             {
+                structureController.IsPreview = true;
                 structureController.enabled = false;
             }
 
@@ -236,6 +244,9 @@ namespace WildernessSurvival.Gameplay.Structures
             {
                 uiContainer.gameObject.SetActive(false);
             }
+
+            // Ora è sicuro attivare il visualChild (IsPreview è già true)
+            visualChild.SetActive(true);
 
             if (debugMode)
                 Debug.Log($"[BuildMode] Selected: {structure.DisplayName}");

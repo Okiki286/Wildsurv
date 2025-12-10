@@ -209,8 +209,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c9309bd6b293af346b000f5ea986d852, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  fullBodyRenderer: {fileID: 4346258105234162880}
   headRenderer: {fileID: 0}
-  bodyRenderer: {fileID: 4346258105234162880}
+  bodyRenderer: {fileID: 0}
   legsRenderer: {fileID: 0}
   tintableRenderers: []
   colorPropertyNames:
@@ -252,7 +253,7 @@ MonoBehaviour:
   rightHandSocket: {fileID: 0}
   leftHandSocket: {fileID: 0}
   defaultToolSide: 1
-  debugToolPrefab: {fileID: 0}
+  debugToolPrefab: {fileID: 919132149155446097, guid: e5bb741599bcc324b80d0fa4450e6d38, type: 3}
 --- !u!114 &4653219654630904167
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -18,6 +18,12 @@ namespace WildernessSurvival.Gameplay.Structures
         [AssetsOnly]
         [SerializeField] private StructureData structureData;
 
+        /// <summary>
+        /// Flag per indicare se questa è una preview (build mode) e non una struttura reale
+        /// </summary>
+        [HideInInspector]
+        public bool IsPreview = false;
+
         [BoxGroup("Setup/Components")]
         [ChildGameObjectsOnly]
         [SerializeField] private Transform visualRoot;
@@ -156,6 +162,12 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private void Awake()
         {
+            // Se è una preview (build mode), non inizializzare
+            if (IsPreview)
+            {
+                return;
+            }
+
             if (structureData == null)
             {
                 Debug.LogError($"[StructureController] {gameObject.name} has no StructureData!", this);
@@ -182,6 +194,15 @@ namespace WildernessSurvival.Gameplay.Structures
             if (!IsAlive) return;
             UpdateState();
             UpdateProduction();
+        }
+
+        private void OnDestroy()
+        {
+            // Cleanup: unregister from Foreman if needed
+            if (WorkerSystem.Instance != null)
+            {
+                WorkerSystem.Instance.UnregisterStructureNeedingBuilders(this);
+            }
         }
 
         // ============================================
@@ -257,28 +278,51 @@ namespace WildernessSurvival.Gameplay.Structures
         {
             if (currentState == newState) return;
             Debug.Log($"<color=orange>[Structure]</color> {structureData.DisplayName}: {currentState} → {newState}");
+
+            StructureState previousState = currentState;
             currentState = newState;
-            OnStateChanged(newState);
+            OnStateChanged(newState, previousState);
         }
 
-        private void OnStateChanged(StructureState newState)
+        private void OnStateChanged(StructureState newState, StructureState previousState)
         {
             switch (newState)
             {
                 case StructureState.Building:
                     isOperational = false;
                     ApplyConstructionVisuals();
+
+                    // Notify Foreman: structure needs builders (event-driven)
+                    if (structureData.RequiresBuilder && WorkerSystem.Instance != null)
+                    {
+                        WorkerSystem.Instance.RegisterStructureNeedingBuilders(this);
+                    }
                     break;
+
                 case StructureState.Operating:
                     isOperational = true;
                     ApplyNormalVisuals();
                     RecalculateProduction();
+
+                    // Notify Foreman: structure no longer needs builders (event-driven)
+                    if (previousState == StructureState.Building && WorkerSystem.Instance != null)
+                    {
+                        WorkerSystem.Instance.UnregisterStructureNeedingBuilders(this);
+                    }
                     break;
+
                 case StructureState.Damaged:
                     ApplyDamagedVisuals();
                     break;
+
                 case StructureState.Destroyed:
                     isOperational = false;
+
+                    // Notify Foreman: structure destroyed, no longer needs builders (event-driven)
+                    if (WorkerSystem.Instance != null)
+                    {
+                        WorkerSystem.Instance.UnregisterStructureNeedingBuilders(this);
+                    }
                     OnStructureDestroyed();
                     break;
             }
