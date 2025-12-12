@@ -37,6 +37,11 @@ namespace WildernessSurvival.Gameplay.Structures
         [AssetsOnly]
         [SerializeField] private Material invalidPlacementMaterial;
 
+        [BoxGroup("Setup/Footprint Preview")]
+        [Required("Footprint renderer component")]
+        [ChildGameObjectsOnly]
+        [SerializeField] private FootprintPreviewRenderer footprintRenderer;
+
         [TitleGroup("Grid Settings")]
         [MinValue(0.5f)]
         [SuffixLabel("meters", true)]
@@ -45,12 +50,15 @@ namespace WildernessSurvival.Gameplay.Structures
         [SerializeField] private LayerMask groundLayer;
 
         [TitleGroup("Input")]
-        [InfoBox("Keyboard shortcuts for build mode")]
+        [InfoBox("Keyboard shortcuts: B=toggle, Q=rotate CCW, E=rotate CW")]
         [EnumToggleButtons]
         [SerializeField] private KeyCode toggleBuildKey = KeyCode.B;
 
         [EnumToggleButtons]
-        [SerializeField] private KeyCode rotateKey = KeyCode.R;
+        [SerializeField] private KeyCode rotateCWKey = KeyCode.E;
+
+        [EnumToggleButtons]
+        [SerializeField] private KeyCode rotateCCWKey = KeyCode.Q;
 
         [TitleGroup("Debug")]
         [ToggleLeft]
@@ -74,8 +82,24 @@ namespace WildernessSurvival.Gameplay.Structures
 
         [ShowInInspector, ReadOnly]
         [BoxGroup("Runtime Status")]
-        [Range(0, 270)]
-        private int currentRotation = 0; // 0, 90, 180, 270
+        [Range(0, 3)]
+        private int rotationStep = 0; // 0..3 → 0°, 90°, 180°, 270°
+
+        private struct PlacementPose
+        {
+            public Vector3 worldPos;
+            public Vector2Int cell;
+            public int rotation;
+            public Vector2Int size;
+        }
+
+        private PlacementPose lastPose;
+
+        // Anti double-apply centering flag
+        private bool ghostCenteringApplied = false;
+
+        // Cached prefab reference
+        private GameObject currentPrefabForCentering = null;
 
         // ============================================
         // UNITY LIFECYCLE
@@ -101,10 +125,14 @@ namespace WildernessSurvival.Gameplay.Structures
 
             if (!isBuildModeActive) return;
 
-            // Rotate preview
-            if (Input.GetKeyDown(rotateKey))
+            // Rotate preview with Q/E keys
+            if (Input.GetKeyDown(rotateCWKey))
             {
-                RotatePreview();
+                RotatePreview(1); // Clockwise (+90°)
+            }
+            else if (Input.GetKeyDown(rotateCCWKey))
+            {
+                RotatePreview(-1); // Counter-clockwise (-90°)
             }
 
             // Update preview position
@@ -155,8 +183,16 @@ namespace WildernessSurvival.Gameplay.Structures
                 currentPreview = null;
             }
 
+            // Nascondi footprint
+            if (footprintRenderer != null)
+            {
+                footprintRenderer.HideFootprint();
+            }
+
             selectedStructure = null;
-            currentRotation = 0;
+            rotationStep = 0;
+            ghostCenteringApplied = false;
+            currentPrefabForCentering = null;
 
             if (debugMode)
                 Debug.Log("[BuildMode] Build mode deactivated");
@@ -174,7 +210,9 @@ namespace WildernessSurvival.Gameplay.Structures
             }
 
             selectedStructure = structure;
-            currentRotation = 0;
+            rotationStep = 0;
+            ghostCenteringApplied = false;
+            currentPrefabForCentering = structure.Prefab;
 
             // Distruggi preview esistente
             if (currentPreview != null)
@@ -196,21 +234,32 @@ namespace WildernessSurvival.Gameplay.Structures
 
             // Ripristina stato originale del prefab
             structure.Prefab.SetActive(originalPrefabState);
-            
-            // 3. Calcola l'offset per centrare il visual sul parent
-            Renderer[] renderers = visualChild.GetComponentsInChildren<Renderer>();
-            if (renderers.Length > 0)
+
+            // 3. Trova il VisualRoot e applica centering con CACHE e ANTI-DOUBLE-APPLY
+            Transform ghostVisualRoot = StructureVisualCenteringUtility.FindVisualRoot(visualChild);
+            if (ghostVisualRoot != null)
             {
-                Bounds combinedBounds = renderers[0].bounds;
-                for (int i = 1; i < renderers.Length; i++)
-                {
-                    combinedBounds.Encapsulate(renderers[i].bounds);
-                }
-                
-                // Offset il visual per centrare i bounds sul parent (0,0,0 locale)
-                Vector3 centerOffset = visualChild.transform.position - combinedBounds.center;
-                centerOffset.y = 0; // Mantieni Y
-                visualChild.transform.localPosition = centerOffset;
+                Vector3 originalLocalPos = ghostVisualRoot.localPosition;
+
+                // Usa GetOrComputeCenteringLocalDelta con cache
+                Vector3 deltaLocal = StructureVisualCenteringUtility.GetOrComputeCenteringLocalDelta(
+                    currentPreview.transform,  // root
+                    ghostVisualRoot,           // visualRoot
+                    currentPrefabForCentering, // prefab
+                    rotationStep               // rotation 0..3
+                );
+
+                // Applica UNA SOLA VOLTA usando flag
+                StructureVisualCenteringUtility.ApplyCenteringOnce(
+                    ghostVisualRoot,
+                    originalLocalPos,
+                    deltaLocal,
+                    ref ghostCenteringApplied
+                );
+            }
+            else
+            {
+                Debug.LogWarning($"[BuildMode] Could not find VisualRoot in ghost for {structure.StructureId}");
             }
 
             // Disabilita collider sul preview
@@ -272,7 +321,7 @@ namespace WildernessSurvival.Gameplay.Structures
                     return;
                 }
             }
-            
+
             Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
 
             if (Physics.Raycast(ray, out RaycastHit hit, 1000f, groundLayer))
@@ -280,9 +329,51 @@ namespace WildernessSurvival.Gameplay.Structures
                 Vector3 snappedPos = SnapToGrid(hit.point);
                 currentPreview.transform.position = snappedPos;
 
+                lastPose = new PlacementPose
+                {
+                    worldPos = snappedPos,
+                    cell = new Vector2Int(Mathf.RoundToInt(snappedPos.x / gridSize), Mathf.RoundToInt(snappedPos.z / gridSize)),
+                    rotation = rotationStep * 90, // Convert step to degrees
+                    size = selectedStructure != null ? selectedStructure.GridSize : Vector2Int.one
+                };
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                if (debugMode && Input.GetKeyDown(KeyCode.P))
+                {
+                    Transform visualChild = currentPreview.transform.childCount > 0 ? currentPreview.transform.GetChild(0) : null;
+                    Debug.Log($"[BuildMode] ═══ GHOST STATUS ═══\n" +
+                              $"Ghost worldPos: {lastPose.worldPos}\n" +
+                              $"Ghost cell: {lastPose.cell}\n" +
+                              $"Ghost root position: {currentPreview.transform.position}\n" +
+                              $"Ghost visualChild: {(visualChild != null ? visualChild.name : "null")}\n" +
+                              $"Ghost visualChild.localPos: {(visualChild != null ? visualChild.localPosition.ToString() : "null")}\n" +
+                              $"Ghost visualChild.worldPos: {(visualChild != null ? visualChild.position.ToString() : "null")}");
+                }
+#endif
+
                 // Valida placement
                 bool isValid = ValidatePlacement(snappedPos);
                 UpdatePreviewMaterial(isValid);
+
+                // Aggiorna footprint preview
+                if (footprintRenderer != null && selectedStructure != null)
+                {
+                    footprintRenderer.UpdateFootprint(
+                        lastPose.cell,
+                        selectedStructure.GridSize,
+                        rotationStep,
+                        gridSize,
+                        isValid
+                    );
+                }
+            }
+            else
+            {
+                // Nasconde footprint se non c'è raycast hit
+                if (footprintRenderer != null)
+                {
+                    footprintRenderer.HideFootprint();
+                }
             }
         }
 
@@ -297,15 +388,48 @@ namespace WildernessSurvival.Gameplay.Structures
             }
         }
 
-        private void RotatePreview()
+        private void RotatePreview(int direction)
         {
             if (currentPreview == null) return;
 
-            currentRotation = (currentRotation + 90) % 360;
-            currentPreview.transform.rotation = Quaternion.Euler(0, currentRotation, 0);
+            // Update rotation step (0..3)
+            rotationStep = (rotationStep + direction + 4) % 4;
+
+            // Apply rotation
+            int degrees = rotationStep * 90;
+            currentPreview.transform.rotation = Quaternion.Euler(0, degrees, 0);
+
+            // Reset centering flag (rotazione cambia bounds, serve ricalcolo)
+            ghostCenteringApplied = false;
+
+            // Ricalcola e riapplica centering con nuova rotazione
+            Transform visualChild = currentPreview.transform.childCount > 0 ? currentPreview.transform.GetChild(0) : null;
+            if (visualChild != null)
+            {
+                Transform ghostVisualRoot = StructureVisualCenteringUtility.FindVisualRoot(visualChild.gameObject);
+                if (ghostVisualRoot != null)
+                {
+                    Vector3 originalLocalPos = ghostVisualRoot.localPosition;
+
+                    // Usa cache con nuovo rotationStep
+                    Vector3 deltaLocal = StructureVisualCenteringUtility.GetOrComputeCenteringLocalDelta(
+                        currentPreview.transform,
+                        ghostVisualRoot,
+                        currentPrefabForCentering,
+                        rotationStep
+                    );
+
+                    StructureVisualCenteringUtility.ApplyCenteringOnce(
+                        ghostVisualRoot,
+                        originalLocalPos,
+                        deltaLocal,
+                        ref ghostCenteringApplied
+                    );
+                }
+            }
 
             if (debugMode)
-                Debug.Log($"[BuildMode] Rotated to {currentRotation}°");
+                Debug.Log($"[BuildMode] Rotated to {degrees}° (step {rotationStep})");
         }
 
         /// <summary>
@@ -339,7 +463,22 @@ namespace WildernessSurvival.Gameplay.Structures
             if (selectedStructure == null || currentPreview == null)
                 return;
 
-            Vector3 position = currentPreview.transform.position;
+            Vector3 position = lastPose.worldPos;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (debugMode)
+            {
+                Transform ghostVisualChild = currentPreview.transform.childCount > 0 ? currentPreview.transform.GetChild(0) : null;
+                Transform ghostVisualRoot = ghostVisualChild != null ? StructureVisualCenteringUtility.FindVisualRoot(ghostVisualChild.gameObject) : null;
+
+                Debug.Log($"[BuildMode] ═══ PLACEMENT REQUEST ═══\n" +
+                          $"Ghost root worldPos: {lastPose.worldPos}\n" +
+                          $"Ghost cell: {lastPose.cell}\n" +
+                          $"Ghost visualRoot.localPos: {(ghostVisualRoot != null ? ghostVisualRoot.localPosition.ToString() : "null")}\n" +
+                          $"Rotation: {lastPose.rotation}\n" +
+                          $"Size: {lastPose.size}");
+            }
+#endif
 
             // Valida placement
             if (!ValidatePlacement(position))
@@ -370,7 +509,7 @@ namespace WildernessSurvival.Gameplay.Structures
             // ========== PLACEMENT ESEGUITO ==========
 
             // Place structure via StructureSystem
-            Quaternion rotation = Quaternion.Euler(0, currentRotation, 0);
+            Quaternion rotation = Quaternion.Euler(0, rotationStep * 90, 0);
             StructureSystem.Instance.SpawnStructure(selectedStructure, position, rotation);
 
             if (debugMode)
@@ -383,11 +522,11 @@ namespace WildernessSurvival.Gameplay.Structures
             if (!Physics.Raycast(position + Vector3.up * 10f, Vector3.down, 15f, groundLayer))
                 return false;
 
-            // Usa ValidatePlacement di StructureSystem (già esistente)
+            // Usa ValidatePlacement di StructureSystem con rotazione
             if (StructureSystem.Instance == null)
                 return false;
 
-            return StructureSystem.Instance.ValidatePlacement(selectedStructure, position);
+            return StructureSystem.Instance.ValidatePlacement(selectedStructure, position, rotationStep);
         }
 
         // ============================================

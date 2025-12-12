@@ -6,7 +6,13 @@
       "Bash(git commit:*)",
       "Bash(git checkout:*)",
       "Bash(git stash:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(del \"\\?\\C:\\Users\\riku2\\Desktop\\Wild\\WildernessClean\\WildernessClean\\nul\")",
+      "Bash(del \"\\?\\C:\\Users\\riku2\\Desktop\\Wild\\WildernessClean\\WildernessClean\\Assets\\nul\")",
+      "Bash(powershell -Command:*)"
     ],
     "deny": [],
     "ask": []

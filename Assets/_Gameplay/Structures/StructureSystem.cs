@@ -202,8 +202,13 @@ namespace WildernessSurvival.Gameplay.Structures
                 return null;
             }
 
-            // Snap a griglia
-            Vector3 snappedPos = SnapToGrid(position);
+            // NON resnappare: position arriva già snapped dal BuildModeController
+            Vector3 snappedPos = position;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"[StructureSystem] ═══ SPAWN TRACKING ═══\n" +
+                      $"1. Requested position (pre-snapped): {position}");
+#endif
 
             // Validazione placement
             if (!ValidatePlacement(data, snappedPos))
@@ -215,10 +220,38 @@ namespace WildernessSurvival.Gameplay.Structures
             // Instantiate
             GameObject structureObj = Instantiate(data.Prefab, snappedPos, rotation == default ? Quaternion.identity : rotation);
             structureObj.name = $"Structure_{data.DisplayName}";
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Vector3 posAfterInstantiate = structureObj.transform.position;
+            Debug.Log($"3. After Instantiate: {posAfterInstantiate}\n" +
+                      $"   Delta vs snapped: {posAfterInstantiate - snappedPos}");
+#endif
+
             structureObj.transform.SetParent(transform);
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Vector3 posAfterSetParent = structureObj.transform.position;
+            Debug.Log($"4. After SetParent: {posAfterSetParent}\n" +
+                      $"   Delta vs snapped: {posAfterSetParent - snappedPos}");
+#endif
+
             // 🔧 CENTRA PIVOT: Stesso algoritmo del preview
-            CenterStructurePivot(structureObj);
+            // TEMPORANEAMENTE DISABILITATO per diagnosticare offset spawn vs ghost
+            // CenterStructurePivot(structureObj);
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Vector3 posAfterCenterPivot = structureObj.transform.position;
+            Debug.Log($"5. After CenterStructurePivot: {posAfterCenterPivot}\n" +
+                      $"   Delta vs snapped: {posAfterCenterPivot - snappedPos}\n" +
+                      $"   ═══════════════════════════════\n" +
+                      $"   TOTAL DELTA (ghost → spawn): {posAfterCenterPivot - position}");
+
+            float posDiff = Vector3.Distance(position, posAfterCenterPivot);
+            if (posDiff > 0.01f)
+            {
+                Debug.LogWarning($"[StructureSystem] ⚠️ POSITION MISMATCH: Ghost={position}, Spawn={posAfterCenterPivot}, Diff={posDiff:F4}");
+            }
+#endif
 
             // Setup controller
             StructureController controller = structureObj.GetComponent<StructureController>();
@@ -442,6 +475,26 @@ namespace WildernessSurvival.Gameplay.Structures
 
             // 3. Verifica risorse (gestito esternamente da BuildMode)
             return true;
+        }
+
+        /// <summary>
+        /// Valida placement con supporto rotazione (0..3 per 0°, 90°, 180°, 270°)
+        /// </summary>
+        public bool ValidatePlacement(StructureData data, Vector3 position, int rotationStep)
+        {
+            Vector2Int effectiveSize = GetRotatedSize(data.GridSize, rotationStep);
+            if (!IsGroundValid(position, effectiveSize)) return false;
+            if (HasOverlap(position, effectiveSize)) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// Calcola dimensione effettiva con rotazione (swap X/Y per 90°/270°)
+        /// </summary>
+        private Vector2Int GetRotatedSize(Vector2Int originalSize, int rotationStep)
+        {
+            if (rotationStep % 2 == 1) return new Vector2Int(originalSize.y, originalSize.x);
+            return originalSize;
         }
 
         /// <summary>

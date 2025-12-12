@@ -1,12 +1,19 @@
-using UnityEngine;
 using Sirenix.OdinInspector;
 using System.Collections.Generic;
+using UnityEngine;
 using WildernessSurvival.Gameplay.Resources;
 using WildernessSurvival.Gameplay.Workers;
 using WildernessSurvival.UI;
 
 namespace WildernessSurvival.Gameplay.Structures
 {
+    public enum ConstructionVisualMode
+    {
+        None,
+        OverlayFlatten,
+        GrowFromFlat
+    }
+
     public class StructureController : MonoBehaviour
     {
         // ============================================
@@ -150,6 +157,42 @@ namespace WildernessSurvival.Gameplay.Structures
         private GameObject currentVFX;
         private Renderer[] renderers;
         private Material[] originalMaterials;
+
+        // ============================================
+        // CONSTRUCTION VISUAL
+        // ============================================
+
+        [Header("Construction Visual Mode")]
+        [SerializeField]
+        private ConstructionVisualMode constructionVisualMode = ConstructionVisualMode.GrowFromFlat;
+
+        [SerializeField, Min(0.01f)]
+        private float flatStartYScale = 0.05f;
+
+        [Header("Construction Overlay (OverlayFlatten Mode)")]
+        [SerializeField]
+        private Transform constructionOverlayRoot;
+
+        [SerializeField]
+        private float overlayDarken = 0.35f;
+
+        [SerializeField]
+        private float overlayDesaturate = 0.75f;
+
+        private MaterialPropertyBlock overlayMPB;
+        private float totalHeight;
+        private float baseHeight;
+        private bool overlayInitialized;
+
+        private Vector3 initialVisualRootLocalPos;
+        private Vector3 initialVisualRootLocalScale;
+        private bool growFromFlatInitialized;
+
+        private float lastAppliedProgress = -1f;
+        private int lastAppliedFrame = -1;
+
+        // Anti double-apply centering flag (runtime)
+        private bool runtimeCenteringApplied = false;
 
         // ============================================
         // PROPERTIES
@@ -381,6 +424,8 @@ namespace WildernessSurvival.Gameplay.Structures
             buildProgress += progressDelta;
             buildTimeRemaining -= Time.deltaTime * buildSpeed;
 
+            UpdateConstructionProgressVisual(buildProgress);
+
             if (buildProgress >= 1f)
             {
                 CompleteConstruction();
@@ -433,6 +478,8 @@ namespace WildernessSurvival.Gameplay.Structures
 
             float progressDelta = (currentBuildSpeed / structureData.BuildTime) * deltaTime;
             buildProgress += progressDelta;
+
+            UpdateConstructionProgressVisual(buildProgress);
 
             if (currentBuildSpeed > 0)
             {
@@ -725,11 +772,86 @@ namespace WildernessSurvival.Gameplay.Structures
         private void ApplyConstructionVisuals()
         {
             SpawnVFX("construction");
+
+            lastAppliedProgress = -1f;
+            lastAppliedFrame = -1;
+
+            if (constructionVisualMode == ConstructionVisualMode.GrowFromFlat)
+            {
+                // =================================================================================
+                // [MODIFICA] Logica di centraggio avanzata con supporto rotazione e prefab delta
+                // =================================================================================
+                if (visualRoot != null && structureData != null && structureData.Prefab != null)
+                {
+                    Vector3 originalLocalPos = visualRoot.localPosition;
+
+                    // Calcola lo step di rotazione (0, 1, 2, 3) basato sull'asse Y
+                    int rotationStep = Mathf.RoundToInt(transform.rotation.eulerAngles.y / 90f) % 4;
+
+                    // Gestione rotazioni negative
+                    if (rotationStep < 0) rotationStep += 4;
+
+                    // Calcola il delta necessario per centrare la visuale rispetto al pivot logico
+                    Vector3 deltaLocal = StructureVisualCenteringUtility.GetOrComputeCenteringLocalDelta(
+                        transform,
+                        visualRoot,
+                        structureData.Prefab,
+                        rotationStep
+                    );
+
+                    // Applica il centraggio UNA SOLA VOLTA usando il flag ref
+                    StructureVisualCenteringUtility.ApplyCenteringOnce(
+                        visualRoot,
+                        originalLocalPos,
+                        deltaLocal,
+                        ref runtimeCenteringApplied
+                    );
+                }
+                // =================================================================================
+
+                InitializeGrowFromFlat();
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                if (visualRoot != null)
+                {
+                    Debug.Log($"[Structure] ═══ SPAWN VISUAL ROOT ═══\n" +
+                              $"After Centering + InitializeGrowFromFlat:\n" +
+                              $"  root.position: {transform.position}\n" +
+                              $"  visualRoot.localPosition: {visualRoot.localPosition}\n" +
+                              $"  Rotation Step: {Mathf.RoundToInt(transform.rotation.eulerAngles.y / 90f) % 4}\n" +
+                              $"  Centering Applied: {runtimeCenteringApplied}");
+                }
+#endif
+            }
+            else if (constructionVisualMode == ConstructionVisualMode.OverlayFlatten)
+            {
+                CreateConstructionOverlay();
+            }
+
+            UpdateConstructionProgressVisual(0f);
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (visualRoot != null && constructionVisualMode == ConstructionVisualMode.GrowFromFlat)
+            {
+                Debug.Log($"[Structure] After UpdateConstructionProgressVisual(0):\n" +
+                          $"  visualRoot.localPosition: {visualRoot.localPosition}\n" +
+                          $"  visualRoot.position: {visualRoot.position}");
+            }
+#endif
         }
 
         private void ApplyNormalVisuals()
         {
             DestroyCurrentVFX();
+
+            if (constructionVisualMode == ConstructionVisualMode.GrowFromFlat)
+            {
+                ResetGrowFromFlat();
+            }
+            else if (constructionVisualMode == ConstructionVisualMode.OverlayFlatten)
+            {
+                DestroyConstructionOverlay();
+            }
         }
 
         private void ApplyDamagedVisuals() { }
@@ -749,6 +871,248 @@ namespace WildernessSurvival.Gameplay.Structures
             {
                 Destroy(currentVFX);
             }
+        }
+
+        // ============================================
+        // CONSTRUCTION VISUAL METHODS (OVERLAY APPROACH)
+        // ============================================
+
+        private void CreateConstructionOverlay()
+        {
+            if (overlayInitialized || visualRoot == null) return;
+
+            if (constructionOverlayRoot == null)
+            {
+                GameObject overlayObj = new GameObject("ConstructionOverlayRoot");
+                constructionOverlayRoot = overlayObj.transform;
+                constructionOverlayRoot.SetParent(transform, false);
+                constructionOverlayRoot.localPosition = Vector3.zero;
+                constructionOverlayRoot.localRotation = Quaternion.identity;
+                constructionOverlayRoot.localScale = Vector3.one;
+
+                GameObject visualCopy = Instantiate(visualRoot.gameObject, constructionOverlayRoot);
+                visualCopy.name = "OverlayVisual";
+
+                Component[] components = visualCopy.GetComponentsInChildren<Component>(true);
+                foreach (var comp in components)
+                {
+                    if (comp == null || comp is Transform || comp is MeshFilter || comp is Renderer)
+                        continue;
+
+                    if (comp is MonoBehaviour || comp is Collider)
+                    {
+                        Destroy(comp);
+                    }
+                }
+            }
+
+            if (overlayMPB == null)
+            {
+                overlayMPB = new MaterialPropertyBlock();
+            }
+
+            Renderer[] overlayRenderers = constructionOverlayRoot.GetComponentsInChildren<Renderer>();
+            foreach (var r in overlayRenderers)
+            {
+                if (r == null) continue;
+
+                Material[] mats = r.sharedMaterials;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    if (mats[i] == null) continue;
+
+                    r.GetPropertyBlock(overlayMPB, i);
+
+                    Color darkenedColor = Color.white;
+                    bool foundColorProp = false;
+
+                    if (mats[i].HasProperty("_BaseColor"))
+                    {
+                        darkenedColor = mats[i].GetColor("_BaseColor");
+                        foundColorProp = true;
+                    }
+                    else if (mats[i].HasProperty("_Color"))
+                    {
+                        darkenedColor = mats[i].GetColor("_Color");
+                        foundColorProp = true;
+                    }
+
+                    if (foundColorProp)
+                    {
+                        float gray = darkenedColor.r * 0.299f + darkenedColor.g * 0.587f + darkenedColor.b * 0.114f;
+                        darkenedColor.r = Mathf.Lerp(darkenedColor.r, gray, overlayDesaturate);
+                        darkenedColor.g = Mathf.Lerp(darkenedColor.g, gray, overlayDesaturate);
+                        darkenedColor.b = Mathf.Lerp(darkenedColor.b, gray, overlayDesaturate);
+
+                        darkenedColor.r *= (1f - overlayDarken);
+                        darkenedColor.g *= (1f - overlayDarken);
+                        darkenedColor.b *= (1f - overlayDarken);
+
+                        if (mats[i].HasProperty("_BaseColor"))
+                        {
+                            overlayMPB.SetColor("_BaseColor", darkenedColor);
+                        }
+                        else if (mats[i].HasProperty("_Color"))
+                        {
+                            overlayMPB.SetColor("_Color", darkenedColor);
+                        }
+                    }
+
+                    if (mats[i].HasProperty("_EmissionColor"))
+                    {
+                        overlayMPB.SetColor("_EmissionColor", Color.black);
+                    }
+
+                    r.SetPropertyBlock(overlayMPB, i);
+                }
+            }
+
+            Renderer[] originalRenderers = visualRoot.GetComponentsInChildren<Renderer>();
+            bool hasBounds = false;
+            Bounds totalBounds = new Bounds();
+
+            foreach (var r in originalRenderers)
+            {
+                if (r == null) continue;
+
+                if (!hasBounds)
+                {
+                    totalBounds = r.bounds;
+                    hasBounds = true;
+                }
+                else
+                {
+                    totalBounds.Encapsulate(r.bounds);
+                }
+            }
+
+            if (hasBounds)
+            {
+                baseHeight = totalBounds.min.y;
+                totalHeight = totalBounds.size.y;
+            }
+
+            overlayInitialized = true;
+        }
+
+        public void UpdateConstructionProgressVisual(float progress01)
+        {
+            progress01 = Mathf.Clamp01(progress01);
+
+            if (lastAppliedFrame == Time.frameCount)
+            {
+                return;
+            }
+
+            if (Mathf.Abs(progress01 - lastAppliedProgress) < 0.001f)
+            {
+                return;
+            }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (progress01 + 0.0001f < lastAppliedProgress)
+            {
+                Debug.LogWarning($"[StructureController] Progress decreased: {lastAppliedProgress:F4} -> {progress01:F4} on {gameObject.name}");
+            }
+#endif
+
+            lastAppliedFrame = Time.frameCount;
+            lastAppliedProgress = progress01;
+
+            if (constructionVisualMode == ConstructionVisualMode.GrowFromFlat)
+            {
+                UpdateGrowFromFlat(progress01);
+            }
+            else if (constructionVisualMode == ConstructionVisualMode.OverlayFlatten)
+            {
+                UpdateOverlayFlatten(progress01);
+            }
+        }
+
+        private void UpdateOverlayFlatten(float progress01)
+        {
+            if (constructionOverlayRoot == null) return;
+
+            float remainingHeight = 1f - progress01;
+
+            if (remainingHeight <= 0.001f)
+            {
+                constructionOverlayRoot.gameObject.SetActive(false);
+                return;
+            }
+
+            constructionOverlayRoot.gameObject.SetActive(true);
+
+            Vector3 localScale = constructionOverlayRoot.localScale;
+            localScale.y = remainingHeight;
+            constructionOverlayRoot.localScale = localScale;
+
+            Vector3 localPos = constructionOverlayRoot.localPosition;
+            localPos.y = totalHeight * progress01;
+            constructionOverlayRoot.localPosition = localPos;
+        }
+
+        private void DestroyConstructionOverlay()
+        {
+            if (constructionOverlayRoot != null)
+            {
+                Destroy(constructionOverlayRoot.gameObject);
+                constructionOverlayRoot = null;
+            }
+
+            overlayInitialized = false;
+        }
+
+        private void InitializeGrowFromFlat()
+        {
+            if (growFromFlatInitialized || visualRoot == null) return;
+
+            initialVisualRootLocalPos = visualRoot.localPosition;
+            initialVisualRootLocalScale = visualRoot.localScale;
+
+            growFromFlatInitialized = true;
+        }
+
+        private void UpdateGrowFromFlat(float progress01)
+        {
+            if (visualRoot == null || !growFromFlatInitialized) return;
+
+            float currentYScale = Mathf.Lerp(flatStartYScale, 1f, progress01);
+
+            visualRoot.localScale = new Vector3(
+                initialVisualRootLocalScale.x,
+                initialVisualRootLocalScale.y * currentYScale,
+                initialVisualRootLocalScale.z
+            );
+
+            float scaleRatio = currentYScale;
+            float heightLoss = (1f - scaleRatio) * initialVisualRootLocalScale.y;
+            float offsetY = heightLoss * 0.5f;
+
+            Vector3 localPos = initialVisualRootLocalPos;
+            localPos.y += offsetY;
+            visualRoot.localPosition = localPos;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (Mathf.Abs(visualRoot.localPosition.x - initialVisualRootLocalPos.x) > 0.0001f ||
+                Mathf.Abs(visualRoot.localPosition.z - initialVisualRootLocalPos.z) > 0.0001f)
+            {
+                Debug.LogWarning($"[Structure] ⚠️ VisualRoot X/Z changed during GrowFromFlat!\n" +
+                                 $"  Expected X/Z: ({initialVisualRootLocalPos.x}, {initialVisualRootLocalPos.z})\n" +
+                                 $"  Actual X/Z: ({visualRoot.localPosition.x}, {visualRoot.localPosition.z})\n" +
+                                 $"  Progress: {progress01}");
+            }
+#endif
+        }
+
+        private void ResetGrowFromFlat()
+        {
+            if (visualRoot == null) return;
+
+            visualRoot.localScale = initialVisualRootLocalScale;
+            visualRoot.localPosition = initialVisualRootLocalPos;
+
+            growFromFlatInitialized = false;
         }
 
         // ============================================

@@ -115,6 +115,11 @@ MonoBehaviour:
   vfxSpawnPoint: {fileID: 0}
   workRadius: 1.5
   workSpots: []
+  constructionVisualMode: 2
+  flatStartYScale: 0.05
+  constructionOverlayRoot: {fileID: 0}
+  overlayDarken: 0.35
+  overlayDesaturate: 0.75
 --- !u!65 &1054085412293432845
 BoxCollider:
   m_ObjectHideFlags: 0
