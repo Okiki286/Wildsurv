@@ -11,7 +11,7 @@ namespace WildernessSurvival.Gameplay.Structures
     {
         [Header("Footprint Settings")]
         [SerializeField] private Material footprintMaterial;
-        [SerializeField] private float quadHeight = 0.05f;
+        [SerializeField] private float quadHeight = 0.02f; // Ridotto per stare sotto le basi delle strutture
         [SerializeField] private Color validColor = new Color(0f, 1f, 0f, 0.5f);
         [SerializeField] private Color invalidColor = new Color(1f, 0f, 0f, 0.5f);
 

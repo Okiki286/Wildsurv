@@ -15,7 +15,7 @@ MonoBehaviour:
   structureId: tower
   displayName: Tower
   icon: {fileID: 0}
-  prefab: {fileID: 8150784753976497756, guid: 6a029a58a1d58744f8fe76f638a9b314, type: 3}
+  prefab: {fileID: 1681672486973077575, guid: 68597010a0dfd3943b13c31bade925aa, type: 3}
   description: 
   category: 0
   tier: 1
@@ -41,6 +41,8 @@ MonoBehaviour:
   maxHealth: 100
   armor: 0
   gridSize: {x: 1, y: 1}
+  useCustomFootprint: 1
+  customFootprintSize: {x: 2, y: 2}
   upgrades: []
   baseMaterial: {fileID: 0}
   damagedMaterial: {fileID: 0}

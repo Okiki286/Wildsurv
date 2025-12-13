@@ -42,12 +42,15 @@ namespace WildernessSurvival.Gameplay.Structures
         [ChildGameObjectsOnly]
         [SerializeField] private FootprintPreviewRenderer footprintRenderer;
 
-        [TitleGroup("Grid Settings")]
-        [MinValue(0.5f)]
-        [SuffixLabel("meters", true)]
-        [SerializeField] private float gridSize = 2f;
+        // FIX1: Rimossa gridSize locale - usa StructureSystem.Instance.GridSize
+        // [SerializeField] private float gridSize = 2f;
 
+        [TitleGroup("Grid Settings")]
         [SerializeField] private LayerMask groundLayer;
+
+        [TitleGroup("Grid Settings")]
+        [Tooltip("Layer da usare per il preview ghost (deve essere diverso da Structures layer 9)")]
+        [SerializeField] private int previewLayer = 14; // Default: layer 14 "Preview"
 
         [TitleGroup("Input")]
         [InfoBox("Keyboard shortcuts: B=toggle, Q=rotate CCW, E=rotate CW")]
@@ -225,12 +228,18 @@ namespace WildernessSurvival.Gameplay.Structures
             // 1. Crea il parent wrapper (questo è quello che seguirà il mouse)
             currentPreview = new GameObject($"Preview_{structure.StructureId}");
 
+            // Imposta layer Preview su tutto il ghost per escluderlo da Physics.OverlapBox
+            SetLayerRecursively(currentPreview, previewLayer);
+
             // 2. Istanzia il prefab come figlio (INATTIVO per evitare Awake prematura)
             bool originalPrefabState = structure.Prefab.activeSelf;
             structure.Prefab.SetActive(false);
 
             GameObject visualChild = Instantiate(structure.Prefab, currentPreview.transform);
             visualChild.name = "Visual";
+
+            // Imposta layer Preview anche sul figlio appena istanziato
+            SetLayerRecursively(visualChild, previewLayer);
 
             // Ripristina stato originale del prefab
             structure.Prefab.SetActive(originalPrefabState);
@@ -322,17 +331,28 @@ namespace WildernessSurvival.Gameplay.Structures
                 }
             }
 
+            // FIX1: Verifica che StructureSystem sia disponibile
+            if (StructureSystem.Instance == null)
+            {
+                Debug.LogError("[BuildMode] StructureSystem.Instance is null!");
+                return;
+            }
+
             Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
 
             if (Physics.Raycast(ray, out RaycastHit hit, 1000f, groundLayer))
             {
-                Vector3 snappedPos = SnapToGrid(hit.point);
+                // FIX1: Usa SnapWorld() di StructureSystem (single source of truth)
+                Vector3 snappedPos = StructureSystem.Instance.SnapWorld(hit.point);
                 currentPreview.transform.position = snappedPos;
+
+                // FIX1: Usa WorldToCell() di StructureSystem
+                Vector2Int cell = StructureSystem.Instance.WorldToCell(snappedPos);
 
                 lastPose = new PlacementPose
                 {
                     worldPos = snappedPos,
-                    cell = new Vector2Int(Mathf.RoundToInt(snappedPos.x / gridSize), Mathf.RoundToInt(snappedPos.z / gridSize)),
+                    cell = cell,
                     rotation = rotationStep * 90, // Convert step to degrees
                     size = selectedStructure != null ? selectedStructure.GridSize : Vector2Int.one
                 };
@@ -343,6 +363,7 @@ namespace WildernessSurvival.Gameplay.Structures
                     Transform visualChild = currentPreview.transform.childCount > 0 ? currentPreview.transform.GetChild(0) : null;
                     Debug.Log($"[BuildMode] ═══ GHOST STATUS ═══\n" +
                               $"Ghost worldPos: {lastPose.worldPos}\n" +
+                              $"Ghost snappedPos: {snappedPos}\n" +
                               $"Ghost cell: {lastPose.cell}\n" +
                               $"Ghost root position: {currentPreview.transform.position}\n" +
                               $"Ghost visualChild: {(visualChild != null ? visualChild.name : "null")}\n" +
@@ -351,18 +372,19 @@ namespace WildernessSurvival.Gameplay.Structures
                 }
 #endif
 
-                // Valida placement
+                // FIX3: Valida placement usando IsAreaFree (occupancy grid, no Physics)
                 bool isValid = ValidatePlacement(snappedPos);
                 UpdatePreviewMaterial(isValid);
 
                 // Aggiorna footprint preview
+                // FIX1: Usa GridSize da StructureSystem
                 if (footprintRenderer != null && selectedStructure != null)
                 {
                     footprintRenderer.UpdateFootprint(
                         lastPose.cell,
                         selectedStructure.GridSize,
                         rotationStep,
-                        gridSize,
+                        StructureSystem.Instance.GridSize,
                         isValid
                     );
                 }
@@ -480,11 +502,10 @@ namespace WildernessSurvival.Gameplay.Structures
             }
 #endif
 
-            // Valida placement
+            // Valida placement (include grid check + physics overlap check)
             if (!ValidatePlacement(position))
             {
-                if (debugMode)
-                    Debug.LogWarning("[BuildMode] Invalid placement position!");
+                Debug.LogWarning($"[BuildMode] ❌ Cannot place {selectedStructure.DisplayName} - area occupied or overlapping!");
                 return;
             }
 
@@ -522,11 +543,32 @@ namespace WildernessSurvival.Gameplay.Structures
             if (!Physics.Raycast(position + Vector3.up * 10f, Vector3.down, 15f, groundLayer))
                 return false;
 
-            // Usa ValidatePlacement di StructureSystem con rotazione
             if (StructureSystem.Instance == null)
                 return false;
 
-            return StructureSystem.Instance.ValidatePlacement(selectedStructure, position, rotationStep);
+            if (selectedStructure == null)
+                return false;
+
+            // Usa ValidatePlacement di StructureSystem che include:
+            // 1. Grid-based check (occupancy grid)
+            // 2. Physics-based check (OverlapBox con structuresLayer + footprint collider se presente)
+            bool isValid = StructureSystem.Instance.ValidatePlacement(selectedStructure, position, rotationStep, currentPreview);
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (debugMode && Input.GetKeyDown(KeyCode.V))
+            {
+                Vector2Int originCell = StructureSystem.Instance.WorldToCell(position);
+                Vector2Int size = selectedStructure.GridSize;
+                Debug.Log($"[BuildMode] ═══ VALIDATION ═══\n" +
+                          $"Position: {position}\n" +
+                          $"Origin Cell: {originCell}\n" +
+                          $"Size: {size}\n" +
+                          $"RotStep: {rotationStep}\n" +
+                          $"IsValid (grid+physics): {isValid}");
+            }
+#endif
+
+            return isValid;
         }
 
         // ============================================
@@ -559,11 +601,26 @@ namespace WildernessSurvival.Gameplay.Structures
         // UTILS
         // ============================================
 
-        private Vector3 SnapToGrid(Vector3 position)
+        // FIX1: Rimosso SnapToGrid locale - usa StructureSystem.Instance.SnapWorld()
+
+        // ============================================
+        // LAYER UTILITY
+        // ============================================
+
+        /// <summary>
+        /// Imposta il layer su un GameObject e tutti i suoi figli ricorsivamente.
+        /// Usato per spostare il preview ghost su un layer separato (es. "Preview")
+        /// che viene ignorato dal Physics.OverlapBox di validazione.
+        /// </summary>
+        private void SetLayerRecursively(GameObject obj, int layer)
         {
-            float x = Mathf.Round(position.x / gridSize) * gridSize;
-            float z = Mathf.Round(position.z / gridSize) * gridSize;
-            return new Vector3(x, position.y, z);
+            if (obj == null) return;
+
+            obj.layer = layer;
+            foreach (Transform child in obj.transform)
+            {
+                SetLayerRecursively(child.gameObject, layer);
+            }
         }
 
         // ============================================

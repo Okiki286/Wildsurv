@@ -176,6 +176,16 @@ namespace WildernessSurvival.Gameplay.Structures
         [Tooltip("Dimensione griglia (1 = 1x1)")]
         [SerializeField] private Vector2Int gridSize = Vector2Int.one;
 
+        [TitleGroup("Footprint Override")]
+        [InfoBox("Se abilitato, usa questi valori per il physics overlap check invece di gridSize * cellSize")]
+        [ToggleLeft]
+        [SerializeField] private bool useCustomFootprint = false;
+
+        [ShowIf("useCustomFootprint")]
+        [LabelWidth(120)]
+        [Tooltip("Dimensione footprint in world units (XZ). Se zero, usa gridSize * cellSize")]
+        [SerializeField] private Vector2 customFootprintSize = Vector2.zero;
+
         // ============================================
         // UPGRADES
         // ============================================
@@ -235,6 +245,8 @@ namespace WildernessSurvival.Gameplay.Structures
         public int MaxHealth => maxHealth;
         public int Armor => armor;
         public Vector2Int GridSize => gridSize;
+        public bool UseCustomFootprint => useCustomFootprint;
+        public Vector2 CustomFootprintSize => customFootprintSize;
         public StructureUpgrade[] Upgrades => upgrades;
 
         // ============================================

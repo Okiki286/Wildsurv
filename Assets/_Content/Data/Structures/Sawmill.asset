@@ -15,7 +15,7 @@ MonoBehaviour:
   structureId: sawmill
   displayName: Sawmill
   icon: {fileID: 0}
-  prefab: {fileID: 6308903815699075732, guid: 5ad87e6b3db6a1745a2078b27be25a07, type: 3}
+  prefab: {fileID: 6978889324259681306, guid: ea40a0bcf62b4b84eab10e340fd13707, type: 3}
   description: 
   category: 0
   tier: 1
@@ -39,6 +39,8 @@ MonoBehaviour:
   maxHealth: 100
   armor: 0
   gridSize: {x: 1, y: 1}
+  useCustomFootprint: 1
+  customFootprintSize: {x: 2, y: 2}
   upgrades: []
   baseMaterial: {fileID: 0}
   damagedMaterial: {fileID: 0}

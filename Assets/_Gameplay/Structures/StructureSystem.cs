@@ -40,10 +40,33 @@ namespace WildernessSurvival.Gameplay.Structures
         [Tooltip("Layer terreno per validazione")]
         [SerializeField] private LayerMask groundLayer = 1 << 8; // Layer "Ground"
 
+        [BoxGroup("Setup/Placement Settings")]
+        [LabelWidth(150)]
+        [Tooltip("Padding aggiuntivo (in world units) per impedire che strutture si tocchino. 0.15 = 15cm di gap minimo")]
+        [Range(0f, 1f)]
+        [SerializeField] private float overlapPadding = 0.15f;
+
+        /// <summary>
+        /// Epsilon fisso aggiunto sempre al padding per sicurezza (evita edge cases floating point)
+        /// </summary>
+        private const float OVERLAP_EPSILON = 0.02f;
+
+        [BoxGroup("Setup/Placement Settings")]
+        [LabelWidth(150)]
+        [Tooltip("Offset Y per mesh base per evitare z-fighting con terreno")]
+        [Range(0f, 0.1f)]
+        [SerializeField] private float baseYOffset = 0.01f;
+
         [BoxGroup("Setup/Production Settings")]
         [LabelWidth(150)]
         [Tooltip("Intervallo tick produzione globale")]
         [SerializeField] private float productionTickInterval = 1f;
+
+        // FIX2: Flag per disabilitare tick globale quando WorkerSystem gestisce i tick
+        [BoxGroup("Setup/Production Settings")]
+        [LabelWidth(150)]
+        [Tooltip("Se false, il tick globale produzione è disabilitato (WorkerSystem gestisce i tick)")]
+        [SerializeField] private bool enableGlobalProductionTick = false;
 
         // ============================================
         // RUNTIME STATE
@@ -89,6 +112,16 @@ namespace WildernessSurvival.Gameplay.Structures
         private float productionTimer = 0f;
 
         // ============================================
+        // FIX3: OCCUPANCY GRID (no Physics per placement)
+        // ============================================
+
+        // Mappa celle occupate -> struttura che le occupa
+        private Dictionary<Vector2Int, StructureController> _occupied = new Dictionary<Vector2Int, StructureController>();
+
+        // Lista temporanea per FreeArea (evita allocazioni, usata solo in destroy)
+        private readonly List<Vector2Int> _cellsToFree = new List<Vector2Int>(64);
+
+        // ============================================
         // PROPERTIES
         // ============================================
 
@@ -96,7 +129,284 @@ namespace WildernessSurvival.Gameplay.Structures
         public int OperationalStructures => operationalCount;
         public int BuildingStructures => buildingCount;
         public float GridSize => gridSize;
+        public float OverlapPadding => overlapPadding;
+        public float BaseYOffset => baseYOffset;
         public List<StructureController> AllStructures => allStructures;
+
+        // ============================================
+        // FIX1: GRID API UNIFICATA (Single Source of Truth)
+        // ============================================
+
+        /// <summary>
+        /// Converte coordinate world in coordinate cella griglia.
+        /// </summary>
+        public Vector2Int WorldToCell(Vector3 world)
+        {
+            int cellX = Mathf.RoundToInt(world.x / gridSize);
+            int cellZ = Mathf.RoundToInt(world.z / gridSize);
+            return new Vector2Int(cellX, cellZ);
+        }
+
+        /// <summary>
+        /// Converte coordinate cella in coordinate world (centro della cella).
+        /// </summary>
+        public Vector3 CellToWorld(Vector2Int cell)
+        {
+            float worldX = cell.x * gridSize;
+            float worldZ = cell.y * gridSize;
+            return new Vector3(worldX, 0f, worldZ);
+        }
+
+        /// <summary>
+        /// Snappa una posizione world alla griglia. Mantiene Y invariato.
+        /// </summary>
+        public Vector3 SnapWorld(Vector3 world)
+        {
+            float x = Mathf.Round(world.x / gridSize) * gridSize;
+            float z = Mathf.Round(world.z / gridSize) * gridSize;
+            return new Vector3(x, world.y, z);
+        }
+
+        /// <summary>
+        /// Ruota il footprint di una struttura.
+        /// rotStep 0..3 corrisponde a 0°, 90°, 180°, 270°.
+        /// Ai passi dispari (90°, 270°) X e Y vengono scambiati.
+        /// </summary>
+        public static Vector2Int RotateFootprint(Vector2Int size, int rotStep)
+        {
+            // Normalizza rotStep a 0..3
+            rotStep = ((rotStep % 4) + 4) % 4;
+            // Ai passi dispari (1, 3) scambia X e Y
+            if (rotStep % 2 == 1)
+            {
+                return new Vector2Int(size.y, size.x);
+            }
+            return size;
+        }
+
+        // ============================================
+        // FIX3: OCCUPANCY GRID API
+        // ============================================
+
+        /// <summary>
+        /// Verifica se un'area è libera nella occupancy grid.
+        /// origin = cella di origine (angolo bottom-left del footprint)
+        /// size = dimensione originale struttura
+        /// rotStep = rotazione 0..3
+        /// </summary>
+        public bool IsAreaFree(Vector2Int origin, Vector2Int size, int rotStep)
+        {
+            Vector2Int effectiveSize = RotateFootprint(size, rotStep);
+
+            for (int dx = 0; dx < effectiveSize.x; dx++)
+            {
+                for (int dz = 0; dz < effectiveSize.y; dz++)
+                {
+                    Vector2Int cell = new Vector2Int(origin.x + dx, origin.y + dz);
+                    if (_occupied.ContainsKey(cell))
+                    {
+                        // Log rimosso - troppo spam. Attivare solo per debug specifico.
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Occupa un'area nella occupancy grid per una struttura.
+        /// origin = cella di origine (angolo bottom-left del footprint)
+        /// size = dimensione originale struttura
+        /// rotStep = rotazione 0..3
+        /// </summary>
+        public void OccupyArea(StructureController sc, Vector2Int origin, Vector2Int size, int rotStep)
+        {
+            if (sc == null) return;
+
+            Vector2Int effectiveSize = RotateFootprint(size, rotStep);
+            int occupiedCount = 0;
+
+            for (int dx = 0; dx < effectiveSize.x; dx++)
+            {
+                for (int dz = 0; dz < effectiveSize.y; dz++)
+                {
+                    Vector2Int cell = new Vector2Int(origin.x + dx, origin.y + dz);
+                    _occupied[cell] = sc;
+                    occupiedCount++;
+                }
+            }
+
+            // Log condensato - solo su spawn, non ogni frame
+        }
+
+        /// <summary>
+        /// Libera tutte le celle occupate da una struttura.
+        /// O(n) sul dizionario, usare solo quando la struttura viene distrutta.
+        /// </summary>
+        public void FreeArea(StructureController sc)
+        {
+            if (sc == null) return;
+
+            _cellsToFree.Clear();
+
+            // Trova tutte le celle occupate da questa struttura
+            foreach (var kvp in _occupied)
+            {
+                if (kvp.Value == sc)
+                {
+                    _cellsToFree.Add(kvp.Key);
+                }
+            }
+
+            // Rimuovi le celle trovate
+            for (int i = 0; i < _cellsToFree.Count; i++)
+            {
+                _occupied.Remove(_cellsToFree[i]);
+            }
+
+            // Log condensato - solo su destroy, evento raro
+        }
+
+        // ============================================
+        // PHYSICS-BASED OVERLAP CHECK (Backup/Visual)
+        // ============================================
+
+        /// <summary>
+        /// Layer mask per strutture piazzate (escludi Preview layer).
+        /// Configura in Inspector: Structures = layer 9, Preview = layer 14
+        /// </summary>
+        [BoxGroup("Setup/Placement Settings")]
+        [LabelWidth(150)]
+        [Tooltip("Layer per strutture piazzate (per Physics overlap check). Default: layer 9 'Structure'")]
+        [SerializeField] private LayerMask structuresLayer = 1 << 9;
+
+        /// <summary>
+        /// Verifica overlap fisico con altre strutture usando Physics.OverlapBox.
+        /// Usa overlapPadding + OVERLAP_EPSILON per espandere il box e impedire che strutture si tocchino.
+        /// Priorità footprint: 1) BoxCollider "Footprint" nel prefab, 2) StructureData.CustomFootprintSize, 3) gridSize * cellSize
+        /// Esclude preview (layer 14) e la struttura stessa se passata.
+        /// </summary>
+        /// <param name="position">Posizione centro struttura</param>
+        /// <param name="gridSizeXZ">Dimensione struttura in celle (es. 2x3)</param>
+        /// <param name="rotation">Rotazione struttura</param>
+        /// <param name="excludeCollider">Collider da escludere (opzionale, per re-check)</param>
+        /// <param name="structureData">StructureData per custom footprint (opzionale)</param>
+        /// <param name="previewRoot">Root del preview per cercare BoxCollider "Footprint" (opzionale)</param>
+        /// <returns>True se c'è overlap con altra struttura</returns>
+        public bool HasPhysicsOverlap(Vector3 position, Vector2Int gridSizeXZ, Quaternion rotation,
+            Collider excludeCollider = null, StructureData structureData = null, GameObject previewRoot = null)
+        {
+            // Calcola footprint size con priorità:
+            // 1. BoxCollider "Footprint" child nel prefab/preview
+            // 2. StructureData.CustomFootprintSize (se abilitato)
+            // 3. Fallback: gridSize * cellSize
+
+            Vector2 footprintXZ = Vector2.zero;
+            Vector3 footprintCenter = position;
+            float footprintHeight = 5f; // Altezza default per check
+
+            // 1. Cerca BoxCollider "Footprint" nel preview o prefab
+            BoxCollider footprintCollider = null;
+            if (previewRoot != null)
+            {
+                footprintCollider = FindFootprintCollider(previewRoot.transform);
+            }
+            else if (structureData != null && structureData.Prefab != null)
+            {
+                footprintCollider = FindFootprintCollider(structureData.Prefab.transform);
+            }
+
+            if (footprintCollider != null)
+            {
+                // Usa il BoxCollider "Footprint" - size è già in local space
+                Vector3 colliderSize = footprintCollider.size;
+                footprintXZ = new Vector2(colliderSize.x, colliderSize.z);
+                footprintHeight = colliderSize.y;
+                // Il center del collider è relativo al transform, applicalo
+                footprintCenter = position + rotation * footprintCollider.center;
+            }
+            // 2. StructureData custom footprint
+            else if (structureData != null && structureData.UseCustomFootprint && structureData.CustomFootprintSize.sqrMagnitude > 0.01f)
+            {
+                footprintXZ = structureData.CustomFootprintSize;
+            }
+            // 3. Fallback: gridSize * cellSize
+            else
+            {
+                footprintXZ = new Vector2(gridSizeXZ.x * gridSize, gridSizeXZ.y * gridSize);
+            }
+
+            // Calcola half extents CON PADDING + EPSILON
+            float totalPadding = overlapPadding + OVERLAP_EPSILON;
+            float halfWidth = (footprintXZ.x * 0.5f) + totalPadding;
+            float halfDepth = (footprintXZ.y * 0.5f) + totalPadding;
+            float halfHeight = footprintHeight * 0.5f;
+
+            Vector3 halfExtents = new Vector3(halfWidth, halfHeight, halfDepth);
+            Vector3 boxCenter = footprintCenter + Vector3.up * halfHeight;
+
+            // Query con strutture layer only (layer 9, escludi Preview layer 14, Ground, etc.)
+            Collider[] hits = Physics.OverlapBox(boxCenter, halfExtents, rotation, structuresLayer, QueryTriggerInteraction.Ignore);
+
+            for (int i = 0; i < hits.Length; i++)
+            {
+                Collider hit = hits[i];
+
+                // Escludi self se passato
+                if (excludeCollider != null && hit == excludeCollider)
+                    continue;
+
+                // Escludi footprint colliders (sono trigger, ma check extra sicurezza)
+                if (hit.isTrigger && hit.name.ToLower().Contains("footprint"))
+                    continue;
+
+                // Escludi preview (dovrebbe già essere filtrato da layer, ma double-check)
+                var sc = hit.GetComponentInParent<StructureController>();
+                if (sc != null && sc.IsPreview)
+                    continue;
+
+                // Se arriviamo qui, c'è overlap con struttura reale
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.Log($"<color=red>[StructureSystem]</color> Physics overlap with {hit.name} at {position} (footprint: {footprintXZ}, padding: {totalPadding})");
+#endif
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Cerca un BoxCollider chiamato "Footprint" nei figli (case insensitive)
+        /// </summary>
+        private BoxCollider FindFootprintCollider(Transform root)
+        {
+            if (root == null) return null;
+
+            // Cerca direttamente sul root
+            foreach (Transform child in root)
+            {
+                if (child.name.ToLower().Contains("footprint"))
+                {
+                    BoxCollider bc = child.GetComponent<BoxCollider>();
+                    if (bc != null) return bc;
+                }
+            }
+
+            // Cerca ricorsivamente (solo primo livello di profondità per performance)
+            foreach (Transform child in root)
+            {
+                foreach (Transform grandchild in child)
+                {
+                    if (grandchild.name.ToLower().Contains("footprint"))
+                    {
+                        BoxCollider bc = grandchild.GetComponent<BoxCollider>();
+                        if (bc != null) return bc;
+                    }
+                }
+            }
+
+            return null;
+        }
 
         // ============================================
         // UNITY LIFECYCLE
@@ -202,16 +512,25 @@ namespace WildernessSurvival.Gameplay.Structures
                 return null;
             }
 
-            // NON resnappare: position arriva già snapped dal BuildModeController
-            Vector3 snappedPos = position;
+            // FIX1: Usa SnapWorld() per snapping coerente (single source of truth)
+            Vector3 snappedPos = SnapWorld(position);
 
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-            Debug.Log($"[StructureSystem] ═══ SPAWN TRACKING ═══\n" +
-                      $"1. Requested position (pre-snapped): {position}");
-#endif
+            // FIX: Applica offset Y per evitare z-fighting con terreno
+            snappedPos.y += baseYOffset;
+
+            // FIX1/FIX3: Estrai rotStep dalla rotation quaternion
+            Quaternion effectiveRotation = (rotation == default) ? Quaternion.identity : rotation;
+            int rotStep = Mathf.RoundToInt(effectiveRotation.eulerAngles.y / 90f) % 4;
+            if (rotStep < 0) rotStep += 4;
+
+            // FIX1: Calcola cella di origine
+            Vector2Int originCell = WorldToCell(snappedPos);
+
+            // Log di spawn condensato - attivare solo per debug specifico
+            // Debug.Log($"[StructureSystem] Spawn: {data.DisplayName} at cell {originCell}, rot {rotStep}");
 
             // Validazione placement
-            if (!ValidatePlacement(data, snappedPos))
+            if (!ValidatePlacement(data, snappedPos, rotStep))
             {
                 Debug.LogWarning($"[StructureSystem] Cannot place {data.DisplayName} at {snappedPos}");
                 return null;
@@ -221,37 +540,9 @@ namespace WildernessSurvival.Gameplay.Structures
             GameObject structureObj = Instantiate(data.Prefab, snappedPos, rotation == default ? Quaternion.identity : rotation);
             structureObj.name = $"Structure_{data.DisplayName}";
 
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-            Vector3 posAfterInstantiate = structureObj.transform.position;
-            Debug.Log($"3. After Instantiate: {posAfterInstantiate}\n" +
-                      $"   Delta vs snapped: {posAfterInstantiate - snappedPos}");
-#endif
-
             structureObj.transform.SetParent(transform);
 
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-            Vector3 posAfterSetParent = structureObj.transform.position;
-            Debug.Log($"4. After SetParent: {posAfterSetParent}\n" +
-                      $"   Delta vs snapped: {posAfterSetParent - snappedPos}");
-#endif
-
-            // 🔧 CENTRA PIVOT: Stesso algoritmo del preview
-            // TEMPORANEAMENTE DISABILITATO per diagnosticare offset spawn vs ghost
-            // CenterStructurePivot(structureObj);
-
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-            Vector3 posAfterCenterPivot = structureObj.transform.position;
-            Debug.Log($"5. After CenterStructurePivot: {posAfterCenterPivot}\n" +
-                      $"   Delta vs snapped: {posAfterCenterPivot - snappedPos}\n" +
-                      $"   ═══════════════════════════════\n" +
-                      $"   TOTAL DELTA (ghost → spawn): {posAfterCenterPivot - position}");
-
-            float posDiff = Vector3.Distance(position, posAfterCenterPivot);
-            if (posDiff > 0.01f)
-            {
-                Debug.LogWarning($"[StructureSystem] ⚠️ POSITION MISMATCH: Ghost={position}, Spawn={posAfterCenterPivot}, Diff={posDiff:F4}");
-            }
-#endif
+            // CenterStructurePivot disabilitato - non necessario con nuova grid API
 
             // Setup controller
             StructureController controller = structureObj.GetComponent<StructureController>();
@@ -261,52 +552,35 @@ namespace WildernessSurvival.Gameplay.Structures
             }
             controller.Initialize(data);
 
-            // ═══════════════════════════════════════════════════════════
-            // ASSICURA COMPONENTI GAMEPLAY (se mancano dal prefab)
-            // ═══════════════════════════════════════════════════════════
-            var clickHandler = structureObj.GetComponent<StructureClickHandler>();
-            if (clickHandler == null)
-            {
+            // Assicura componenti gameplay (se mancano dal prefab)
+            if (structureObj.GetComponent<StructureClickHandler>() == null)
                 structureObj.AddComponent<StructureClickHandler>();
-                Debug.Log($"<color=yellow>[StructureSystem]</color> Added missing StructureClickHandler to {data.DisplayName}");
-            }
 
-            var statusUI = structureObj.GetComponent<StructureStatusUI>();
-            if (statusUI == null)
-            {
+            if (structureObj.GetComponent<StructureStatusUI>() == null)
                 structureObj.AddComponent<StructureStatusUI>();
-                Debug.Log($"<color=yellow>[StructureSystem]</color> Added missing StructureStatusUI to {data.DisplayName}");
-            }
 
-            // 🔧 Aggiungi collider per overlap detection
+            // Collider per click/selection (Physics mantenuto solo per questo)
             BoxCollider collider = structureObj.GetComponent<BoxCollider>();
             if (collider == null)
-            {
                 collider = structureObj.AddComponent<BoxCollider>();
-            }
 
-            // Dimensiona collider basato su grid size
             float halfWidth = data.GridSize.x * gridSize / 2f;
             float halfDepth = data.GridSize.y * gridSize / 2f;
             collider.size = new Vector3(halfWidth * 2f, 3f, halfDepth * 2f);
             collider.center = new Vector3(0f, 1.5f, 0f);
-            collider.isTrigger = false; // Collider solido per overlap
+            collider.isTrigger = false;
 
             // Registra in StructureSystem
             RegisterStructure(controller);
 
-            // 🔧 FIX: Registra esplicitamente in WorkerSystem per auto-assignment
-            if (WorkerSystem.Instance != null)
-            {
-                WorkerSystem.Instance.RegisterStructure(controller);
-                Debug.Log($"<color=green>[StructureSystem]</color> ✅ Registered structure with WorkerSystem");
-            }
-            else
-            {
-                Debug.LogWarning($"<color=yellow>[StructureSystem]</color> ⚠️ WorkerSystem not found, structure won't be auto-assigned workers");
-            }
+            // FIX3: Occupa le celle nella occupancy grid
+            OccupyArea(controller, originCell, data.GridSize, rotStep);
 
-            Debug.Log($"<color=orange>[StructureSystem]</color> Spawned {data.DisplayName} at {snappedPos}");
+            // Registra in WorkerSystem per auto-assignment
+            if (WorkerSystem.Instance != null)
+                WorkerSystem.Instance.RegisterStructure(controller);
+
+            Debug.Log($"<color=orange>[StructureSystem]</color> Spawned {data.DisplayName} at {snappedPos} (cell {originCell})");
             return controller;
         }
 
@@ -457,34 +731,36 @@ namespace WildernessSurvival.Gameplay.Structures
         }
 
         /// <summary>
-        /// Valida se è possibile piazzare una struttura
+        /// Valida se è possibile piazzare una struttura (rotStep = 0)
+        /// Usa dual validation: occupancy grid + Physics.OverlapBox per robustezza.
         /// </summary>
         public bool ValidatePlacement(StructureData data, Vector3 position)
         {
-            // 1. Verifica terreno (BLOCKING)
-            if (!IsGroundValid(position, data.GridSize))
-            {
-                return false;
-            }
-
-            // 2. Verifica overlap con altre strutture (BLOCKING)
-            if (HasOverlap(position, data.GridSize))
-            {
-                return false;
-            }
-
-            // 3. Verifica risorse (gestito esternamente da BuildMode)
-            return true;
+            // Delega a overload con rotazione 0
+            return ValidatePlacement(data, position, 0);
         }
 
         /// <summary>
         /// Valida placement con supporto rotazione (0..3 per 0°, 90°, 180°, 270°)
+        /// Usa dual validation: occupancy grid + Physics.OverlapBox per robustezza.
         /// </summary>
-        public bool ValidatePlacement(StructureData data, Vector3 position, int rotationStep)
+        public bool ValidatePlacement(StructureData data, Vector3 position, int rotationStep, GameObject previewRoot = null)
         {
             Vector2Int effectiveSize = GetRotatedSize(data.GridSize, rotationStep);
             if (!IsGroundValid(position, effectiveSize)) return false;
-            if (HasOverlap(position, effectiveSize)) return false;
+
+            // 1. Grid-based check (primary, più veloce)
+            Vector2Int originCell = WorldToCell(position);
+            if (!IsAreaFree(originCell, data.GridSize, rotationStep)) return false;
+
+            // 2. Physics-based check (con supporto footprint collider/custom size)
+            Quaternion rotation = Quaternion.Euler(0, rotationStep * 90, 0);
+            if (HasPhysicsOverlap(position, effectiveSize, rotation, null, data, previewRoot))
+            {
+                Debug.LogWarning($"<color=yellow>[StructureSystem]</color> Physics overlap detected at {position} - blocking placement");
+                return false;
+            }
+
             return true;
         }
 
@@ -525,10 +801,12 @@ namespace WildernessSurvival.Gameplay.Structures
         }
 
         /// <summary>
-        /// Verifica overlap con altre strutture (BLOCKING)
-        /// Blocca il piazzamento se viene rilevata una struttura nell'area
+        /// [LEGACY] Verifica overlap con altre strutture usando Physics.OverlapBox.
+        /// FIX3: Non più usato per placement rules - usa IsAreaFree() invece.
+        /// Mantenuto per compatibilità con click/selection o altri usi futuri.
         /// NOTA: Esclude le preview (IsPreview=true o controller disabilitato)
         /// </summary>
+        [System.Obsolete("FIX3: Use IsAreaFree() for placement validation. This method uses Physics which is not reliable for grid-based placement.")]
         private bool HasOverlap(Vector3 position, Vector2Int gridSize)
         {
             float halfWidth = gridSize.x * this.gridSize / 2f;
@@ -571,6 +849,13 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private void UpdateProductionTick()
         {
+            // FIX2: Se WorkerSystem esiste e il flag è false, non eseguire tick globale
+            // WorkerSystem gestisce i tick di costruzione/produzione
+            if (!enableGlobalProductionTick || WorkerSystem.Instance != null)
+            {
+                return;
+            }
+
             productionTimer += Time.deltaTime;
 
             if (productionTimer >= productionTickInterval)
@@ -645,6 +930,9 @@ namespace WildernessSurvival.Gameplay.Structures
         /// </summary>
         public void OnStructureDestroyed(StructureController structure)
         {
+            // FIX3: Libera celle nella occupancy grid
+            FreeArea(structure);
+
             UnregisterStructure(structure);
             Debug.Log($"<color=red>[StructureSystem]</color> {structure.Data.DisplayName} destroyed!");
             // Trigger eventi, game over check, etc.

@@ -39,6 +39,8 @@ MonoBehaviour:
   maxHealth: 100
   armor: 0
   gridSize: {x: 1, y: 1}
+  useCustomFootprint: 1
+  customFootprintSize: {x: 2, y: 2}
   upgrades: []
   baseMaterial: {fileID: 0}
   damagedMaterial: {fileID: 0}

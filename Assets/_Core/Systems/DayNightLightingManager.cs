@@ -7,17 +7,22 @@ namespace WildernessSurvival.Core.Systems
     /// <summary>
     /// Gestisce l'illuminazione e i colori ambientali per il ciclo giorno/notte.
     /// Crea transizioni fluide tra le fasi.
+    /// Include ottimizzazioni per Mobile (Fog Toggle).
     /// </summary>
     public class DayNightLightingManager : MonoBehaviour
     {
         // ============================================
-        // RIFERIMENTI
+        // RIFERIMENTI & SETTINGS GLOBALI
         // ============================================
+
+        [Header("=== GLOBAL SETTINGS ===")]
+        [Tooltip("Abilita/Disabilita la nebbia globale. Su mobile low-end, disabilitare per guadagnare performance.")]
+        [SerializeField] private bool enableFog = false;
 
         [Header("=== LUCI ===")]
         [Tooltip("Luce direzionale principale (Sole/Luna)")]
         [SerializeField] private Light mainLight;
-        
+
         [Tooltip("Luce del Bonfire (sempre attiva ma più intensa di notte)")]
         [SerializeField] private Light bonfireLight;
 
@@ -206,11 +211,14 @@ namespace WildernessSurvival.Core.Systems
             // Skybox color (se usi skybox procedurale)
             // RenderSettings.skybox.SetColor("_Tint", preset.skyColor);
 
-            // Fog
-            RenderSettings.fog = true;
-            RenderSettings.fogMode = FogMode.Exponential;
-            RenderSettings.fogColor = preset.fogColor;
-            RenderSettings.fogDensity = preset.fogDensity;
+            // Fog Logic (Controllata da enableFog)
+            RenderSettings.fog = enableFog;
+            if (enableFog)
+            {
+                RenderSettings.fogMode = FogMode.Exponential;
+                RenderSettings.fogColor = preset.fogColor;
+                RenderSettings.fogDensity = preset.fogDensity;
+            }
 
             // Bonfire base intensity
             bonfireBaseIntensity = preset.bonfireIntensity;
@@ -288,7 +296,7 @@ namespace WildernessSurvival.Core.Systems
         // DEBUG
         // ============================================
 
-        #if UNITY_EDITOR
+#if UNITY_EDITOR
         [ContextMenu("Debug: Set Day")]
         private void DebugSetDay() => TransitionToDay();
 
@@ -297,6 +305,6 @@ namespace WildernessSurvival.Core.Systems
 
         [ContextMenu("Debug: Set Sunset")]
         private void DebugSetSunset() => TransitionToSunset();
-        #endif
+#endif
     }
 }

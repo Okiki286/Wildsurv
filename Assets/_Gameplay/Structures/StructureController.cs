@@ -56,6 +56,9 @@ namespace WildernessSurvival.Gameplay.Structures
         [ReadOnly, ShowInInspector]
         private bool isOperational = false;
 
+        // FIX2: Guard per evitare doppia inizializzazione
+        private bool _initialized = false;
+
         // ============================================
         // HEALTH SYSTEM
         // ============================================
@@ -225,23 +228,27 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private void Awake()
         {
-            // Se è una preview (build mode), non inizializzare
+            // FIX2: Awake NON deve chiamare InitializeStructure()
+            // L'inizializzazione avviene in:
+            // - Initialize() chiamato da SpawnStructure (spawn runtime)
+            // - Start() per strutture piazzate manualmente in scena
+
+            // Se è una preview (build mode), non fare nulla
             if (IsPreview)
             {
                 return;
             }
-
-            if (structureData == null)
-            {
-                Debug.LogError($"[StructureController] {gameObject.name} has no StructureData!", this);
-                enabled = false;
-                return;
-            }
-            InitializeStructure();
         }
 
         private void Start()
         {
+            // FIX2: Per strutture piazzate manualmente in scena (non via SpawnStructure)
+            // Se non ancora inizializzate ma hanno structureData, inizializza ora
+            if (!_initialized && !IsPreview && structureData != null)
+            {
+                InitializeStructure();
+            }
+
             // Abilita StructureStatusUI (era disabilitato nel prefab per evitare che apparisse durante il piazzamento)
             var statusUI = GetComponent<StructureStatusUI>();
             if (statusUI != null)
@@ -249,12 +256,23 @@ namespace WildernessSurvival.Gameplay.Structures
                 statusUI.enabled = true;
             }
 
-            Debug.Log($"<color=orange>[Structure]</color> {structureData.DisplayName} initialized at {transform.position}");
+            if (_initialized && structureData != null)
+            {
+                Debug.Log($"<color=orange>[Structure]</color> {structureData.DisplayName} initialized at {transform.position}");
+            }
         }
 
         private void Update()
         {
             if (!IsAlive) return;
+
+            // FIX2: Se WorkerSystem esiste, esso gestisce tick di costruzione/produzione
+            // Questo evita doppi/tripli tick
+            if (WorkerSystem.Instance != null)
+            {
+                return;
+            }
+
             UpdateState();
             UpdateProduction();
         }
@@ -266,6 +284,9 @@ namespace WildernessSurvival.Gameplay.Structures
             {
                 WorkerSystem.Instance.UnregisterStructureNeedingBuilders(this);
             }
+
+            // FIX3: Libera celle nella occupancy grid quando la struttura viene distrutta
+            StructureSystem.Instance?.FreeArea(this);
         }
 
         // ============================================
@@ -274,6 +295,9 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private void InitializeStructure()
         {
+            // FIX2: Guard per evitare doppia inizializzazione
+            if (_initialized) return;
+
             maxHealth = structureData.MaxHealth;
             currentHealth = maxHealth;
             currentLevel = 1;
@@ -291,11 +315,13 @@ namespace WildernessSurvival.Gameplay.Structures
 
             if (structureData.RequiresBuilder)
             {
+                // FIX3: ChangeState(Building) chiama OnStateChanged che già chiama ApplyConstructionVisuals()
+                // NON chiamare ApplyConstructionVisuals() qui - sarebbe duplicato
                 ChangeState(StructureState.Building);
                 buildTimeRemaining = structureData.BuildTime;
                 buildProgress = 0f;
                 isOperational = false;
-                ApplyConstructionVisuals();
+                // ApplyConstructionVisuals(); // RIMOSSO - già chiamata da OnStateChanged(Building)
             }
             else
             {
@@ -304,10 +330,20 @@ namespace WildernessSurvival.Gameplay.Structures
                 isOperational = true;
                 CompleteConstruction();
             }
+
+            // FIX2: Marca come inizializzato
+            _initialized = true;
         }
 
         public void Initialize(StructureData data, int level = 1)
         {
+            // FIX2: Guard per evitare doppia inizializzazione
+            if (_initialized)
+            {
+                Debug.LogWarning($"[StructureController] {gameObject.name} already initialized, skipping.");
+                return;
+            }
+
             structureData = data;
             currentLevel = level;
 
@@ -583,11 +619,15 @@ namespace WildernessSurvival.Gameplay.Structures
 
             currentProductionRate = structureData.GetProductionAtLevel(currentLevel) * totalProductivityBonus;
 
-            Debug.Log($"<color=cyan>[Structure]</color> {structureData.DisplayName} production rate: {currentProductionRate:F1}/min ({workersAtSite}/{assignedWorkerInstances.Count} at site)");
+            // Log solo quando cambia significativamente (evita spam)
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            // Debug.Log($"<color=cyan>[Structure]</color> {structureData.DisplayName} production rate: {currentProductionRate:F1}/min ({workersAtSite}/{assignedWorkerInstances.Count} at site)");
+#endif
         }
 
         public void RecalculateBuildSpeed()
         {
+            float previousSpeed = currentBuildSpeed;
             currentBuildSpeed = 0f;
             int buildersAtSite = 0;
 
@@ -605,7 +645,13 @@ namespace WildernessSurvival.Gameplay.Structures
                 currentBuildSpeed = 0f;
             }
 
-            Debug.Log($"<color=orange>[Structure]</color> {structureData.DisplayName} build speed: {currentBuildSpeed:F2}x ({buildersAtSite}/{assignedWorkerInstances.Count} at site)");
+            // Log solo quando cambia (evita spam ogni tick)
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (Mathf.Abs(currentBuildSpeed - previousSpeed) > 0.01f)
+            {
+                Debug.Log($"<color=orange>[Structure]</color> {structureData.DisplayName} build speed: {currentBuildSpeed:F2}x ({buildersAtSite}/{assignedWorkerInstances.Count} at site)");
+            }
+#endif
         }
 
         // ============================================
