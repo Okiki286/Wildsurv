@@ -267,6 +267,31 @@ namespace WildernessSurvival.Gameplay.Structures
             // Log condensato - solo su destroy, evento raro
         }
 
+        /// <summary>
+        /// Tenta di ottenere la struttura che occupa una cella specifica.
+        /// Usato per selezione grid-based: click -> WorldToCell -> TryGetStructureAtCell.
+        /// </summary>
+        /// <param name="cell">Coordinata cella griglia</param>
+        /// <param name="structure">Struttura trovata (out)</param>
+        /// <returns>True se la cella è occupata da una struttura</returns>
+        public bool TryGetStructureAtCell(Vector2Int cell, out StructureController structure)
+        {
+            return _occupied.TryGetValue(cell, out structure);
+        }
+
+        /// <summary>
+        /// Verifica se una cella specifica è occupata.
+        /// </summary>
+        public bool IsCellOccupied(Vector2Int cell)
+        {
+            return _occupied.ContainsKey(cell);
+        }
+
+        /// <summary>
+        /// Ottiene il numero totale di celle occupate.
+        /// </summary>
+        public int OccupiedCellCount => _occupied.Count;
+
         // ============================================
         // PHYSICS-BASED OVERLAP CHECK (Backup/Visual)
         // ============================================
@@ -552,9 +577,13 @@ namespace WildernessSurvival.Gameplay.Structures
             }
             controller.Initialize(data);
 
-            // Assicura componenti gameplay (se mancano dal prefab)
-            if (structureObj.GetComponent<StructureClickHandler>() == null)
-                structureObj.AddComponent<StructureClickHandler>();
+            // Salva dati di placement per selezione grid-based
+            controller.SetPlacementData(originCell, rotStep);
+
+            // StructureClickHandler non più necessario - selezione ora grid-based
+            // Lasciamo il vecchio handler ma non lo aggiungiamo se mancante
+            // if (structureObj.GetComponent<StructureClickHandler>() == null)
+            //     structureObj.AddComponent<StructureClickHandler>();
 
             if (structureObj.GetComponent<StructureStatusUI>() == null)
                 structureObj.AddComponent<StructureStatusUI>();
@@ -1061,6 +1090,11 @@ namespace WildernessSurvival.Gameplay.Structures
         // DEBUG VISUALIZATION
         // ============================================
 
+        [BoxGroup("Debug")]
+        [SerializeField]
+        [Tooltip("Mostra celle occupate con Gizmos")]
+        private bool showOccupiedCells = true;
+
         private void OnDrawGizmos()
         {
             // Disegna griglia
@@ -1073,6 +1107,17 @@ namespace WildernessSurvival.Gameplay.Structures
                     {
                         Vector3 pos = new Vector3(x * gridSize, 0, z * gridSize);
                         Gizmos.DrawWireCube(pos, new Vector3(gridSize, 0.1f, gridSize));
+                    }
+                }
+
+                // Disegna celle occupate (per debug selezione grid-based)
+                if (showOccupiedCells && _occupied != null)
+                {
+                    Gizmos.color = new Color(0f, 1f, 0f, 0.4f); // Verde semitrasparente
+                    foreach (var kvp in _occupied)
+                    {
+                        Vector3 cellWorld = CellToWorld(kvp.Key);
+                        Gizmos.DrawCube(cellWorld + Vector3.up * 0.05f, new Vector3(gridSize * 0.9f, 0.1f, gridSize * 0.9f));
                     }
                 }
 

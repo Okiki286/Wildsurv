@@ -38,8 +38,8 @@ MonoBehaviour:
   utilityEffect: 
   maxHealth: 100
   armor: 0
-  gridSize: {x: 1, y: 1}
-  useCustomFootprint: 1
+  gridSize: {x: 2, y: 2}
+  useCustomFootprint: 0
   customFootprintSize: {x: 2, y: 2}
   upgrades: []
   baseMaterial: {fileID: 0}

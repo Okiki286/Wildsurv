@@ -3,70 +3,36 @@ using UnityEngine;
 namespace WildernessSurvival.Gameplay.Structures
 {
     /// <summary>
-    /// Gestisce i click sulle strutture per aprire il panel assignment.
-    /// Aggiungi questo component ai prefab delle strutture.
+    /// [DEPRECATED] Gestiva i click sulle strutture tramite collider/OnMouseDown.
+    ///
+    /// NOTA: Questo sistema è stato SOSTITUITO da StructureSelectionManager
+    /// che usa selezione grid-based (celle occupate) invece di physics/collider.
+    ///
+    /// Vantaggi del nuovo sistema:
+    /// - Deterministico: niente dipendenza da collider size/shape
+    /// - Coerente col sistema di placement: stesse celle per placement e selezione
+    /// - Niente overlap/conflitti tra collider
+    ///
+    /// Questo componente è mantenuto per compatibilità ma è DISABILITATO.
+    /// Se presente sui prefab esistenti, si auto-disabilita.
     /// </summary>
-    [RequireComponent(typeof(Collider))]
+    [System.Obsolete("Usa StructureSelectionManager per selezione grid-based")]
     public class StructureClickHandler : MonoBehaviour
     {
-        private StructureController structureController;
-
         private void Awake()
         {
-            structureController = GetComponent<StructureController>();
-            if (structureController == null)
-            {
-                structureController = GetComponentInParent<StructureController>();
-            }
+            // Auto-disabilita: selezione ora gestita da StructureSelectionManager
+            enabled = false;
 
-            if (structureController == null)
-            {
-                Debug.LogWarning("[StructureClickHandler] No StructureController found!", this);
-            }
+            // Log solo in editor per debug
+#if UNITY_EDITOR
+            Debug.Log($"[StructureClickHandler] DEPRECATED: {gameObject.name} - use StructureSelectionManager instead");
+#endif
         }
 
-        private void OnMouseDown()
-        {
-            // Ignora se siamo in build mode
-            // TODO: Uncomment when BuildModeController is available
-            // if (BuildModeController.Instance != null && BuildModeController.Instance.IsInBuildMode)
-            // {
-            //     return;
-            // }
-
-            if (structureController != null)
-            {
-                // Open worker assignment UI directly via singleton
-                if (WildernessSurvival.UI.WorkerAssignmentUI.Instance != null)
-                {
-                    WildernessSurvival.UI.WorkerAssignmentUI.Instance.OpenForStructure(structureController);
-                }
-            }
-        }
-
-        // Alternative: usa questo se preferisci raycast manuale invece di OnMouseDown
-        private void Update()
-        {
-            // Questo è un approccio alternativo se OnMouseDown non funziona bene
-            // Puoi commentare OnMouseDown e usare questo invece
-            /*
-            if (Input.GetMouseButtonDown(0))
-            {
-                Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-                RaycastHit hit;
-
-                if (Physics.Raycast(ray, out hit))
-                {
-                    if (hit.collider.gameObject == gameObject)
-                    {
-                        if (structureController != null)
-                        {
-                            structureController.OnClick();
-                        }
-                    }
-                }
-            }
-            */
-        }
+        // Metodi mantenuti vuoti per evitare errori se chiamati da codice legacy
+        private void OnMouseDown() { }
+        private void Update() { }
     }
 }
+

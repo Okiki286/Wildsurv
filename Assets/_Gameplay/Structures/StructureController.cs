@@ -31,6 +31,24 @@ namespace WildernessSurvival.Gameplay.Structures
         [HideInInspector]
         public bool IsPreview = false;
 
+        // ============================================
+        // GRID PLACEMENT DATA (per selezione grid-based)
+        // ============================================
+
+        /// <summary>
+        /// Cella di origine (bottom-left) dove è stata piazzata la struttura.
+        /// Usata per calcolare tutte le celle occupate dal footprint.
+        /// </summary>
+        [HideInInspector]
+        public Vector2Int OriginCell { get; private set; }
+
+        /// <summary>
+        /// Step di rotazione (0-3) al momento del piazzamento.
+        /// 0=0°, 1=90°, 2=180°, 3=270°
+        /// </summary>
+        [HideInInspector]
+        public int PlacementRotationStep { get; private set; }
+
         [BoxGroup("Setup/Components")]
         [ChildGameObjectsOnly]
         [SerializeField] private Transform visualRoot;
@@ -1269,6 +1287,55 @@ namespace WildernessSurvival.Gameplay.Structures
             {
                 Debug.LogWarning("[Structure] WorkerAssignmentUI not found in scene!");
             }
+        }
+
+        // ============================================
+        // GRID PLACEMENT API
+        // ============================================
+
+        /// <summary>
+        /// Imposta i dati di placement (chiamato da StructureSystem.SpawnStructure).
+        /// </summary>
+        public void SetPlacementData(Vector2Int originCell, int rotationStep)
+        {
+            OriginCell = originCell;
+            PlacementRotationStep = rotationStep;
+        }
+
+        /// <summary>
+        /// Calcola e ritorna tutte le celle occupate da questa struttura.
+        /// Usa StructureData.GridSize (o CustomFootprintSize se abilitato) e la rotazione.
+        /// </summary>
+        public List<Vector2Int> GetOccupiedCells()
+        {
+            var cells = new List<Vector2Int>();
+
+            if (structureData == null)
+            {
+                Debug.LogWarning($"[StructureController] {gameObject.name} has no StructureData!");
+                return cells;
+            }
+
+            // Determina la dimensione del footprint
+            Vector2Int footprintSize = structureData.GridSize;
+
+            // Se usa custom footprint, converti in celle (assumendo gridSize = 1)
+            // Nota: per footprint in world units, dividiamo per gridSize se necessario
+            // Per ora assumiamo che GridSize sia già in celle
+
+            // Applica rotazione
+            Vector2Int effectiveSize = StructureSystem.RotateFootprint(footprintSize, PlacementRotationStep);
+
+            // Genera tutte le celle
+            for (int dx = 0; dx < effectiveSize.x; dx++)
+            {
+                for (int dz = 0; dz < effectiveSize.y; dz++)
+                {
+                    cells.Add(new Vector2Int(OriginCell.x + dx, OriginCell.y + dz));
+                }
+            }
+
+            return cells;
         }
 
         // ============================================

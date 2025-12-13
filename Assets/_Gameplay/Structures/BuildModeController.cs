@@ -75,6 +75,12 @@ namespace WildernessSurvival.Gameplay.Structures
         [BoxGroup("Runtime Status")]
         private bool isBuildModeActive = false;
 
+        /// <summary>
+        /// Property pubblica per verificare se il build mode è attivo.
+        /// Usata da StructureSelectionManager per disabilitare selezione durante il piazzamento.
+        /// </summary>
+        public bool IsInBuildMode => isBuildModeActive;
+
         [ShowInInspector, ReadOnly]
         [BoxGroup("Runtime Status")]
         private GameObject currentPreview;
