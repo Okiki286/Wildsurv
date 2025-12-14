@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.Events;
+using System;
 using System.Collections.Generic;
 
 namespace WildernessSurvival.Core.Events
@@ -7,14 +8,16 @@ namespace WildernessSurvival.Core.Events
     /// <summary>
     /// Evento base senza parametri.
     /// Permette comunicazione disaccoppiata tra sistemi.
+    /// Supporta sia GameEventListener (inspector) che System.Action (runtime).
     /// </summary>
     [CreateAssetMenu(fileName = "NewGameEvent", menuName = "Wilderness Survival/Events/Game Event")]
     public class GameEvent : ScriptableObject
     {
         [TextArea(2, 4)]
         [SerializeField] private string description;
-        
+
         private readonly List<GameEventListener> listeners = new List<GameEventListener>();
+        private readonly List<Action> actionListeners = new List<Action>();
 
         #if UNITY_EDITOR
         [SerializeField] private bool debugMode = false;
@@ -25,7 +28,7 @@ namespace WildernessSurvival.Core.Events
             #if UNITY_EDITOR
             if (debugMode)
             {
-                Debug.Log($"<color=yellow>[GameEvent]</color> {name} raised - {listeners.Count} listeners");
+                Debug.Log($"<color=yellow>[GameEvent]</color> {name} raised - {listeners.Count} component listeners, {actionListeners.Count} action listeners");
             }
             #endif
 
@@ -36,6 +39,12 @@ namespace WildernessSurvival.Core.Events
                 {
                     listeners[i].OnEventRaised();
                 }
+            }
+
+            // Invoke action listeners
+            for (int i = actionListeners.Count - 1; i >= 0; i--)
+            {
+                actionListeners[i]?.Invoke();
             }
         }
 
@@ -52,6 +61,28 @@ namespace WildernessSurvival.Core.Events
             if (listeners.Contains(listener))
             {
                 listeners.Remove(listener);
+            }
+        }
+
+        /// <summary>
+        /// Registra un callback Action (per sottoscrizioni runtime/codice)
+        /// </summary>
+        public void AddListener(Action callback)
+        {
+            if (callback != null && !actionListeners.Contains(callback))
+            {
+                actionListeners.Add(callback);
+            }
+        }
+
+        /// <summary>
+        /// Rimuove un callback Action
+        /// </summary>
+        public void RemoveListener(Action callback)
+        {
+            if (callback != null)
+            {
+                actionListeners.Remove(callback);
             }
         }
     }

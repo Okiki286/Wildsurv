@@ -190,24 +190,24 @@ namespace WildernessSurvival.Gameplay.Structures
 
         /// <summary>
         /// Verifica se un'area è libera nella occupancy grid.
+        /// Usa FootprintUtility per calcolare le celle con rotazione corretta.
         /// origin = cella di origine (angolo bottom-left del footprint)
         /// size = dimensione originale struttura
         /// rotStep = rotazione 0..3
         /// </summary>
         public bool IsAreaFree(Vector2Int origin, Vector2Int size, int rotStep)
         {
-            Vector2Int effectiveSize = RotateFootprint(size, rotStep);
+            // Genera le celle locali e ruotale
+            var localCells = FootprintUtility.GenerateRectangularFootprint(size.x, size.y);
+            var rotatedCells = FootprintUtility.GetRotatedCells(localCells, size.x, size.y, rotStep);
 
-            for (int dx = 0; dx < effectiveSize.x; dx++)
+            // Verifica ogni cella world
+            foreach (var localCell in rotatedCells)
             {
-                for (int dz = 0; dz < effectiveSize.y; dz++)
+                Vector2Int worldCell = new Vector2Int(origin.x + localCell.x, origin.y + localCell.y);
+                if (_occupied.ContainsKey(worldCell))
                 {
-                    Vector2Int cell = new Vector2Int(origin.x + dx, origin.y + dz);
-                    if (_occupied.ContainsKey(cell))
-                    {
-                        // Log rimosso - troppo spam. Attivare solo per debug specifico.
-                        return false;
-                    }
+                    return false;
                 }
             }
             return true;
@@ -215,6 +215,7 @@ namespace WildernessSurvival.Gameplay.Structures
 
         /// <summary>
         /// Occupa un'area nella occupancy grid per una struttura.
+        /// Usa FootprintUtility per calcolare le celle con rotazione corretta.
         /// origin = cella di origine (angolo bottom-left del footprint)
         /// size = dimensione originale struttura
         /// rotStep = rotazione 0..3
@@ -223,20 +224,17 @@ namespace WildernessSurvival.Gameplay.Structures
         {
             if (sc == null) return;
 
-            Vector2Int effectiveSize = RotateFootprint(size, rotStep);
-            int occupiedCount = 0;
+            // Usa FootprintUtility per ottenere le celle world corrette
+            var worldCells = FootprintUtility.GetWorldOccupiedCells(sc.Data, origin, rotStep);
 
-            for (int dx = 0; dx < effectiveSize.x; dx++)
+            foreach (var cell in worldCells)
             {
-                for (int dz = 0; dz < effectiveSize.y; dz++)
-                {
-                    Vector2Int cell = new Vector2Int(origin.x + dx, origin.y + dz);
-                    _occupied[cell] = sc;
-                    occupiedCount++;
-                }
+                _occupied[cell] = sc;
             }
 
-            // Log condensato - solo su spawn, non ogni frame
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"<color=green>[StructureSystem]</color> Occupied {worldCells.Count} cells for {sc.Data?.DisplayName ?? sc.name} at origin {origin}, rot {rotStep}");
+#endif
         }
 
         /// <summary>
@@ -798,8 +796,74 @@ namespace WildernessSurvival.Gameplay.Structures
         /// </summary>
         private Vector2Int GetRotatedSize(Vector2Int originalSize, int rotationStep)
         {
-            if (rotationStep % 2 == 1) return new Vector2Int(originalSize.y, originalSize.x);
-            return originalSize;
+            return FootprintUtility.GetRotatedSize(originalSize, rotationStep);
+        }
+
+        /// <summary>
+        /// Enumeration dei possibili motivi per cui un placement non è valido.
+        /// </summary>
+        public enum PlacementFailReason
+        {
+            None,
+            NoGround,
+            SlopeTooSteep,
+            CellOccupied,
+            PhysicsOverlap
+        }
+
+        /// <summary>
+        /// Verifica se è possibile piazzare una struttura, con motivazione dell'eventuale fallimento.
+        /// </summary>
+        /// <param name="data">StructureData della struttura</param>
+        /// <param name="position">Posizione world</param>
+        /// <param name="rotationStep">Step di rotazione (0-3)</param>
+        /// <param name="reason">Motivo del fallimento (out)</param>
+        /// <param name="previewRoot">Root del preview per physics check (opzionale)</param>
+        /// <returns>True se il placement è valido</returns>
+        public bool CanPlace(StructureData data, Vector3 position, int rotationStep, out PlacementFailReason reason, GameObject previewRoot = null)
+        {
+            reason = PlacementFailReason.None;
+
+            if (data == null)
+            {
+                reason = PlacementFailReason.NoGround;
+                return false;
+            }
+
+            Vector2Int effectiveSize = GetRotatedSize(data.GridSize, rotationStep);
+
+            // 1. Verifica terreno
+            Vector3 rayStart = position + Vector3.up * 10f;
+            if (!Physics.Raycast(rayStart, Vector3.down, out RaycastHit hit, 20f, groundLayer))
+            {
+                reason = PlacementFailReason.NoGround;
+                return false;
+            }
+
+            float slopeAngle = Vector3.Angle(hit.normal, Vector3.up);
+            if (slopeAngle > 30f)
+            {
+                reason = PlacementFailReason.SlopeTooSteep;
+                return false;
+            }
+
+            // 2. Verifica occupancy grid
+            Vector2Int originCell = WorldToCell(position);
+            if (!IsAreaFree(originCell, data.GridSize, rotationStep))
+            {
+                reason = PlacementFailReason.CellOccupied;
+                return false;
+            }
+
+            // 3. Verifica physics overlap (backup)
+            Quaternion rotation = Quaternion.Euler(0, rotationStep * 90, 0);
+            if (HasPhysicsOverlap(position, effectiveSize, rotation, null, data, previewRoot))
+            {
+                reason = PlacementFailReason.PhysicsOverlap;
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>

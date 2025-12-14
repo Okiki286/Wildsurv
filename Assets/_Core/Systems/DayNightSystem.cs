@@ -77,6 +77,11 @@ namespace WildernessSurvival.Core.Systems
         [ToggleLeft]
         [SerializeField] private bool pauseTime = false;
 
+        [HorizontalGroup("Debug/Row1")]
+        [ToggleLeft]
+        [Tooltip("Log pause/unpause state changes")]
+        [SerializeField] private bool debugPauseState = false;
+
         // ============================================
         // RUNTIME STATE
         // ============================================
@@ -86,6 +91,9 @@ namespace WildernessSurvival.Core.Systems
         [ReadOnly]
         [EnumToggleButtons]
         private GameState currentState = GameState.Initializing;
+
+        // Stato precedente per ripristino corretto dopo pausa
+        private GameState previousState = GameState.Day;
 
         [ShowInInspector]
         [ReadOnly]
@@ -403,12 +411,39 @@ namespace WildernessSurvival.Core.Systems
 
             if (paused)
             {
+                // Salva lo stato corrente prima di mettere in pausa (solo se non già in pausa)
+                if (currentState != GameState.Paused)
+                {
+                    previousState = currentState;
+                }
                 currentState = GameState.Paused;
+
+                if (debugPauseState)
+                {
+                    Debug.Log($"<color=gray>[DayNight]</color> Paused, prev={previousState}");
+                }
             }
             else
             {
-                // Ripristina stato precedente (semplificato: torna a Day)
-                currentState = IsNight ? GameState.Night : GameState.Day;
+                // Ripristina lo stato precedente
+                // Fallback a Day se previousState non è valido (es. Initializing, Paused, GameOver)
+                if (previousState == GameState.Day ||
+                    previousState == GameState.Night ||
+                    previousState == GameState.DayToNight ||
+                    previousState == GameState.NightToDay)
+                {
+                    currentState = previousState;
+                }
+                else
+                {
+                    // Fallback sicuro
+                    currentState = GameState.Day;
+                }
+
+                if (debugPauseState)
+                {
+                    Debug.Log($"<color=gray>[DayNight]</color> Unpaused, restored={currentState}");
+                }
             }
         }
 

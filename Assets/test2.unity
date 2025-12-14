@@ -1007,6 +1007,54 @@ MonoBehaviour:
   unassignSound: {fileID: 0}
   errorSound: {fileID: 0}
   debugMode: 1
+--- !u!1 &250172401
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 250172403}
+  - component: {fileID: 250172402}
+  m_Layer: 0
+  m_Name: StructureSelectionManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &250172402
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 250172401}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 89e717f7d58cb314cb28debee99eb6e3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 256
+  mainCamera: {fileID: 1702188614}
+--- !u!4 &250172403
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 250172401}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 32.293396, y: 22.470045, z: -20.23915}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &256655149
 GameObject:
   m_ObjectHideFlags: 0
@@ -4377,7 +4425,7 @@ MonoBehaviour:
     m_Bits: 256
   previewLayer: 14
   toggleBuildKey: 98
-  rotateCWKey: 101
+  rotateCWKey: 8
   rotateCCWKey: 113
   debugMode: 1
 --- !u!1 &1444417608
@@ -4795,6 +4843,7 @@ MonoBehaviour:
   structuresLayer:
     serializedVersion: 2
     m_Bits: 1536
+  showOccupiedCells: 1
 --- !u!1 &1564496740
 GameObject:
   m_ObjectHideFlags: 0
@@ -5896,6 +5945,57 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1832801038}
   m_CullTransparentMesh: 1
+--- !u!1 &1892808889
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1892808891}
+  - component: {fileID: 1892808890}
+  m_Layer: 0
+  m_Name: DayNight_LightingBinder
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1892808890
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1892808889}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b9827b2470d75034999f081f0ccadb0f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  lightingManager: {fileID: 10520275}
+  onDayStarted: {fileID: 0}
+  onDayEnding: {fileID: 0}
+  onNightStarted: {fileID: 0}
+  onNightEnding: {fileID: 0}
+  transitionOnNightEnding: 0
+  debugMode: 0
+--- !u!4 &1892808891
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1892808889}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1893757853
 GameObject:
   m_ObjectHideFlags: 0
@@ -6022,6 +6122,7 @@ MonoBehaviour:
   onTimeProgressChanged: {fileID: 0}
   debugMode: 1
   pauseTime: 0
+  debugPauseState: 0
 --- !u!1 &1968991131
 GameObject:
   m_ObjectHideFlags: 0
@@ -6815,3 +6916,5 @@ SceneRoots:
   - {fileID: 618029705}
   - {fileID: 22996937816166300}
   - {fileID: 1564496742}
+  - {fileID: 250172403}
+  - {fileID: 1892808891}

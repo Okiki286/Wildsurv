@@ -104,11 +104,24 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private PlacementPose lastPose;
 
-        // Anti double-apply centering flag
+        // Anti double-apply centering flag (usato solo per inizializzazione iniziale)
         private bool ghostCenteringApplied = false;
 
         // Cached prefab reference
         private GameObject currentPrefabForCentering = null;
+
+        // ============================================
+        // PREVIEW CENTERING STATE (per evitare drift)
+        // ============================================
+
+        // Posizione locale BASE del VisualRoot (quella originale del prefab, mai modificata)
+        private Vector3 _previewVisualBaseLocalPos;
+
+        // Flag per indicare che la base è stata catturata
+        private bool _previewBaseCaptured = false;
+
+        // Cached reference al VisualRoot del ghost
+        private Transform _ghostVisualRoot = null;
 
         // ============================================
         // UNITY LIFECYCLE
@@ -203,6 +216,11 @@ namespace WildernessSurvival.Gameplay.Structures
             ghostCenteringApplied = false;
             currentPrefabForCentering = null;
 
+            // Reset preview centering state
+            _previewVisualBaseLocalPos = Vector3.zero;
+            _previewBaseCaptured = false;
+            _ghostVisualRoot = null;
+
             if (debugMode)
                 Debug.Log("[BuildMode] Build mode deactivated");
         }
@@ -222,6 +240,10 @@ namespace WildernessSurvival.Gameplay.Structures
             rotationStep = 0;
             ghostCenteringApplied = false;
             currentPrefabForCentering = structure.Prefab;
+
+            // Reset preview centering state
+            _previewBaseCaptured = false;
+            _ghostVisualRoot = null;
 
             // Distruggi preview esistente
             if (currentPreview != null)
@@ -250,27 +272,41 @@ namespace WildernessSurvival.Gameplay.Structures
             // Ripristina stato originale del prefab
             structure.Prefab.SetActive(originalPrefabState);
 
-            // 3. Trova il VisualRoot e applica centering con CACHE e ANTI-DOUBLE-APPLY
-            Transform ghostVisualRoot = StructureVisualCenteringUtility.FindVisualRoot(visualChild);
-            if (ghostVisualRoot != null)
+            // 3. Trova il VisualRoot e cattura la posizione BASE (una sola volta!)
+            _ghostVisualRoot = StructureVisualCenteringUtility.FindVisualRoot(visualChild);
+            if (_ghostVisualRoot != null)
             {
-                Vector3 originalLocalPos = ghostVisualRoot.localPosition;
+                // Cattura la posizione BASE originale del prefab - questa non cambia MAI
+                _previewVisualBaseLocalPos = _ghostVisualRoot.localPosition;
+                _previewBaseCaptured = true;
 
-                // Usa GetOrComputeCenteringLocalDelta con cache
-                Vector3 deltaLocal = StructureVisualCenteringUtility.GetOrComputeCenteringLocalDelta(
+                // Calcola delta dal stato pulito (baseLocalPos)
+                Vector3 deltaLocal = StructureVisualCenteringUtility.ComputeCenteringDeltaFromCleanState(
                     currentPreview.transform,  // root
-                    ghostVisualRoot,           // visualRoot
+                    _ghostVisualRoot,          // visualRoot
+                    _previewVisualBaseLocalPos,// base local pos
                     currentPrefabForCentering, // prefab
                     rotationStep               // rotation 0..3
                 );
 
-                // Applica UNA SOLA VOLTA usando flag
-                StructureVisualCenteringUtility.ApplyCenteringOnce(
-                    ghostVisualRoot,
-                    originalLocalPos,
-                    deltaLocal,
-                    ref ghostCenteringApplied
+                // Applica centering ASSOLUTO: base + delta
+                StructureVisualCenteringUtility.ApplyCenteringAbsolute(
+                    _ghostVisualRoot,
+                    _previewVisualBaseLocalPos,
+                    deltaLocal
                 );
+
+                ghostCenteringApplied = true;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                if (debugMode)
+                {
+                    Debug.Log($"[BuildMode] ═══ PREVIEW CREATED ═══\n" +
+                              $"  Base localPos captured: {_previewVisualBaseLocalPos}\n" +
+                              $"  Delta for rot {rotationStep}: {deltaLocal}\n" +
+                              $"  Final localPos: {_ghostVisualRoot.localPosition}");
+                }
+#endif
             }
             else
             {
@@ -423,37 +459,52 @@ namespace WildernessSurvival.Gameplay.Structures
             // Update rotation step (0..3)
             rotationStep = (rotationStep + direction + 4) % 4;
 
-            // Apply rotation
+            // Apply rotation al root del preview
             int degrees = rotationStep * 90;
             currentPreview.transform.rotation = Quaternion.Euler(0, degrees, 0);
 
-            // Reset centering flag (rotazione cambia bounds, serve ricalcolo)
-            ghostCenteringApplied = false;
+            // ═══════════════════════════════════════════════════════════
+            // CENTERING ASSOLUTO: usa sempre baseLocalPos + delta
+            // Questo previene il drift accumulativo
+            // ═══════════════════════════════════════════════════════════
 
-            // Ricalcola e riapplica centering con nuova rotazione
-            Transform visualChild = currentPreview.transform.childCount > 0 ? currentPreview.transform.GetChild(0) : null;
-            if (visualChild != null)
+            if (_ghostVisualRoot != null && _previewBaseCaptured)
             {
-                Transform ghostVisualRoot = StructureVisualCenteringUtility.FindVisualRoot(visualChild.gameObject);
-                if (ghostVisualRoot != null)
+                // 1. SEMPRE resetta alla posizione BASE prima di calcolare il delta
+                //    Questo garantisce che bounds siano calcolati dallo stato pulito
+                _ghostVisualRoot.localPosition = _previewVisualBaseLocalPos;
+
+                // 2. Calcola delta dal stato pulito (usa cache se disponibile)
+                Vector3 deltaLocal = StructureVisualCenteringUtility.ComputeCenteringDeltaFromCleanState(
+                    currentPreview.transform,
+                    _ghostVisualRoot,
+                    _previewVisualBaseLocalPos,
+                    currentPrefabForCentering,
+                    rotationStep
+                );
+
+                // 3. Applica centering ASSOLUTO: base + delta (idempotente)
+                StructureVisualCenteringUtility.ApplyCenteringAbsolute(
+                    _ghostVisualRoot,
+                    _previewVisualBaseLocalPos,
+                    deltaLocal
+                );
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                if (debugMode)
                 {
-                    Vector3 originalLocalPos = ghostVisualRoot.localPosition;
-
-                    // Usa cache con nuovo rotationStep
-                    Vector3 deltaLocal = StructureVisualCenteringUtility.GetOrComputeCenteringLocalDelta(
-                        currentPreview.transform,
-                        ghostVisualRoot,
-                        currentPrefabForCentering,
-                        rotationStep
-                    );
-
-                    StructureVisualCenteringUtility.ApplyCenteringOnce(
-                        ghostVisualRoot,
-                        originalLocalPos,
-                        deltaLocal,
-                        ref ghostCenteringApplied
-                    );
+                    Debug.Log($"[BuildMode] ═══ ROTATE PREVIEW ═══\n" +
+                              $"  Rotation step: {rotationStep} ({degrees}°)\n" +
+                              $"  Base localPos: {_previewVisualBaseLocalPos}\n" +
+                              $"  Delta for this rot: {deltaLocal}\n" +
+                              $"  Final localPos: {_ghostVisualRoot.localPosition}\n" +
+                              $"  (Expected: base + delta = {_previewVisualBaseLocalPos + new Vector3(deltaLocal.x, 0, deltaLocal.z)})");
                 }
+#endif
+            }
+            else if (debugMode)
+            {
+                Debug.LogWarning($"[BuildMode] RotatePreview: _ghostVisualRoot={_ghostVisualRoot != null}, _previewBaseCaptured={_previewBaseCaptured}");
             }
 
             if (debugMode)

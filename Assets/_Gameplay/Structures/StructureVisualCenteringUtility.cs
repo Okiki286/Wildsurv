@@ -17,6 +17,7 @@ namespace WildernessSurvival.Gameplay.Structures
         /// Ottiene o calcola l'offset locale per centrare il visualRoot.
         /// Usa cache basata su prefab instance ID e rotation step (0..3).
         /// Zero allocations se presente in cache.
+        /// IMPORTANTE: Il delta viene calcolato assumendo che visualRoot sia alla baseLocalPos.
         /// </summary>
         public static Vector3 GetOrComputeCenteringLocalDelta(Transform root, Transform visualRoot, GameObject prefab, int rotationStep = 0)
         {
@@ -73,8 +74,79 @@ namespace WildernessSurvival.Gameplay.Structures
         }
 
         /// <summary>
+        /// Calcola l'offset locale per centrare il visualRoot, partendo da una posizione base pulita.
+        /// Prima resetta visualRoot alla baseLocalPos, calcola bounds, poi ripristina.
+        /// Questo garantisce che il delta sia calcolato correttamente indipendentemente dallo stato attuale.
+        /// </summary>
+        public static Vector3 ComputeCenteringDeltaFromCleanState(Transform root, Transform visualRoot, Vector3 baseLocalPos, GameObject prefab, int rotationStep = 0)
+        {
+            if (visualRoot == null || root == null || prefab == null) return Vector3.zero;
+
+            // Genera cache key: combine prefab instanceID + rotationStep
+            int cacheKey = System.HashCode.Combine(prefab.GetInstanceID(), rotationStep);
+
+            // Controlla cache
+            if (_cachedLocalDeltaByPrefabRotation.TryGetValue(cacheKey, out Vector3 cachedDelta))
+            {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.Log($"[StructureVisualCentering] Cache HIT (clean) for {prefab.name} rotation {rotationStep}: {cachedDelta}");
+#endif
+                return cachedDelta;
+            }
+
+            // Salva posizione corrente
+            Vector3 savedLocalPos = visualRoot.localPosition;
+
+            // Resetta alla posizione base per calcolo bounds pulito
+            visualRoot.localPosition = baseLocalPos;
+
+            // Calcola bounds dal stato pulito
+            Renderer[] renderers = visualRoot.GetComponentsInChildren<Renderer>();
+            if (renderers.Length == 0)
+            {
+                visualRoot.localPosition = savedLocalPos;
+                return Vector3.zero;
+            }
+
+            Bounds worldBounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+            {
+                worldBounds.Encapsulate(renderers[i].bounds);
+            }
+
+            // Target: posizione world del root
+            Vector3 targetWorld = root.position;
+
+            // Delta in world space
+            Vector3 deltaWorld = targetWorld - worldBounds.center;
+            deltaWorld.y = 0f;
+
+            // Converti a local space
+            Transform parent = visualRoot.parent;
+            Vector3 deltaLocal = parent.InverseTransformVector(deltaWorld);
+            deltaLocal.y = 0f;
+
+            // Ripristina posizione originale (prima di applicare il nuovo delta)
+            visualRoot.localPosition = savedLocalPos;
+
+            // Salva in cache
+            _cachedLocalDeltaByPrefabRotation[cacheKey] = deltaLocal;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"[StructureVisualCentering] Cache MISS (clean), computed for {prefab.name} rotation {rotationStep}:\n" +
+                      $"  Base localPos used: {baseLocalPos}\n" +
+                      $"  World bounds center: {worldBounds.center}\n" +
+                      $"  Target world pos: {targetWorld}\n" +
+                      $"  Delta local: {deltaLocal}");
+#endif
+
+            return deltaLocal;
+        }
+
+        /// <summary>
         /// Applica il centering al visualRoot UNA SOLA VOLTA (usa flag per prevenire double-apply).
         /// Modifica solo X/Z, preserva Y originale.
+        /// NOTA: Questo metodo è ADDITIVO - usa ApplyCenteringAbsolute per rotazioni.
         /// </summary>
         public static void ApplyCenteringOnce(Transform visualRoot, Vector3 originalLocalPos, Vector3 deltaLocal, ref bool appliedFlag)
         {
@@ -100,6 +172,33 @@ namespace WildernessSurvival.Gameplay.Structures
             Debug.Log($"[StructureVisualCentering] ApplyCenteringOnce APPLIED to {visualRoot.name}:\n" +
                       $"  Original localPos: {originalLocalPos}\n" +
                       $"  Delta local applied: {deltaLocal}\n" +
+                      $"  Final localPos: {visualRoot.localPosition}");
+#endif
+        }
+
+        /// <summary>
+        /// Applica il centering in modo ASSOLUTO: baseLocalPos + delta.
+        /// Idempotente - chiamate ripetute con stesso baseLocalPos e delta danno sempre lo stesso risultato.
+        /// Usa questo metodo per rotazioni del preview per evitare drift.
+        /// </summary>
+        /// <param name="visualRoot">Transform da centrare</param>
+        /// <param name="baseLocalPos">Posizione locale BASE (quella originale del prefab, mai modificata)</param>
+        /// <param name="deltaLocal">Delta da applicare (calcolato per la rotazione corrente)</param>
+        public static void ApplyCenteringAbsolute(Transform visualRoot, Vector3 baseLocalPos, Vector3 deltaLocal)
+        {
+            if (visualRoot == null) return;
+
+            Vector3 finalPos = baseLocalPos;
+            finalPos.x += deltaLocal.x;
+            finalPos.z += deltaLocal.z;
+            // Y rimane = baseLocalPos.y
+
+            visualRoot.localPosition = finalPos;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"[StructureVisualCentering] ApplyCenteringAbsolute to {visualRoot.name}:\n" +
+                      $"  Base localPos: {baseLocalPos}\n" +
+                      $"  Delta local: {deltaLocal}\n" +
                       $"  Final localPos: {visualRoot.localPosition}");
 #endif
         }

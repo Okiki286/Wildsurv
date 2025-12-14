@@ -114,8 +114,22 @@ namespace WildernessSurvival.Gameplay.Structures
         // SELECTION LOGIC
         // ============================================
 
+        // Offset per celle vicine: prima cardinali (N,E,S,W), poi diagonali
+        private static readonly Vector2Int[] NearbyCellOffsets = new Vector2Int[]
+        {
+            new Vector2Int(0, 1),   // N
+            new Vector2Int(1, 0),   // E
+            new Vector2Int(0, -1),  // S
+            new Vector2Int(-1, 0),  // W
+            new Vector2Int(1, 1),   // NE
+            new Vector2Int(1, -1),  // SE
+            new Vector2Int(-1, -1), // SW
+            new Vector2Int(-1, 1)   // NW
+        };
+
         /// <summary>
         /// Tenta di selezionare una struttura alla posizione del mouse.
+        /// Implementa fallback su celle vicine per edge cases.
         /// </summary>
         private void TrySelectStructureAtMousePosition()
         {
@@ -138,17 +152,41 @@ namespace WildernessSurvival.Gameplay.Structures
             Vector2Int cell = StructureSystem.Instance.WorldToCell(hit.point);
             lastClickedCell = cell;
 
-            // Cerca struttura che occupa questa cella
+            // 1. Prima prova la cella esatta
             if (StructureSystem.Instance.TryGetStructureAtCell(cell, out StructureController structure))
             {
-                // Cella occupata - seleziona struttura
                 SelectStructure(structure);
+                return;
             }
-            else
+
+            // 2. Fallback: prova celle vicine (per click sui bordi)
+            structure = TryFindStructureInNearbyCells(cell);
+            if (structure != null)
             {
-                // Cella vuota - deseleziona
-                ClearSelection();
+                SelectStructure(structure);
+                return;
             }
+
+            // 3. Nessuna struttura trovata - deseleziona
+            ClearSelection();
+        }
+
+        /// <summary>
+        /// Cerca una struttura nelle celle vicine (fallback per click sui bordi).
+        /// </summary>
+        /// <param name="centerCell">Cella centrale</param>
+        /// <returns>Struttura trovata o null</returns>
+        private StructureController TryFindStructureInNearbyCells(Vector2Int centerCell)
+        {
+            foreach (var offset in NearbyCellOffsets)
+            {
+                Vector2Int neighborCell = new Vector2Int(centerCell.x + offset.x, centerCell.y + offset.y);
+                if (StructureSystem.Instance.TryGetStructureAtCell(neighborCell, out StructureController structure))
+                {
+                    return structure;
+                }
+            }
+            return null;
         }
 
         /// <summary>

@@ -1304,38 +1304,18 @@ namespace WildernessSurvival.Gameplay.Structures
 
         /// <summary>
         /// Calcola e ritorna tutte le celle occupate da questa struttura.
-        /// Usa StructureData.GridSize (o CustomFootprintSize se abilitato) e la rotazione.
+        /// Usa FootprintUtility per rotazione corretta delle celle.
         /// </summary>
         public List<Vector2Int> GetOccupiedCells()
         {
-            var cells = new List<Vector2Int>();
-
             if (structureData == null)
             {
                 Debug.LogWarning($"[StructureController] {gameObject.name} has no StructureData!");
-                return cells;
+                return new List<Vector2Int>();
             }
 
-            // Determina la dimensione del footprint
-            Vector2Int footprintSize = structureData.GridSize;
-
-            // Se usa custom footprint, converti in celle (assumendo gridSize = 1)
-            // Nota: per footprint in world units, dividiamo per gridSize se necessario
-            // Per ora assumiamo che GridSize sia già in celle
-
-            // Applica rotazione
-            Vector2Int effectiveSize = StructureSystem.RotateFootprint(footprintSize, PlacementRotationStep);
-
-            // Genera tutte le celle
-            for (int dx = 0; dx < effectiveSize.x; dx++)
-            {
-                for (int dz = 0; dz < effectiveSize.y; dz++)
-                {
-                    cells.Add(new Vector2Int(OriginCell.x + dx, OriginCell.y + dz));
-                }
-            }
-
-            return cells;
+            // Usa FootprintUtility per calcolare le celle con rotazione corretta
+            return FootprintUtility.GetWorldOccupiedCells(structureData, OriginCell, PlacementRotationStep);
         }
 
         // ============================================
