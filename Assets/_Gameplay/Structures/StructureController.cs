@@ -1,6 +1,7 @@
 using Sirenix.OdinInspector;
 using System.Collections.Generic;
 using UnityEngine;
+using WildernessSurvival.Core.Systems;
 using WildernessSurvival.Gameplay.Resources;
 using WildernessSurvival.Gameplay.Workers;
 using WildernessSurvival.UI;
@@ -305,6 +306,12 @@ namespace WildernessSurvival.Gameplay.Structures
 
             // FIX3: Libera celle nella occupancy grid quando la struttura viene distrutta
             StructureSystem.Instance?.FreeArea(this);
+
+            // Clear base center se questa struttura era il center
+            if (structureData != null && structureData.IsBaseCenter)
+            {
+                BaseCenterSystem.Instance?.ClearCenterIfMatch(transform);
+            }
         }
 
         // ============================================
@@ -414,6 +421,12 @@ namespace WildernessSurvival.Gameplay.Structures
                     {
                         WorkerSystem.Instance.RegisterStructureNeedingBuilders(this);
                     }
+
+                    // Se è base center, disabilita aura durante costruzione
+                    if (structureData != null && structureData.IsBaseCenter)
+                    {
+                        EnableWaystoneAura(false);
+                    }
                     break;
 
                 case StructureState.Operating:
@@ -425,6 +438,13 @@ namespace WildernessSurvival.Gameplay.Structures
                     if (previousState == StructureState.Building && WorkerSystem.Instance != null)
                     {
                         WorkerSystem.Instance.UnregisterStructureNeedingBuilders(this);
+                    }
+
+                    // Se è base center (Waystone), registra come centro
+                    if (structureData != null && structureData.IsBaseCenter)
+                    {
+                        BaseCenterSystem.Instance?.SetCenter(transform);
+                        EnableWaystoneAura(true);
                     }
                     break;
 
@@ -785,6 +805,32 @@ namespace WildernessSurvival.Gameplay.Structures
             buildersAssigned.Clear();
             CurrentBuilder = null;
             workerCount = 0;
+        }
+
+        // ============================================
+        // WAYSTONE AURA (Base Center)
+        // ============================================
+
+        /// <summary>
+        /// Abilita/disabilita l'aura del Waystone (WaystoneDebuffAura).
+        /// Chiamato quando la struttura diventa operativa o viene distrutta.
+        /// </summary>
+        private void EnableWaystoneAura(bool enable)
+        {
+            // Cerca WaystoneDebuffAura nei children
+            var aura = GetComponentInChildren<WaystoneDebuffAura>(true);
+            if (aura != null)
+            {
+                aura.enabled = enable;
+
+                // Attiva/disattiva anche il gameObject se necessario
+                if (aura.gameObject != gameObject)
+                {
+                    aura.gameObject.SetActive(enable);
+                }
+
+                Debug.Log($"<color=cyan>[Structure]</color> {structureData.DisplayName} aura {(enable ? "enabled" : "disabled")}");
+            }
         }
 
         // ============================================

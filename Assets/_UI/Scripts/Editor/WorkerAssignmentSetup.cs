@@ -515,13 +515,13 @@ namespace WildernessSurvival.Editor
         }
 
         // ============================================
-        // 5. SETUP STRUCTURE CLICK HANDLERS
+        // 5. SETUP STRUCTURE COLLIDERS
         // ============================================
 
         [TitleGroup("Structure Setup")]
-        [Button("Add Click Handlers to Structures", ButtonSizes.Large), GUIColor(0.6f, 0.8f, 0.4f)]
-        [InfoBox("Finds all StructureController objects in the scene and adds BoxCollider + StructureClickHandler if missing.")]
-        public void SetupStructureClickHandlers()
+        [Button("Add Colliders to Structures", ButtonSizes.Large), GUIColor(0.6f, 0.8f, 0.4f)]
+        [InfoBox("Finds all StructureController objects in the scene and adds BoxCollider if missing. Note: StructureClickHandler è deprecato, usare StructureSelectionManager.")]
+        public void SetupStructureColliders()
         {
             StructureController[] structures = FindObjectsByType<StructureController>(FindObjectsSortMode.None);
             
@@ -532,7 +532,6 @@ namespace WildernessSurvival.Editor
             }
 
             int addedColliders = 0;
-            int addedHandlers = 0;
 
             foreach (StructureController structure in structures)
             {
@@ -561,18 +560,9 @@ namespace WildernessSurvival.Editor
                     addedColliders++;
                     Debug.Log($"<color=yellow>[WorkerAssignmentSetup]</color> Added BoxCollider to {obj.name}");
                 }
-
-                // Check if has StructureClickHandler
-                StructureClickHandler existingHandler = obj.GetComponent<StructureClickHandler>();
-                if (existingHandler == null)
-                {
-                    obj.AddComponent<StructureClickHandler>();
-                    addedHandlers++;
-                    Debug.Log($"<color=yellow>[WorkerAssignmentSetup]</color> Added StructureClickHandler to {obj.name}");
-                }
             }
 
-            Debug.Log($"<color=green>[WorkerAssignmentSetup]</color> Setup complete! Found {structures.Length} structures. Added {addedColliders} colliders and {addedHandlers} click handlers.");
+            Debug.Log($"<color=green>[WorkerAssignmentSetup]</color> Setup complete! Found {structures.Length} structures. Added {addedColliders} colliders.");
         }
 
         // ============================================

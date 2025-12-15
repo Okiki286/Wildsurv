@@ -770,9 +770,17 @@ namespace WildernessSurvival.Gameplay.Structures
         /// <summary>
         /// Valida placement con supporto rotazione (0..3 per 0°, 90°, 180°, 270°)
         /// Usa dual validation: occupancy grid + Physics.OverlapBox per robustezza.
+        /// Include check per strutture uniche (isBaseCenter).
         /// </summary>
         public bool ValidatePlacement(StructureData data, Vector3 position, int rotationStep, GameObject previewRoot = null)
         {
+            // 0. Check unicità isBaseCenter - solo una Waystone può esistere
+            if (data.IsBaseCenter && HasBaseCenterStructure())
+            {
+                Debug.LogWarning($"<color=yellow>[StructureSystem]</color> Cannot place '{data.DisplayName}': Only one Waystone can be built.");
+                return false;
+            }
+
             Vector2Int effectiveSize = GetRotatedSize(data.GridSize, rotationStep);
             if (!IsGroundValid(position, effectiveSize)) return false;
 
@@ -792,6 +800,38 @@ namespace WildernessSurvival.Gameplay.Structures
         }
 
         /// <summary>
+        /// Verifica se esiste già una struttura con isBaseCenter = true.
+        /// </summary>
+        /// <returns>True se esiste già un Waystone/base center</returns>
+        public bool HasBaseCenterStructure()
+        {
+            foreach (var structure in allStructures)
+            {
+                if (structure != null && structure.Data != null && structure.Data.IsBaseCenter)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Ottiene la struttura base center (Waystone) se esiste.
+        /// </summary>
+        /// <returns>StructureController del Waystone, o null se non esiste</returns>
+        public StructureController GetBaseCenterStructure()
+        {
+            foreach (var structure in allStructures)
+            {
+                if (structure != null && structure.Data != null && structure.Data.IsBaseCenter)
+                {
+                    return structure;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
         /// Calcola dimensione effettiva con rotazione (swap X/Y per 90°/270°)
         /// </summary>
         private Vector2Int GetRotatedSize(Vector2Int originalSize, int rotationStep)
@@ -808,7 +848,8 @@ namespace WildernessSurvival.Gameplay.Structures
             NoGround,
             SlopeTooSteep,
             CellOccupied,
-            PhysicsOverlap
+            PhysicsOverlap,
+            BaseCenterAlreadyExists
         }
 
         /// <summary>
@@ -827,6 +868,13 @@ namespace WildernessSurvival.Gameplay.Structures
             if (data == null)
             {
                 reason = PlacementFailReason.NoGround;
+                return false;
+            }
+
+            // 0. Check unicità isBaseCenter - solo una Waystone può esistere
+            if (data.IsBaseCenter && HasBaseCenterStructure())
+            {
+                reason = PlacementFailReason.BaseCenterAlreadyExists;
                 return false;
             }
 

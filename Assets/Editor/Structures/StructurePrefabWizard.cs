@@ -371,10 +371,10 @@ namespace WildernessSurvival.Editor.Structures
 
             // 4. Aggiungi componenti gameplay al root
             StructureController controller = GetOrAddComponent<StructureController>(root);
-            StructureClickHandler clickHandler = GetOrAddComponent<StructureClickHandler>(root);
+            // StructureClickHandler rimosso - usare StructureSelectionManager
             StructureStatusUI statusUI = GetOrAddComponent<StructureStatusUI>(root);
 
-            Debug.Log($"[StructurePrefabWizard] Added gameplay components: StructureController, StructureClickHandler, StructureStatusUI");
+            Debug.Log($"[StructurePrefabWizard] Added gameplay components: StructureController, StructureStatusUI");
 
             // 5. Setup StructureController usando reflection per campi privati
             var dataField = typeof(StructureController).GetField("structureData",
@@ -473,11 +473,7 @@ namespace WildernessSurvival.Editor.Structures
                 DestroyImmediate(controller);
             }
 
-            StructureClickHandler clickHandler = previewRoot.GetComponent<StructureClickHandler>();
-            if (clickHandler != null)
-            {
-                DestroyImmediate(clickHandler);
-            }
+            // StructureClickHandler non più usato - rimosso
 
             StructureStatusUI statusUI = previewRoot.GetComponent<StructureStatusUI>();
             if (statusUI != null)
@@ -485,7 +481,7 @@ namespace WildernessSurvival.Editor.Structures
                 DestroyImmediate(statusUI);
             }
 
-            Debug.Log($"[StructurePrefabWizard] Removed gameplay components from preview: StructureController, StructureClickHandler, StructureStatusUI");
+            Debug.Log($"[StructurePrefabWizard] Removed gameplay components from preview: StructureController, StructureStatusUI");
 
             // Rimuovi altri componenti non necessari (UI, ecc.)
             var uiComponents = previewRoot.GetComponentsInChildren<Canvas>(true);

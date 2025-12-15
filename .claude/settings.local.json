@@ -12,7 +12,8 @@
       "Bash(taskkill:*)",
       "Bash(del \"\\?\\C:\\Users\\riku2\\Desktop\\Wild\\WildernessClean\\WildernessClean\\nul\")",
       "Bash(del \"\\?\\C:\\Users\\riku2\\Desktop\\Wild\\WildernessClean\\WildernessClean\\Assets\\nul\")",
-      "Bash(powershell -Command:*)"
+      "Bash(powershell -Command:*)",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []

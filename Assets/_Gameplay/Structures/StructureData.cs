@@ -70,6 +70,12 @@ namespace WildernessSurvival.Gameplay.Structures
         [Tooltip("È unica? (una sola nel campo)")]
         [SerializeField] private bool isUnique = false;
 
+        [TitleGroup("Base Center")]
+        [InfoBox("Se abilitato, questa struttura diventa il centro della base (target nemici, aura debuff)")]
+        [ToggleLeft]
+        [Tooltip("Questa struttura è il centro della base (Waystone)?")]
+        [SerializeField] private bool isBaseCenter = false;
+
         // ============================================
         // COSTI COSTRUZIONE
         // ============================================
@@ -231,6 +237,7 @@ namespace WildernessSurvival.Gameplay.Structures
         public int Tier => tier;
         public int MaxLevel => maxLevel;
         public bool IsUnique => isUnique;
+        public bool IsBaseCenter => isBaseCenter;
         public StructureCost[] BuildCosts => buildCosts;
         public float BuildTime => buildTime;
         public bool RequiresBuilder => requiresBuilder;
