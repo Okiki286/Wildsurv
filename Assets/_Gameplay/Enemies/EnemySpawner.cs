@@ -165,10 +165,15 @@ namespace WildernessSurvival.Gameplay.Enemies
         private void ApplyScaledStats(GameObject enemy, EnemyData data,
             float hpMul, float dmgMul, float spdMul, float rwdMul)
         {
-            // Look for common enemy components and apply stats
-            // This is a placeholder - adapt to your actual enemy component structure
+            // Priority 1: EnemyController (new system with IDebuffable + NavMesh)
+            var enemyController = enemy.GetComponent<EnemyController>();
+            if (enemyController != null)
+            {
+                enemyController.Initialize(data, hpMul, dmgMul, spdMul, rwdMul);
+                return;
+            }
 
-            // Try to find EnemyInstance component (if exists)
+            // Priority 2: Legacy EnemyInstance
             var enemyInstance = enemy.GetComponent<EnemyInstance>();
             if (enemyInstance != null)
             {
@@ -176,8 +181,7 @@ namespace WildernessSurvival.Gameplay.Enemies
                 return;
             }
 
-            // Try generic approach - look for common components
-            // Health component
+            // Priority 3: Generic IHealth component
             var healthComponent = enemy.GetComponent<IHealth>();
             if (healthComponent != null)
             {
@@ -185,13 +189,13 @@ namespace WildernessSurvival.Gameplay.Enemies
                 healthComponent.SetMaxHealth(scaledHealth);
             }
 
-            // If no recognized components found, log warning (not error - doesn't crash)
-            if (enemyInstance == null && healthComponent == null)
+            // If no recognized components found, log warning
+            if (enemyController == null && enemyInstance == null && healthComponent == null)
             {
                 if (debugMode)
                 {
                     Debug.LogWarning($"[EnemySpawner] No stat components found on '{enemy.name}'. " +
-                        "Stats will use prefab defaults. Add EnemyInstance or IHealth component for scaling.");
+                        "Stats will use prefab defaults. Add EnemyController, EnemyInstance, or IHealth component.");
                 }
             }
         }

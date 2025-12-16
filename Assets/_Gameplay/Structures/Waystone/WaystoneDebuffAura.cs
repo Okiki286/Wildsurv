@@ -63,6 +63,10 @@ namespace WildernessSurvival.Gameplay.Structures
         [Tooltip("Log TUTTI i trigger events (anche quelli filtrati). Utile per diagnosticare layer/setup issues.")]
         [SerializeField] private bool verboseTriggerDebug = false;
 
+        [TitleGroup("Behavior")]
+        [Tooltip("Se true, rimuove i debuff da tutti i target quando OnDisable viene chiamato. Default false per evitare problemi durante scene changes/costruzione.")]
+        [SerializeField] private bool removeDebuffsOnDisable = false;
+
         // ============================================
         // RUNTIME STATE
         // ============================================
@@ -114,8 +118,25 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private void OnDisable()
         {
-            // Rimuovi debuff da tutti i target quando si disattiva
+            // Rimuovi debuff solo se esplicitamente richiesto (evita problemi durante scene changes/costruzione)
+            if (removeDebuffsOnDisable)
+            {
+                RemoveAllDebuffs();
+            }
+            else if (debugMode)
+            {
+                Debug.Log($"<color=cyan>[WaystoneAura]</color> OnDisable - NOT removing debuffs (removeDebuffsOnDisable=false). Tracking {trackedTargets.Count} targets.");
+            }
+        }
+
+        private void OnDestroy()
+        {
+            // Cleanup: rimuovi sempre i debuff quando l'aura viene distrutta
             RemoveAllDebuffs();
+            if (debugMode)
+            {
+                Debug.Log("<color=cyan>[WaystoneAura]</color> OnDestroy - All debuffs removed (cleanup)");
+            }
         }
 
         private void Update()

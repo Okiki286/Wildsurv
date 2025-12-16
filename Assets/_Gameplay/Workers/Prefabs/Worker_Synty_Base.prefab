@@ -191,6 +191,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 100020, guid: 9d545e43681431348908eab98e78aa45, type: 3}
       insertIndex: -1
       addedObject: {fileID: 5211032268425838969}
+    - targetCorrespondingSourceObject: {fileID: 100020, guid: 9d545e43681431348908eab98e78aa45, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 8450190062854911060}
   m_SourcePrefab: {fileID: 100100000, guid: 9d545e43681431348908eab98e78aa45, type: 3}
 --- !u!1 &4346258105231051208 stripped
 GameObject:
@@ -316,6 +319,27 @@ MonoBehaviour:
   navMeshSampleDistance: 2
   workAnimationSpeedThreshold: 0.1
   lookAtRotationSpeed: 5
+--- !u!114 &8450190062854911060
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4346258105231051208}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c85faf69bfadf54d95795f567e891ee, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  earlyGameInjury:
+    workSpeedMultiplier: 0.75
+    moveSpeedMultiplier: 0.9
+    durationDays: 1
+  midLateGameInjury:
+    workSpeedMultiplier: 0.65
+    moveSpeedMultiplier: 0.85
+    durationDays: 2
+  earlyGameNightThreshold: 3
 --- !u!137 &4346258105234162880 stripped
 SkinnedMeshRenderer:
   m_CorrespondingSourceObject: {fileID: 13700028, guid: 9d545e43681431348908eab98e78aa45, type: 3}

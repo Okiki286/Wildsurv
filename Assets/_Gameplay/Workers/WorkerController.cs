@@ -185,6 +185,16 @@ namespace WildernessSurvival.Gameplay.Workers
             // Skip se in transizione visiva
             if (IsChangingOutfit) return;
 
+            // ═══════════════════════════════════════════════════════════
+            // DOWNED SAFETY NET: worker a terra non processa update AI
+            // ═══════════════════════════════════════════════════════════
+            var downedStatus = GetComponent<WorkerDownedStatus>();
+            if (downedStatus != null && downedStatus.IsDowned)
+            {
+                UpdateAnimations(0f, false, false);
+                return;
+            }
+
             if (isForcedIdle)
             {
                 UpdateAnimations(0f, false, false);
@@ -355,6 +365,16 @@ namespace WildernessSurvival.Gameplay.Workers
         public void CommandMoveTo(Vector3 position)
         {
             if (agent == null) return;
+
+            // ═══════════════════════════════════════════════════════════
+            // DOWNED GATE: worker a terra non può ricevere ordini di movimento
+            // ═══════════════════════════════════════════════════════════
+            var downedStatus = GetComponent<WorkerDownedStatus>();
+            if (downedStatus != null && !downedStatus.CanReceiveOrders)
+            {
+                Debug.Log($"<color=gray>[WorkerController]</color> Cannot move {gameObject.name}: DOWNED");
+                return;
+            }
 
             isForcedIdle = false;
             currentMovementState = MovementState.Traveling;

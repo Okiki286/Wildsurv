@@ -296,6 +296,19 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (worker == null || structure == null) return false;
 
+            // ═══════════════════════════════════════════════════════════
+            // DOWNED GATE: worker a terra non può ricevere ordini
+            // ═══════════════════════════════════════════════════════════
+            if (worker.PhysicalWorker != null)
+            {
+                var downedStatus = worker.PhysicalWorker.GetComponent<WorkerDownedStatus>();
+                if (downedStatus != null && !downedStatus.CanReceiveOrders)
+                {
+                    Debug.Log($"<color=gray>[WorkerSystem]</color> Cannot assign {worker.CustomName}: DOWNED");
+                    return false;
+                }
+            }
+
             if (worker.IsAssigned) UnassignWorker(worker);
 
             if (structure.AssignWorker(worker))

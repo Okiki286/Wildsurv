@@ -17,6 +17,15 @@ namespace WildernessSurvival.Core.Systems
 
         public static DayNightSystem Instance { get; private set; }
 
+        /// <summary>
+        /// Reset static per domain reload in Editor (previene Instance stale).
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatic()
+        {
+            Instance = null;
+        }
+
         // ============================================
         // CONFIGURAZIONE TEMPI
         // ============================================
@@ -169,10 +178,14 @@ namespace WildernessSurvival.Core.Systems
         {
             if (Instance != null && Instance != this)
             {
+                Debug.LogWarning($"<color=red>[DayNightSystem]</color> Duplicate instance destroyed! " +
+                    $"Existing: {Instance.gameObject.name} (ID:{Instance.GetInstanceID()}), " +
+                    $"This: {gameObject.name} (ID:{GetInstanceID()})");
                 Destroy(gameObject);
                 return;
             }
             Instance = this;
+            Debug.Log($"<color=green>[DayNightSystem]</color> Instance set: {gameObject.name} (ID:{GetInstanceID()})");
         }
 
         private void Start()
