@@ -1,6 +1,8 @@
 using UnityEngine;
 using Sirenix.OdinInspector;
 using System;
+using WildernessSurvival.Gameplay.Combat;
+using WildernessSurvival.Gameplay.Enemies;
 using WildernessSurvival.Gameplay.Structures;
 
 namespace WildernessSurvival.Gameplay.Workers
@@ -10,7 +12,7 @@ namespace WildernessSurvival.Gameplay.Workers
     /// Gestisce job, stats, assegnazione e stato.
     /// </summary>
     [Serializable]
-    public class WorkerInstance
+    public class WorkerInstance : IDamageable
     {
         // ============================================
         // IDENTITY
@@ -374,12 +376,28 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         // ============================================
-        // HEALTH & COMBAT
+        // HEALTH & COMBAT (IDamageable)
         // ============================================
 
+        // IDamageable è implementato esplicitamente dove serve
+        float IDamageable.CurrentHealth => CurrentHealth;
+        float IDamageable.MaxHealth => MaxHealth;
+
+        /// <summary>
+        /// Applica danno al worker (legacy, senza tipo danno)
+        /// </summary>
         public void TakeDamage(float damage)
         {
+            TakeDamage(damage, DamageType.None);
+        }
+
+        /// <summary>
+        /// Applica danno al worker con tipo danno (IDamageable)
+        /// </summary>
+        public void TakeDamage(float damage, DamageType damageType)
+        {
             if (!IsAlive) return;
+            // Workers non hanno resistenze per ora, ignora damageType
             CurrentHealth = Mathf.Max(0, CurrentHealth - damage);
             if (!IsAlive) OnDeath();
         }

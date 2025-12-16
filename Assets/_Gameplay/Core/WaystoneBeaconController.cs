@@ -1,6 +1,8 @@
 using UnityEngine;
 using System;
 using WildernessSurvival.Core.Events;
+using WildernessSurvival.Gameplay.Combat;
+using WildernessSurvival.Gameplay.Enemies;
 #if UNITY_EDITOR
 using Sirenix.OdinInspector;
 #endif
@@ -12,7 +14,7 @@ namespace WildernessSurvival.Gameplay.Core
     /// Obiettivo centrale che i nemici devono attaccare.
     /// Si integra con il ciclo Day/Night per effetti visuali e rigenerazione.
     /// </summary>
-    public class WaystoneBeaconController : MonoBehaviour
+    public class WaystoneBeaconController : MonoBehaviour, IDamageable
     {
         // ============================================
         // CONFIGURAZIONE
@@ -296,30 +298,43 @@ namespace WildernessSurvival.Gameplay.Core
         }
 
         // ============================================
-        // DAMAGE SYSTEM
+        // DAMAGE SYSTEM (IDamageable)
         // ============================================
 
+        // IDamageable explicit implementation
+        float IDamageable.CurrentHealth => currentHP;
+        float IDamageable.MaxHealth => maxHP;
+        bool IDamageable.IsAlive => !isDestroyed && currentHP > 0;
+
         /// <summary>
-        /// Applica danno al beacon.
+        /// Applica danno al beacon (legacy, int)
         /// </summary>
-        /// <param name="amount">Quantità di danno</param>
         public void TakeDamage(int amount)
         {
-            if (isDestroyed || amount <= 0) return;
-            
-            int previousHP = currentHP;
+            TakeDamage((float)amount, DamageType.None);
+        }
+
+        /// <summary>
+        /// Applica danno al beacon con tipo danno (IDamageable)
+        /// </summary>
+        public void TakeDamage(float damage, DamageType damageType = DamageType.None)
+        {
+            if (isDestroyed || damage <= 0) return;
+
+            // Waystone non ha resistenze, ignora damageType
+            int amount = Mathf.CeilToInt(damage);
             currentHP = Mathf.Max(0, currentHP - amount);
-            
+
             if (debugMode)
             {
-                Debug.Log($"<color=red>[WaystoneBeacon]</color> 💥 Danno! -{amount} HP ({currentHP}/{maxHP})");
+                Debug.Log($"<color=red>[WaystoneBeacon]</color> Danno! -{amount} HP ({currentHP}/{maxHP})");
             }
-            
+
             OnDamaged?.Invoke(amount, currentHP);
-            
+
             // Flash visivo sul danno
             FlashDamage();
-            
+
             if (currentHP <= 0)
             {
                 Die();

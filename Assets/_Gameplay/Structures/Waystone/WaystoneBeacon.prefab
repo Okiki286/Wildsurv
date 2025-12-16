@@ -165,6 +165,7 @@ MonoBehaviour:
   attackMultiplier: 0.85
   tickInterval: 0.25
   debugMode: 0
+  verboseTriggerDebug: 0
 --- !u!1 &3492724680479693441
 GameObject:
   m_ObjectHideFlags: 0
@@ -313,6 +314,7 @@ MonoBehaviour:
   attackMultiplier: 0.85
   tickInterval: 0.25
   debugMode: 0
+  verboseTriggerDebug: 0
 --- !u!1 &3938615460833755245
 GameObject:
   m_ObjectHideFlags: 0
