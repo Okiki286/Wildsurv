@@ -296,15 +296,15 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (worker == null || structure == null) return false;
 
-            // ═══════════════════════════════════════════════════════════
-            // DOWNED GATE: worker a terra non può ricevere ordini
-            // ═══════════════════════════════════════════════════════════
+            // Gate: block assignment when worker is downed
             if (worker.PhysicalWorker != null)
             {
                 var downedStatus = worker.PhysicalWorker.GetComponent<WorkerDownedStatus>();
-                if (downedStatus != null && !downedStatus.CanReceiveOrders)
+                if (downedStatus != null && downedStatus.IsDowned)
                 {
-                    Debug.Log($"<color=gray>[WorkerSystem]</color> Cannot assign {worker.CustomName}: DOWNED");
+#if UNITY_EDITOR
+                    Debug.Log($"<color=orange>[WorkerSystem]</color> AssignWorker blocked: {worker.CustomName} is DOWNED");
+#endif
                     return false;
                 }
             }
@@ -606,6 +606,16 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (worker == null)
                 return;
+
+            // Gate: don't add downed workers to idle builder queue
+            if (worker.PhysicalWorker != null)
+            {
+                var downedStatus = worker.PhysicalWorker.GetComponent<WorkerDownedStatus>();
+                if (downedStatus != null && downedStatus.IsDowned)
+                {
+                    return;
+                }
+            }
 
             if (!_idleBuilders.Contains(worker))
             {

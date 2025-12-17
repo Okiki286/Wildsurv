@@ -365,6 +365,12 @@ namespace WildernessSurvival.Gameplay.Workers
                 WorkerSystem.Instance?.UnassignWorker(workerInstance);
             }
 
+            // Rimuovi dalla coda idle builders (se presente)
+            if (workerInstance != null && WorkerSystem.Instance != null)
+            {
+                WorkerSystem.Instance.NotifyWorkerNoLongerIdleBuilder(workerInstance);
+            }
+
             // Imposta stato (non Dead, ma Downed - usiamo Dead temporaneamente)
             // In futuro potremmo aggiungere WorkerState.Downed
             if (workerInstance != null)

@@ -105,8 +105,31 @@ namespace WildernessSurvival.Gameplay.Enemies
                 return null;
             }
 
-            // Instantiate
-            GameObject enemy = Instantiate(data.Prefab, position, Quaternion.identity, enemyContainer);
+            // === NAVMESH SNAP ===
+            // Validate spawn position against NavMesh before instantiation
+            Vector3 validSpawnPos = position;
+            if (!UnityEngine.AI.NavMesh.SamplePosition(position, out UnityEngine.AI.NavMeshHit hit, 5f, UnityEngine.AI.NavMesh.AllAreas))
+            {
+                if (debugMode)
+                {
+                    Debug.LogWarning($"[EnemySpawner] Spawn position {position} not on NavMesh within 5m, trying 10m...");
+                }
+                
+                if (!UnityEngine.AI.NavMesh.SamplePosition(position, out hit, 10f, UnityEngine.AI.NavMesh.AllAreas))
+                {
+                    Debug.LogError($"[EnemySpawner] Cannot find NavMesh for {data.DisplayName} at {position}! Skipping spawn.");
+                    return null;
+                }
+            }
+            validSpawnPos = hit.position;
+
+            if (debugMode && Vector3.Distance(position, validSpawnPos) > 0.1f)
+            {
+                Debug.Log($"<color=yellow>[EnemySpawner]</color> Snapped {data.DisplayName} from {position} to NavMesh at {validSpawnPos} (delta={Vector3.Distance(position, validSpawnPos):F2}m)");
+            }
+
+            // Instantiate at validated position
+            GameObject enemy = Instantiate(data.Prefab, validSpawnPos, Quaternion.identity, enemyContainer);
             enemy.name = $"{data.DisplayName}_{totalSpawnedEver}";
 
             // Apply scaled stats
@@ -118,12 +141,13 @@ namespace WildernessSurvival.Gameplay.Enemies
 
             if (debugMode)
             {
-                Debug.Log($"<color=red>[EnemySpawner]</color> Spawned {data.DisplayName} at {position} " +
+                Debug.Log($"<color=red>[EnemySpawner]</color> Spawned {data.DisplayName} at {validSpawnPos} " +
                     $"(HP:{hpMultiplier:F2}x, DMG:{dmgMultiplier:F2}x, SPD:{speedMultiplier:F2}x)");
             }
 
             return enemy;
         }
+
 
         /// <summary>
         /// Spawna un nemico da un Transform point
@@ -235,97 +259,5 @@ namespace WildernessSurvival.Gameplay.Enemies
         void SetMaxHealth(float health);
         float GetCurrentHealth();
         void TakeDamage(float damage);
-    }
-
-    /// <summary>
-    /// Componente placeholder per istanza nemico.
-    /// Estendi o sostituisci con il tuo sistema di nemici.
-    /// </summary>
-    public class EnemyInstance : MonoBehaviour
-    {
-        [TitleGroup("Stats (Runtime)")]
-        [ShowInInspector]
-        [ReadOnly]
-        private EnemyData enemyData;
-
-        [ShowInInspector]
-        [ReadOnly]
-        private float currentHealth;
-
-        [ShowInInspector]
-        [ReadOnly]
-        private float maxHealth;
-
-        [ShowInInspector]
-        [ReadOnly]
-        private float damage;
-
-        [ShowInInspector]
-        [ReadOnly]
-        private float moveSpeed;
-
-        [ShowInInspector]
-        [ReadOnly]
-        private float rewardMultiplier;
-
-        /// <summary>
-        /// Inizializza il nemico con stats scalate
-        /// </summary>
-        public void Initialize(EnemyData data, float hpMul, float dmgMul, float spdMul, float rwdMul)
-        {
-            enemyData = data;
-
-            // Calculate scaled stats
-            maxHealth = data.BaseHealth * hpMul;
-            currentHealth = maxHealth;
-            damage = data.AttackDamage * dmgMul;
-            moveSpeed = data.MoveSpeed * spdMul;
-            rewardMultiplier = rwdMul;
-
-            // Apply to AI/movement components if they exist
-            ApplyStatsToComponents();
-        }
-
-        private void ApplyStatsToComponents()
-        {
-            // Override this in your actual enemy implementation
-            // Example: GetComponent<NavMeshAgent>()?.speed = moveSpeed;
-        }
-
-        // Public accessors
-        public EnemyData Data => enemyData;
-        public float CurrentHealth => currentHealth;
-        public float MaxHealth => maxHealth;
-        public float Damage => damage;
-        public float MoveSpeed => moveSpeed;
-        public float RewardMultiplier => rewardMultiplier;
-
-        /// <summary>
-        /// Applica danno al nemico
-        /// </summary>
-        public void TakeDamage(float amount)
-        {
-            currentHealth -= amount;
-
-            if (currentHealth <= 0)
-            {
-                Die();
-            }
-        }
-
-        /// <summary>
-        /// Gestisce morte del nemico
-        /// </summary>
-        protected virtual void Die()
-        {
-            // Drop rewards
-            int shardDrop = Mathf.RoundToInt(enemyData.BaseShardDrop * rewardMultiplier);
-
-            // Notify systems (add your reward/resource system integration here)
-            Debug.Log($"[Enemy] {enemyData.DisplayName} died, dropping {shardDrop} shards");
-
-            // Destroy
-            Destroy(gameObject);
-        }
     }
 }

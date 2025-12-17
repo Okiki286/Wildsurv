@@ -10,25 +10,25 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2a54512261aa3f642877e8951353f71b, type: 3}
-  m_Name: Enemy Definition
+  m_Name: Enemy_Default
   m_EditorClassIdentifier: 
-  enemyId: 
-  displayName: 
+  enemyId: enemy_default
+  displayName: Enemy Default
   icon: {fileID: 0}
-  prefab: {fileID: 0}
-  description: 
+  prefab: {fileID: 6941636638358845230, guid: ae93071f902389d468b1a79bdde36980, type: 3}
+  description: Un nemico base.
   enemyType: 0
   tier: 1
   rarity: 0
   isBoss: 0
-  baseHealth: 100
+  baseHealth: 50
   armor: 0
-  moveSpeed: 3
-  attackDamage: 10
-  attackInterval: 1.5
-  attackRange: 1.5
+  moveSpeed: 3.5
+  attackDamage: 8
+  attackInterval: 1.2
+  attackRange: 0.8
   targetPriority: 0
-  aggroRange: 10
+  aggroRange: 8
   canBurrow: 0
   burrowDuration: 2
   isRanged: 0

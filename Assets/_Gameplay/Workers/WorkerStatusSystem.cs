@@ -1,14 +1,13 @@
 using UnityEngine;
-using System.Collections.Generic;
 using Sirenix.OdinInspector;
 using WildernessSurvival.Core.Events;
 
 namespace WildernessSurvival.Gameplay.Workers
 {
     /// <summary>
-    /// Manager per il sistema Downed/Injured dei worker.
-    /// Ascolta OnDayStarted per rialzare i worker downed e tick-are le injuries.
-    /// Mettere in scena (es. sotto --- MANAGERS ---).
+    /// Sistema che gestisce il ciclo downed/revive di tutti i worker.
+    /// Deve vivere in scena (es. su --- MANAGERS ---).
+    /// Ascolta OnDayStarted per rilanciare i worker e decrementare injury.
     /// </summary>
     public class WorkerStatusSystem : MonoBehaviour
     {
@@ -19,28 +18,26 @@ namespace WildernessSurvival.Gameplay.Workers
         public static WorkerStatusSystem Instance { get; private set; }
 
         // ============================================
-        // EVENTS
+        // SETTINGS
         // ============================================
 
-        [TitleGroup("Events")]
-        [Tooltip("Evento OnDayStarted dal DayNightSystem")]
-        [SerializeField]
-        [Required]
-        private GameEvent onDayStarted;
+        [TitleGroup("Event References")]
+        [Required("Assegna l'evento OnDayStarted per attivare il revive!")]
+        [SerializeField] private GameEvent onDayStarted;
+
+        [TitleGroup("Debug")]
+        [SerializeField] private bool debugMode = true;
 
         // ============================================
-        // RUNTIME STATE
+        // STATE
         // ============================================
 
-        [TitleGroup("Runtime Status")]
+        [TitleGroup("Runtime Stats")]
         [ShowInInspector, ReadOnly]
-        private List<WorkerDownedStatus> trackedWorkers = new List<WorkerDownedStatus>();
+        private int downedWorkerCount = 0;
 
         [ShowInInspector, ReadOnly]
-        public int DownedCount => GetDownedCount();
-
-        [ShowInInspector, ReadOnly]
-        public int InjuredCount => GetInjuredCount();
+        private int injuredWorkerCount = 0;
 
         // ============================================
         // LIFECYCLE
@@ -50,33 +47,33 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (Instance != null && Instance != this)
             {
-                Debug.LogWarning("[WorkerStatusSystem] Duplicate instance destroyed!");
+                Debug.LogWarning("[WorkerStatusSystem] Duplicate instance found!");
                 Destroy(gameObject);
                 return;
             }
             Instance = this;
         }
 
-        private void OnEnable()
+        private void Start()
         {
             // Subscribe to day started event
             if (onDayStarted != null)
             {
                 onDayStarted.AddListener(OnDayStartedHandler);
-                Debug.Log("<color=cyan>[WorkerStatusSystem]</color> Subscribed to OnDayStarted");
+                if (debugMode)
+                {
+                    Debug.Log("<color=cyan>[WorkerStatusSystem]</color> Subscribed to OnDayStarted");
+                }
             }
             else
             {
-                Debug.LogError("[WorkerStatusSystem] OnDayStarted event not assigned!");
+                Debug.LogError("[WorkerStatusSystem] OnDayStarted event not assigned! Worker revive won't work.");
             }
-        }
 
-        private void OnDisable()
-        {
-            // Unsubscribe
-            if (onDayStarted != null)
+            // Auto-find if not assigned
+            if (onDayStarted == null)
             {
-                onDayStarted.RemoveListener(OnDayStartedHandler);
+                TryAutoFindDayEvent();
             }
         }
 
@@ -86,132 +83,89 @@ namespace WildernessSurvival.Gameplay.Workers
             {
                 Instance = null;
             }
+
+            if (onDayStarted != null)
+            {
+                onDayStarted.RemoveListener(OnDayStartedHandler);
+            }
         }
 
         // ============================================
         // EVENT HANDLERS
         // ============================================
 
-        /// <summary>
-        /// Chiamato all'inizio di ogni giorno.
-        /// 1. Rialza tutti i worker downed
-        /// 2. Tick-a le injuries (riduce giorni rimanenti)
-        /// </summary>
         private void OnDayStartedHandler()
         {
-            Debug.Log("<color=yellow>[WorkerStatusSystem]</color> Day started - processing downed/injured workers...");
+            if (debugMode)
+            {
+                Debug.Log("<color=cyan>[WorkerStatusSystem]</color> Day started - processing downed/injured workers");
+            }
 
-            // Aggiorna lista tracked workers
-            RefreshTrackedWorkers();
+            ProcessAllWorkers();
+        }
+
+        // ============================================
+        // CORE LOGIC
+        // ============================================
+
+        /// <summary>
+        /// Processa tutti i worker: rilancia i downed, tick injury per tutti.
+        /// </summary>
+        private void ProcessAllWorkers()
+        {
+            // Trova tutti i WorkerDownedStatus in scena
+            var allDownedStatuses = FindObjectsByType<WorkerDownedStatus>(FindObjectsSortMode.None);
 
             int revivedCount = 0;
-            int injuryTickedCount = 0;
+            int tickedCount = 0;
 
-            foreach (var status in trackedWorkers)
+            for (int i = 0; i < allDownedStatuses.Length; i++)
             {
+                var status = allDownedStatuses[i];
                 if (status == null) continue;
 
-                // 1. Rialza i downed
+                // Prima: revive i downed
                 if (status.IsDowned)
                 {
                     status.ReviveAtDawn();
                     revivedCount++;
                 }
-                // 2. Tick injuries (anche quelli appena revived, ma il tick conta dal giorno DOPO)
-                // In realtà vogliamo tick-are solo quelli già injured da prima
-                // ReviveAtDawn imposta isInjured ma non dovremmo decrementare subito
-                // Soluzione: il tick avviene PRIMA del revive
-            }
 
-            // Ricalcola: tick injuries per chi era GIA' injured (non appena downato)
-            // Approccio: prima tick, poi revive
-            // Ma abbiamo già fatto revive... facciamo tick in un secondo passaggio
-            // I newly revived hanno injuredDaysRemaining = X, il tick lo decrementerà domani
-            // Per chiarezza: il giorno in cui ti rialzi NON conta come giorno di injury
-            // L'injury inizia a decrementare dal PROSSIMO OnDayStarted
-
-            // Quindi NON facciamo tick per i newly revived
-            // Facciamo tick solo per chi era già injured PRIMA di questo OnDayStarted
-            // Ma come sappiamo chi era injured prima?
-            // Soluzione: tick PRIMA di revive
-
-            // Correggiamo la logica: processare in ordine
-            // 1. Per tutti: se isInjured e NON isDowned -> TickDay
-            // 2. Per tutti: se isDowned -> ReviveAtDawn
-
-            // Reset e riprocessa correttamente
-            RefreshTrackedWorkers();
-
-            revivedCount = 0;
-            injuryTickedCount = 0;
-
-            foreach (var status in trackedWorkers)
-            {
-                if (status == null) continue;
-
-                // Tick injuries PRIMA (solo se non downed - i downed si rialzano freschi)
-                if (status.IsInjured && !status.IsDowned)
+                // Poi: tick injury (include i nuovi injured dal revive)
+                if (status.IsInjured)
                 {
                     status.TickDay();
-                    injuryTickedCount++;
+                    tickedCount++;
                 }
             }
 
-            foreach (var status in trackedWorkers)
+            // Aggiorna contatori
+            UpdateStats();
+
+            if (debugMode && (revivedCount > 0 || tickedCount > 0))
             {
+                Debug.Log($"<color=cyan>[WorkerStatusSystem]</color> Revived {revivedCount}, Ticked injury {tickedCount}");
+            }
+        }
+
+        /// <summary>
+        /// Aggiorna le statistiche runtime.
+        /// </summary>
+        private void UpdateStats()
+        {
+            var allDownedStatuses = FindObjectsByType<WorkerDownedStatus>(FindObjectsSortMode.None);
+
+            downedWorkerCount = 0;
+            injuredWorkerCount = 0;
+
+            for (int i = 0; i < allDownedStatuses.Length; i++)
+            {
+                var status = allDownedStatuses[i];
                 if (status == null) continue;
 
-                // Revive downed
-                if (status.IsDowned)
-                {
-                    status.ReviveAtDawn();
-                    revivedCount++;
-                }
+                if (status.IsDowned) downedWorkerCount++;
+                if (status.IsInjured) injuredWorkerCount++;
             }
-
-            if (revivedCount > 0 || injuryTickedCount > 0)
-            {
-                Debug.Log($"<color=yellow>[WorkerStatusSystem]</color> Day summary: " +
-                    $"{revivedCount} revived, {injuryTickedCount} injuries ticked");
-            }
-        }
-
-        // ============================================
-        // REGISTRATION
-        // ============================================
-
-        /// <summary>
-        /// Registra un WorkerDownedStatus per il tracking.
-        /// Chiamato automaticamente o da WorkerDownedStatus.Start().
-        /// </summary>
-        public void RegisterWorker(WorkerDownedStatus status)
-        {
-            if (status != null && !trackedWorkers.Contains(status))
-            {
-                trackedWorkers.Add(status);
-            }
-        }
-
-        /// <summary>
-        /// Deregistra un WorkerDownedStatus.
-        /// Chiamato quando il worker viene distrutto.
-        /// </summary>
-        public void UnregisterWorker(WorkerDownedStatus status)
-        {
-            if (status != null)
-            {
-                trackedWorkers.Remove(status);
-            }
-        }
-
-        /// <summary>
-        /// Trova tutti i WorkerDownedStatus in scena e li registra.
-        /// </summary>
-        private void RefreshTrackedWorkers()
-        {
-            trackedWorkers.Clear();
-            var allStatus = FindObjectsByType<WorkerDownedStatus>(FindObjectsSortMode.None);
-            trackedWorkers.AddRange(allStatus);
         }
 
         // ============================================
@@ -219,57 +173,79 @@ namespace WildernessSurvival.Gameplay.Workers
         // ============================================
 
         /// <summary>
-        /// Ottiene tutti i worker attualmente downed.
+        /// Ottiene il numero di worker attualmente downed.
         /// </summary>
-        public List<WorkerDownedStatus> GetDownedWorkers()
+        public int GetDownedCount()
         {
-            RefreshTrackedWorkers();
-            var result = new List<WorkerDownedStatus>();
-            foreach (var status in trackedWorkers)
-            {
-                if (status != null && status.IsDowned)
-                {
-                    result.Add(status);
-                }
-            }
-            return result;
+            UpdateStats();
+            return downedWorkerCount;
         }
 
         /// <summary>
-        /// Ottiene tutti i worker attualmente injured.
+        /// Ottiene il numero di worker attualmente injured.
         /// </summary>
-        public List<WorkerDownedStatus> GetInjuredWorkers()
+        public int GetInjuredCount()
         {
-            RefreshTrackedWorkers();
-            var result = new List<WorkerDownedStatus>();
-            foreach (var status in trackedWorkers)
+            UpdateStats();
+            return injuredWorkerCount;
+        }
+
+        /// <summary>
+        /// Forza revive di tutti i downed (cheat/debug).
+        /// </summary>
+        public void ForceReviveAll()
+        {
+            var allDownedStatuses = FindObjectsByType<WorkerDownedStatus>(FindObjectsSortMode.None);
+
+            for (int i = 0; i < allDownedStatuses.Length; i++)
             {
-                if (status != null && status.IsInjured)
+                var status = allDownedStatuses[i];
+                if (status != null && status.IsDowned)
                 {
-                    result.Add(status);
+                    status.ReviveAtDawn();
                 }
             }
-            return result;
+
+            Debug.Log("<color=lime>[WorkerStatusSystem]</color> Force revived all downed workers");
         }
 
-        private int GetDownedCount()
+        /// <summary>
+        /// Forza recovery totale di tutti i worker (cheat/debug).
+        /// </summary>
+        public void ForceRecoverAll()
         {
-            int count = 0;
-            foreach (var status in trackedWorkers)
+            var allDownedStatuses = FindObjectsByType<WorkerDownedStatus>(FindObjectsSortMode.None);
+
+            for (int i = 0; i < allDownedStatuses.Length; i++)
             {
-                if (status != null && status.IsDowned) count++;
+                var status = allDownedStatuses[i];
+                if (status != null)
+                {
+                    status.ForceFullRecovery();
+                }
             }
-            return count;
+
+            Debug.Log("<color=lime>[WorkerStatusSystem]</color> Force recovered all workers");
         }
 
-        private int GetInjuredCount()
+        // ============================================
+        // AUTO-FIND
+        // ============================================
+
+        private void TryAutoFindDayEvent()
         {
-            int count = 0;
-            foreach (var status in trackedWorkers)
+            // Prova a trovare l'evento da Resources o da altri manager
+            var allEvents = UnityEngine.Resources.FindObjectsOfTypeAll<GameEvent>();
+            for (int i = 0; i < allEvents.Length; i++)
             {
-                if (status != null && status.IsInjured) count++;
+                if (allEvents[i].name.Contains("DayStarted") || allEvents[i].name.Contains("OnDay"))
+                {
+                    onDayStarted = allEvents[i];
+                    onDayStarted.AddListener(OnDayStartedHandler);
+                    Debug.Log($"<color=yellow>[WorkerStatusSystem]</color> Auto-found day event: {onDayStarted.name}");
+                    return;
+                }
             }
-            return count;
         }
 
         // ============================================
@@ -278,69 +254,35 @@ namespace WildernessSurvival.Gameplay.Workers
 
 #if UNITY_EDITOR
         [TitleGroup("Debug Actions")]
-        [Button("Refresh Tracked Workers", ButtonSizes.Medium)]
-        private void DebugRefresh()
+        [Button("Force Revive All", ButtonSizes.Medium)]
+        [GUIColor(0.4f, 1f, 0.4f)]
+        private void DebugForceReviveAll()
         {
-            RefreshTrackedWorkers();
-            Debug.Log($"[WorkerStatusSystem] Tracking {trackedWorkers.Count} workers");
+            if (Application.isPlaying) ForceReviveAll();
         }
 
-        [Button("Simulate Day Started", ButtonSizes.Large)]
-        [GUIColor(1f, 0.9f, 0.4f)]
-        private void DebugSimulateDayStarted()
+        [Button("Force Recover All", ButtonSizes.Medium)]
+        [GUIColor(0.4f, 0.8f, 1f)]
+        private void DebugForceRecoverAll()
+        {
+            if (Application.isPlaying) ForceRecoverAll();
+        }
+
+        [Button("Update Stats", ButtonSizes.Medium)]
+        private void DebugUpdateStats()
         {
             if (Application.isPlaying)
             {
-                OnDayStartedHandler();
+                UpdateStats();
+                Debug.Log($"[WorkerStatusSystem] Downed: {downedWorkerCount}, Injured: {injuredWorkerCount}");
             }
         }
 
-        [Button("Down All Workers", ButtonSizes.Medium)]
-        [GUIColor(1f, 0.4f, 0.4f)]
-        private void DebugDownAll()
+        [Button("Simulate Day Started", ButtonSizes.Medium)]
+        [GUIColor(1f, 0.8f, 0.4f)]
+        private void DebugSimulateDayStarted()
         {
-            if (!Application.isPlaying) return;
-            RefreshTrackedWorkers();
-            foreach (var status in trackedWorkers)
-            {
-                if (status != null && !status.IsDowned)
-                {
-                    status.Down();
-                }
-            }
-        }
-
-        [Button("Recover All Workers", ButtonSizes.Medium)]
-        [GUIColor(0.4f, 1f, 0.4f)]
-        private void DebugRecoverAll()
-        {
-            if (!Application.isPlaying) return;
-            RefreshTrackedWorkers();
-            foreach (var status in trackedWorkers)
-            {
-                if (status != null)
-                {
-                    status.ForceFullRecovery();
-                }
-            }
-        }
-
-        [Button("Print Status Report", ButtonSizes.Medium)]
-        private void DebugPrintStatus()
-        {
-            RefreshTrackedWorkers();
-            Debug.Log($"=== WORKER STATUS REPORT ===\n" +
-                $"Total tracked: {trackedWorkers.Count}\n" +
-                $"Downed: {GetDownedCount()}\n" +
-                $"Injured: {GetInjuredCount()}");
-
-            foreach (var status in trackedWorkers)
-            {
-                if (status == null) continue;
-                string state = status.IsDowned ? "DOWNED" :
-                              (status.IsInjured ? $"INJURED ({status.InjuredDaysRemaining}d)" : "OK");
-                Debug.Log($"  - {status.gameObject.name}: {state}");
-            }
+            if (Application.isPlaying) OnDayStartedHandler();
         }
 #endif
     }

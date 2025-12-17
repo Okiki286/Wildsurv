@@ -45,12 +45,16 @@ namespace WildernessSurvival.Gameplay.Structures
         [TitleGroup("Debuff Settings")]
         [Tooltip("Moltiplicatore attacco (0.85 = 85% del danno/velocità normale)")]
         [Range(0.1f, 1f)]
-        [SerializeField] private float attackMultiplier = 0.85f;
+        [SerializeField] private float attackMultiplier = 0.10f;  // TEMP TEST: -90% damage
 
         [TitleGroup("Debuff Settings")]
         [Tooltip("Intervallo tra tick di applicazione debuff (ottimizzazione)")]
         [Range(0.1f, 1f)]
         [SerializeField] private float tickInterval = 0.25f;
+
+        [TitleGroup("Debuff Settings")]
+        [Tooltip("Se true, rimuove debuff da tutti i target quando l'aura viene disabilitata (OnDisable). Default false.")]
+        [SerializeField] private bool removeDebuffsOnDisable = false;
 
         // ============================================
         // DEBUG
@@ -62,10 +66,6 @@ namespace WildernessSurvival.Gameplay.Structures
         [TitleGroup("Debug")]
         [Tooltip("Log TUTTI i trigger events (anche quelli filtrati). Utile per diagnosticare layer/setup issues.")]
         [SerializeField] private bool verboseTriggerDebug = false;
-
-        [TitleGroup("Behavior")]
-        [Tooltip("Se true, rimuove i debuff da tutti i target quando OnDisable viene chiamato. Default false per evitare problemi durante scene changes/costruzione.")]
-        [SerializeField] private bool removeDebuffsOnDisable = false;
 
         // ============================================
         // RUNTIME STATE
@@ -118,25 +118,18 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private void OnDisable()
         {
-            // Rimuovi debuff solo se esplicitamente richiesto (evita problemi durante scene changes/costruzione)
+            // Rimuovi debuff solo se flag è attivo (default: false)
+            // Questo evita di rimuovere debuff se il Waystone è temporaneamente disattivato
             if (removeDebuffsOnDisable)
             {
                 RemoveAllDebuffs();
-            }
-            else if (debugMode)
-            {
-                Debug.Log($"<color=cyan>[WaystoneAura]</color> OnDisable - NOT removing debuffs (removeDebuffsOnDisable=false). Tracking {trackedTargets.Count} targets.");
             }
         }
 
         private void OnDestroy()
         {
-            // Cleanup: rimuovi sempre i debuff quando l'aura viene distrutta
+            // Cleanup completo: rimuovi tutti i debuff dai target tracciati
             RemoveAllDebuffs();
-            if (debugMode)
-            {
-                Debug.Log("<color=cyan>[WaystoneAura]</color> OnDestroy - All debuffs removed (cleanup)");
-            }
         }
 
         private void Update()

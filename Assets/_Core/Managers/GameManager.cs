@@ -19,6 +19,15 @@ namespace WildernessSurvival.Core.Managers
         
         public static GameManager Instance { get; private set; }
 
+        /// <summary>
+        /// Reset static quando disabilitato domain reload (Enter Play Mode Options)
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticState()
+        {
+            Instance = null;
+        }
+
         // ============================================
         // RIFERIMENTI SISTEMI
         // ============================================
@@ -98,10 +107,12 @@ namespace WildernessSurvival.Core.Managers
 
         private void Awake()
         {
+            Debug.Log($"<color=cyan>[GameManager]</color> Awake called on '{name}' id={GetInstanceID()} scene={gameObject.scene.name} frame={Time.frameCount}");
+
             // Singleton
             if (Instance != null && Instance != this)
             {
-                Debug.LogWarning("[GameManager] Istanza duplicata distrutta");
+                Debug.LogWarning($"[GameManager] Istanza duplicata distrutta! Existing Instance id={Instance.GetInstanceID()}, this id={GetInstanceID()}");
                 Destroy(gameObject);
                 return;
             }
@@ -111,11 +122,13 @@ namespace WildernessSurvival.Core.Managers
             if (transform.parent == null)
             {
                 DontDestroyOnLoad(gameObject);
+                Debug.Log($"<color=cyan>[GameManager]</color> DontDestroyOnLoad applied");
             }
 
             // Configurazione performance
             SetupPerformanceSettings();
         }
+
 
         private void Start()
         {

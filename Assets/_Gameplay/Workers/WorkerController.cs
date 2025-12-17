@@ -38,6 +38,9 @@ namespace WildernessSurvival.Gameplay.Workers
         [Tooltip("Riferimento al WorkerVisualController (auto-find se null)")]
         private WorkerVisualController visualController;
 
+        [SerializeField, ReadOnly]
+        private WorkerDownedStatus downedStatus;
+
         // ============================================
         // MOVEMENT SETTINGS
         // ============================================
@@ -129,6 +132,9 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             agent = GetComponent<NavMeshAgent>();
 
+            // Auto-find WorkerDownedStatus
+            downedStatus = GetComponent<WorkerDownedStatus>();
+
             // Auto-find WorkerVisualController
             if (visualController == null)
             {
@@ -165,10 +171,17 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             linkedInstance = instance;
 
-            // Inizializza il visual controller
+            // Initialize the visual controller
             if (visualController != null)
             {
                 visualController.Initialize(instance);
+            }
+
+            // Wire up the damageable bridge (for enemy targeting)
+            var damageable = GetComponent<WorkerDamageable>();
+            if (damageable != null)
+            {
+                damageable.LinkToInstance(instance);
             }
 
 #if UNITY_EDITOR
@@ -182,18 +195,11 @@ namespace WildernessSurvival.Gameplay.Workers
 
         public void ManualUpdate(float deltaTime)
         {
+            // Skip se downed (authoritative block)
+            if (downedStatus != null && downedStatus.IsDowned) return;
+
             // Skip se in transizione visiva
             if (IsChangingOutfit) return;
-
-            // ═══════════════════════════════════════════════════════════
-            // DOWNED SAFETY NET: worker a terra non processa update AI
-            // ═══════════════════════════════════════════════════════════
-            var downedStatus = GetComponent<WorkerDownedStatus>();
-            if (downedStatus != null && downedStatus.IsDowned)
-            {
-                UpdateAnimations(0f, false, false);
-                return;
-            }
 
             if (isForcedIdle)
             {
@@ -345,6 +351,9 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (!isPatrollingWorksite || isForcedIdle || IsChangingOutfit) return;
 
+            // Gate: block if downed
+            if (downedStatus != null && downedStatus.IsDowned) return;
+
             Vector2 randomCircle = Random.insideUnitCircle * workWanderRadius;
             Vector3 randomPoint = currentWorkTargetCenter + new Vector3(randomCircle.x, 0f, randomCircle.y);
 
@@ -366,13 +375,12 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (agent == null) return;
 
-            // ═══════════════════════════════════════════════════════════
-            // DOWNED GATE: worker a terra non può ricevere ordini di movimento
-            // ═══════════════════════════════════════════════════════════
-            var downedStatus = GetComponent<WorkerDownedStatus>();
-            if (downedStatus != null && !downedStatus.CanReceiveOrders)
+            // Gate: block movement orders when downed
+            if (downedStatus != null && downedStatus.IsDowned)
             {
-                Debug.Log($"<color=gray>[WorkerController]</color> Cannot move {gameObject.name}: DOWNED");
+#if UNITY_EDITOR
+                Debug.Log($"<color=orange>[WorkerController]</color> {gameObject.name} blocked CommandMoveTo: worker is DOWNED");
+#endif
                 return;
             }
 

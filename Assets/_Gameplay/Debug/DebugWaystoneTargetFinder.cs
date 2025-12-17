@@ -3,11 +3,11 @@ using Sirenix.OdinInspector;
 using WildernessSurvival.Core.Systems;
 using WildernessSurvival.Gameplay.Structures;
 
-namespace WildernessSurvival.Gameplay.DevTools
+namespace WildernessSurvival.Gameplay.DebugTools
 {
     /// <summary>
-    /// Trova automaticamente il Waystone in scena e lo assegna a tutti i DebugMoveToTarget.
-    /// Mettere in scena su un GameObject vuoto (es. "Debug_TargetFinder").
+    /// Auto-finds Waystone target and assigns it to all DebugMoveToTarget components in scene.
+    /// Uses priority-based fallback system to find Waystone.
     /// </summary>
     public class DebugWaystoneTargetFinder : MonoBehaviour
     {
@@ -16,37 +16,28 @@ namespace WildernessSurvival.Gameplay.DevTools
         // ============================================
 
         [TitleGroup("Settings")]
-        [Tooltip("Cerca il target in Start automaticamente")]
-        [SerializeField] private bool autoFindOnStart = true;
+        [Tooltip("Automatically find and assign target on Start")]
+        [SerializeField]
+        private bool autoFindOnStart = true;
 
         [TitleGroup("Settings")]
-        [Tooltip("Assegna il target a tutti i DebugMoveToTarget in scena")]
-        [SerializeField] private bool assignToAllMovers = true;
-
-        [TitleGroup("Settings")]
-        [Tooltip("Delay prima di cercare (per aspettare spawn strutture)")]
-        [Range(0f, 5f)]
-        [SerializeField] private float searchDelay = 0.5f;
-
-        [TitleGroup("Debug")]
-        [SerializeField] private bool debugLogs = true;
+        [Tooltip("Log detailed info about fallback used")]
+        [SerializeField]
+        private bool debugMode = true;
 
         // ============================================
         // RUNTIME STATE
         // ============================================
 
-        [TitleGroup("Runtime Status")]
-        [ShowInInspector]
-        [ReadOnly]
+        [TitleGroup("Runtime")]
+        [ShowInInspector, ReadOnly]
         private Transform foundTarget;
 
-        [ShowInInspector]
-        [ReadOnly]
-        private int moversAssigned = 0;
+        [ShowInInspector, ReadOnly]
+        private string fallbackUsed = "None";
 
-        [ShowInInspector]
-        [ReadOnly]
-        private string searchMethod = "Not searched yet";
+        [ShowInInspector, ReadOnly]
+        private int assignedCount = 0;
 
         // ============================================
         // LIFECYCLE
@@ -56,228 +47,178 @@ namespace WildernessSurvival.Gameplay.DevTools
         {
             if (autoFindOnStart)
             {
-                if (searchDelay > 0f)
-                {
-                    Invoke(nameof(FindAndAssignTarget), searchDelay);
-                }
-                else
-                {
-                    FindAndAssignTarget();
-                }
+                FindAndAssignTarget();
             }
         }
 
         // ============================================
-        // SEARCH LOGIC
+        // PUBLIC API
         // ============================================
 
         /// <summary>
-        /// Cerca il Waystone e assegna ai movers.
-        /// Priorità: BaseCenterSystem -> WaystoneDebuffAura -> StructureController "Waystone"
+        /// Find Waystone target using priority fallback, then assign to all DebugMoveToTarget in scene.
         /// </summary>
-        [Button("Find & Assign Target", ButtonSizes.Large)]
+        [Button("Find and Assign Target", ButtonSizes.Large)]
         [GUIColor(0.4f, 1f, 0.4f)]
         public void FindAndAssignTarget()
         {
-            foundTarget = null;
-            moversAssigned = 0;
-            searchMethod = "Searching...";
+            foundTarget = FindWaystoneTarget();
 
-            // ============================================
-            // PRIORITY 1: BaseCenterSystem
-            // ============================================
+            if (foundTarget != null)
+            {
+                AssignTargetToAllDebugMovers();
+            }
+            else
+            {
+                if (debugMode)
+                {
+                    UnityEngine.Debug.LogWarning("<color=orange>[DebugTargetFinder]</color> No Waystone target found!");
+                }
+            }
+        }
+
+        // ============================================
+        // TARGET FINDING (PRIORITY FALLBACK)
+        // ============================================
+
+        private Transform FindWaystoneTarget()
+        {
+            // ═══════════════════════════════════════════════════════════
+            // PRIORITY 1: BaseCenterSystem (if available and has center)
+            // ═══════════════════════════════════════════════════════════
             if (BaseCenterSystem.Instance != null && BaseCenterSystem.Instance.HasCenter)
             {
-                var waystoneAura = FindAnyObjectByType<WaystoneDebuffAura>();
-                if (waystoneAura != null)
+                Transform center = BaseCenterSystem.Instance.CurrentCenter;
+                if (center != null)
                 {
-                    foundTarget = waystoneAura.transform;
-                    searchMethod = "BaseCenterSystem + WaystoneDebuffAura";
-                    if (debugLogs) Log($"Found via BaseCenterSystem: {foundTarget.name}");
-                }
-            }
-
-            // ============================================
-            // PRIORITY 2: WaystoneDebuffAura diretto
-            // ============================================
-            if (foundTarget == null)
-            {
-                var aura = FindAnyObjectByType<WaystoneDebuffAura>();
-                if (aura != null)
-                {
-                    foundTarget = aura.transform;
-                    searchMethod = "WaystoneDebuffAura (FindObjectOfType)";
-                    if (debugLogs) Log($"Found via WaystoneDebuffAura: {foundTarget.name}");
-                }
-            }
-
-            // ============================================
-            // PRIORITY 3: StructureController con nome "Waystone"
-            // ============================================
-            if (foundTarget == null)
-            {
-                var structures = FindObjectsByType<StructureController>(FindObjectsSortMode.None);
-                foreach (var structure in structures)
-                {
-                    if (structure.name.ToLower().Contains("waystone"))
+                    fallbackUsed = "BaseCenterSystem.CurrentCenter";
+                    if (debugMode)
                     {
-                        foundTarget = structure.transform;
-                        searchMethod = "StructureController (name contains 'waystone')";
-                        if (debugLogs) Log($"Found via StructureController name: {foundTarget.name}");
-                        break;
+                        UnityEngine.Debug.Log($"<color=cyan>[DebugTargetFinder]</color> Found target via BaseCenterSystem: {center.name}");
                     }
+                    return center;
                 }
             }
 
-            // ============================================
-            // PRIORITY 4: Qualsiasi GameObject con nome "Waystone"
-            // ============================================
-            if (foundTarget == null)
+            // ═══════════════════════════════════════════════════════════
+            // PRIORITY 2: WaystoneDebuffAura component
+            // ═══════════════════════════════════════════════════════════
+            var aura = FindAnyObjectByType<WaystoneDebuffAura>();
+            if (aura != null)
             {
-                var allObjects = FindObjectsByType<Transform>(FindObjectsSortMode.None);
-                foreach (var t in allObjects)
+                fallbackUsed = "WaystoneDebuffAura";
+                if (debugMode)
                 {
-                    if (t.name.ToLower().Contains("waystone"))
+                    UnityEngine.Debug.Log($"<color=cyan>[DebugTargetFinder]</color> Found target via WaystoneDebuffAura: {aura.gameObject.name}");
+                }
+                return aura.transform;
+            }
+
+            // ═══════════════════════════════════════════════════════════
+            // PRIORITY 3: StructureController with "Waystone" in name
+            // ═══════════════════════════════════════════════════════════
+            var allStructures = FindObjectsByType<StructureController>(FindObjectsSortMode.None);
+            for (int i = 0; i < allStructures.Length; i++)
+            {
+                var structure = allStructures[i];
+                if (structure != null && structure.name.Contains("Waystone"))
+                {
+                    fallbackUsed = "StructureController (name contains 'Waystone')";
+                    if (debugMode)
                     {
-                        foundTarget = t;
-                        searchMethod = "GameObject (name contains 'waystone')";
-                        if (debugLogs) Log($"Found via GameObject name: {foundTarget.name}");
-                        break;
+                        UnityEngine.Debug.Log($"<color=cyan>[DebugTargetFinder]</color> Found target via StructureController: {structure.name}");
                     }
+                    return structure.transform;
                 }
             }
 
-            // ============================================
-            // RESULT
-            // ============================================
-            if (foundTarget == null)
+            // ═══════════════════════════════════════════════════════════
+            // PRIORITY 4: Any GameObject tagged "Waystone"
+            // ═══════════════════════════════════════════════════════════
+            try
             {
-                searchMethod = "NOT FOUND";
-                LogWarning("No Waystone found in scene! Place a WaystoneBeacon prefab first.");
-                return;
-            }
-
-            if (assignToAllMovers)
-            {
-                AssignToAllMovers();
-            }
-        }
-
-        private void AssignToAllMovers()
-        {
-            if (foundTarget == null) return;
-
-            var movers = FindObjectsByType<DebugMoveToTarget>(FindObjectsSortMode.None);
-            moversAssigned = 0;
-
-            foreach (var mover in movers)
-            {
-                if (mover.Target == null)
+                GameObject taggedWaystone = GameObject.FindWithTag("Waystone");
+                if (taggedWaystone != null)
                 {
-                    mover.Target = foundTarget;
-                    moversAssigned++;
-                    if (debugLogs) Log($"Assigned target to: {mover.gameObject.name}");
+                    fallbackUsed = "GameObject.FindWithTag('Waystone')";
+                    if (debugMode)
+                    {
+                        UnityEngine.Debug.Log($"<color=cyan>[DebugTargetFinder]</color> Found target via Tag: {taggedWaystone.name}");
+                    }
+                    return taggedWaystone.transform;
                 }
-                else if (debugLogs)
+            }
+            catch
+            {
+                // Tag might not exist
+            }
+
+            // ═══════════════════════════════════════════════════════════
+            // PRIORITY 5: Any GameObject with "Waystone" in name
+            // ═══════════════════════════════════════════════════════════
+            var allObjects = FindObjectsByType<Transform>(FindObjectsSortMode.None);
+            for (int i = 0; i < allObjects.Length; i++)
+            {
+                if (allObjects[i].name.Contains("Waystone"))
                 {
-                    Log($"{mover.gameObject.name} already has target: {mover.Target.name}");
+                    fallbackUsed = "GameObject name contains 'Waystone'";
+                    if (debugMode)
+                    {
+                        UnityEngine.Debug.Log($"<color=cyan>[DebugTargetFinder]</color> Found target via name search: {allObjects[i].name}");
+                    }
+                    return allObjects[i];
                 }
             }
 
-            if (debugLogs)
-            {
-                Log($"Total movers assigned: {moversAssigned}/{movers.Length}");
-            }
+            fallbackUsed = "NONE - No target found";
+            return null;
         }
 
         // ============================================
-        // MANUAL SEARCH
+        // ASSIGNMENT
         // ============================================
 
-        [TitleGroup("Debug Actions")]
-        [Button("Force Re-Search", ButtonSizes.Medium)]
-        [GUIColor(1f, 0.8f, 0.4f)]
-        private void ForceReSearch()
+        private void AssignTargetToAllDebugMovers()
         {
-            var movers = FindObjectsByType<DebugMoveToTarget>(FindObjectsSortMode.None);
-            foreach (var mover in movers)
+            var allMovers = FindObjectsByType<DebugMoveToTarget>(FindObjectsSortMode.None);
+            assignedCount = 0;
+
+            for (int i = 0; i < allMovers.Length; i++)
             {
-                mover.Target = null;
-            }
-
-            FindAndAssignTarget();
-        }
-
-        [Button("Log Scene Status", ButtonSizes.Medium)]
-        private void LogSceneStatus()
-        {
-            UnityEngine.Debug.Log("<color=cyan>═══════════════════════════════════════════════════════════</color>");
-            UnityEngine.Debug.Log("<color=cyan>[DebugTargetFinder] SCENE STATUS</color>");
-            UnityEngine.Debug.Log("<color=cyan>═══════════════════════════════════════════════════════════</color>");
-
-            bool hasBaseCenter = BaseCenterSystem.Instance != null && BaseCenterSystem.Instance.HasCenter;
-            UnityEngine.Debug.Log($"<color=white>BaseCenterSystem:</color> {(hasBaseCenter ? "<color=green>HAS CENTER</color>" : "<color=gray>No center</color>")}");
-
-            var auras = FindObjectsByType<WaystoneDebuffAura>(FindObjectsSortMode.None);
-            UnityEngine.Debug.Log($"<color=white>WaystoneDebuffAura count:</color> {auras.Length}");
-            foreach (var aura in auras)
-            {
-                UnityEngine.Debug.Log($"  - {aura.gameObject.name} (enabled: {aura.enabled})");
-            }
-
-            var structures = FindObjectsByType<StructureController>(FindObjectsSortMode.None);
-            int waystoneCount = 0;
-            foreach (var s in structures)
-            {
-                if (s.name.ToLower().Contains("waystone"))
+                var mover = allMovers[i];
+                if (mover != null && mover.target == null)
                 {
-                    waystoneCount++;
-                    UnityEngine.Debug.Log($"<color=white>StructureController Waystone:</color> {s.name}");
+                    mover.SetTarget(foundTarget);
+                    assignedCount++;
                 }
             }
-            if (waystoneCount == 0)
+
+            if (debugMode)
             {
-                UnityEngine.Debug.Log($"<color=white>StructureController Waystone:</color> <color=gray>None</color>");
+                UnityEngine.Debug.Log($"<color=cyan>[DebugTargetFinder]</color> Assigned target to {assignedCount} DebugMoveToTarget components (fallback: {fallbackUsed})");
             }
-
-            var movers = FindObjectsByType<DebugMoveToTarget>(FindObjectsSortMode.None);
-            UnityEngine.Debug.Log($"<color=white>DebugMoveToTarget count:</color> {movers.Length}");
-            foreach (var mover in movers)
-            {
-                string targetName = mover.Target != null ? mover.Target.name : "<color=red>NULL</color>";
-                UnityEngine.Debug.Log($"  - {mover.gameObject.name} -> {targetName}");
-            }
-
-            UnityEngine.Debug.Log("<color=cyan>═══════════════════════════════════════════════════════════</color>");
         }
 
         // ============================================
-        // LOGGING
-        // ============================================
-
-        private void Log(string message)
-        {
-            UnityEngine.Debug.Log($"<color=lime>[TargetFinder]</color> {message}");
-        }
-
-        private void LogWarning(string message)
-        {
-            UnityEngine.Debug.LogWarning($"<color=orange>[TargetFinder]</color> {message}");
-        }
-
-        // ============================================
-        // GIZMOS
+        // DEBUG
         // ============================================
 
 #if UNITY_EDITOR
-        private void OnDrawGizmos()
+        [TitleGroup("Debug Actions")]
+        [Button("Log Status", ButtonSizes.Medium)]
+        private void DebugLogStatus()
         {
-            if (foundTarget != null)
-            {
-                Gizmos.color = Color.yellow;
-                Gizmos.DrawWireSphere(foundTarget.position, 2f);
-                Gizmos.DrawLine(transform.position, foundTarget.position);
-            }
+            UnityEngine.Debug.Log($"[DebugTargetFinder] Status:\n" +
+                $"  Found Target: {(foundTarget != null ? foundTarget.name : "NULL")}\n" +
+                $"  Fallback Used: {fallbackUsed}\n" +
+                $"  Assigned Count: {assignedCount}");
+        }
+
+        [Button("Re-Find Target", ButtonSizes.Medium)]
+        [GUIColor(0.8f, 0.8f, 0.4f)]
+        private void DebugReFindTarget()
+        {
+            if (Application.isPlaying) FindAndAssignTarget();
         }
 #endif
     }

@@ -2,6 +2,8 @@ using Sirenix.OdinInspector;
 using System.Collections.Generic;
 using UnityEngine;
 using WildernessSurvival.Core.Systems;
+using WildernessSurvival.Gameplay.Combat;
+using WildernessSurvival.Gameplay.Enemies;
 using WildernessSurvival.Gameplay.Resources;
 using WildernessSurvival.Gameplay.Workers;
 using WildernessSurvival.UI;
@@ -15,7 +17,7 @@ namespace WildernessSurvival.Gameplay.Structures
         GrowFromFlat
     }
 
-    public class StructureController : MonoBehaviour
+    public class StructureController : MonoBehaviour, IDamageable
     {
         // ============================================
         // RIFERIMENTI
@@ -747,13 +749,29 @@ namespace WildernessSurvival.Gameplay.Structures
         }
 
         // ============================================
-        // HEALTH & COMBAT
+        // HEALTH & COMBAT (IDamageable)
         // ============================================
 
+        // IDamageable explicit implementation
+        float IDamageable.CurrentHealth => currentHealth;
+        float IDamageable.MaxHealth => maxHealth;
+
+        /// <summary>
+        /// Applica danno alla struttura (legacy, senza tipo danno)
+        /// </summary>
         public void TakeDamage(float damage)
+        {
+            TakeDamage(damage, DamageType.None);
+        }
+
+        /// <summary>
+        /// Applica danno alla struttura con tipo danno (IDamageable)
+        /// </summary>
+        public void TakeDamage(float damage, DamageType damageType)
         {
             if (!IsAlive) return;
 
+            // Per ora ignora damageType - strutture non hanno resistenze
             float actualDamage = Mathf.Max(0, damage - structureData.Armor);
             currentHealth -= actualDamage;
 

@@ -1,6 +1,8 @@
 using UnityEngine;
 using Sirenix.OdinInspector;
 using System;
+using WildernessSurvival.Gameplay.Combat;
+using WildernessSurvival.Gameplay.Enemies;
 using WildernessSurvival.Gameplay.Structures;
 
 namespace WildernessSurvival.Gameplay.Workers
@@ -10,7 +12,7 @@ namespace WildernessSurvival.Gameplay.Workers
     /// Gestisce job, stats, assegnazione e stato.
     /// </summary>
     [Serializable]
-    public class WorkerInstance
+    public class WorkerInstance : IDamageable
     {
         // ============================================
         // IDENTITY
@@ -242,15 +244,13 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (structure == null) return;
 
-            // ═══════════════════════════════════════════════════════════
-            // DOWNED GATE: worker a terra non può ricevere ordini
-            // ═══════════════════════════════════════════════════════════
+            // Gate: block assignment when downed
             if (PhysicalWorker != null)
             {
                 var downedStatus = PhysicalWorker.GetComponent<WorkerDownedStatus>();
-                if (downedStatus != null && !downedStatus.CanReceiveOrders)
+                if (downedStatus != null && downedStatus.IsDowned)
                 {
-                    Debug.Log($"<color=gray>[WorkerInstance]</color> Cannot assign {CustomName}: DOWNED");
+                    Debug.Log($"<color=orange>[WorkerInstance]</color> {CustomName} blocked AssignTo: worker is DOWNED");
                     return;
                 }
             }
@@ -387,12 +387,28 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         // ============================================
-        // HEALTH & COMBAT
+        // HEALTH & COMBAT (IDamageable)
         // ============================================
 
+        // IDamageable è implementato esplicitamente dove serve
+        float IDamageable.CurrentHealth => CurrentHealth;
+        float IDamageable.MaxHealth => MaxHealth;
+
+        /// <summary>
+        /// Applica danno al worker (legacy, senza tipo danno)
+        /// </summary>
         public void TakeDamage(float damage)
         {
+            TakeDamage(damage, DamageType.None);
+        }
+
+        /// <summary>
+        /// Applica danno al worker con tipo danno (IDamageable)
+        /// </summary>
+        public void TakeDamage(float damage, DamageType damageType)
+        {
             if (!IsAlive) return;
+            // Workers non hanno resistenze per ora, ignora damageType
             CurrentHealth = Mathf.Max(0, CurrentHealth - damage);
             if (!IsAlive) OnDeath();
         }
@@ -406,24 +422,28 @@ namespace WildernessSurvival.Gameplay.Workers
         private void OnDeath()
         {
             // ═══════════════════════════════════════════════════════════
-            // DOWNED SYSTEM: invece di morire, il worker va "a terra"
-            // Si rialzerà all'alba con un debuff Injured
+            // DOWNED SYSTEM: invece di morte permanente, vai in stato downed
+            // Il worker si rialzerà al mattino con debuff injury
             // ═══════════════════════════════════════════════════════════
 
-            // Cerca WorkerDownedStatus sul physical worker
+            // Cerca WorkerDownedStatus sul PhysicalWorker
+            WorkerDownedStatus downedStatus = null;
             if (PhysicalWorker != null)
             {
-                var downedStatus = PhysicalWorker.GetComponent<WorkerDownedStatus>();
-                if (downedStatus != null)
-                {
-                    downedStatus.Down();
-                    // Ripristina HP a 1 per evitare loop di morte
-                    CurrentHealth = 1f;
-                    return; // Non procedere con la morte permanente
-                }
+                downedStatus = PhysicalWorker.GetComponent<WorkerDownedStatus>();
             }
 
-            // Fallback: se non c'è WorkerDownedStatus, usa la vecchia logica (morte permanente)
+            if (downedStatus != null)
+            {
+                // Usa il sistema downed - il worker si rialzerà al mattino
+                downedStatus.Down();
+                return;
+            }
+
+            // ═══════════════════════════════════════════════════════════
+            // FALLBACK: morte permanente se WorkerDownedStatus non è presente
+            // (backward compatibility o worker senza componente)
+            // ═══════════════════════════════════════════════════════════
             CurrentState = WorkerState.Dead;
             if (AssignedStructure != null)
             {
@@ -431,6 +451,7 @@ namespace WildernessSurvival.Gameplay.Workers
             }
             Debug.Log($"<color=red>[WorkerInstance]</color> {CustomName} has died! (no WorkerDownedStatus found)");
         }
+
 
         // ============================================
         // EXPERIENCE & LEVELING

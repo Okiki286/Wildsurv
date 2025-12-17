@@ -20,7 +20,7 @@ MonoBehaviour:
   useRandomSpawnPoints: 1
   specificSpawnPoints: []
   enemyGroups:
-  - enemyData: {fileID: 11400000, guid: 97e09fe57b90eb14d845173ca081dc3e, type: 2}
+  - enemyData: {fileID: 11400000, guid: accdfe91b1a7acc419aab6f9af5edab7, type: 2}
     count: 3
     spawnDelay: 2
     spawnInterval: 0
