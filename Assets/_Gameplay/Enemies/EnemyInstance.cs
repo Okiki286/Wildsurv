@@ -81,6 +81,17 @@ namespace WildernessSurvival.Gameplay.Enemies
 
         [TitleGroup("Debug")]
         [SerializeField] private bool debugMode = true;
+        [SerializeField] private bool debugNav = false;  // Extended NavMesh diagnostics
+
+        // Stuck detection state
+        private float stuckTimer = 0f;
+        private const float STUCK_THRESHOLD = 0.75f;
+        private const float STUCK_VELOCITY_MIN = 0.05f;
+
+        // Melee attack constants
+        private const float MELEE_RANGE_TOLERANCE = 0.1f;  // Tight tolerance for true melee
+        [TitleGroup("Debug")]
+        [SerializeField] private bool debugCombat = false;  // Combat range logging
 
         // ============================================
         // LIFECYCLE
@@ -109,31 +120,75 @@ namespace WildernessSurvival.Gameplay.Enemies
                 ScanForTarget();
             }
 
-            // Combat logic
+            // Combat logic - MELEE ATTACK SYSTEM
             if (currentTargetTransform != null && currentTarget != null)
             {
-                float distanceToTarget = Vector3.Distance(transform.position, currentTargetTransform.position);
-                float effectiveAttackRange = enemyData != null ? enemyData.AttackRange : 1.5f;
+                // Calculate real distance using sqrMagnitude (more performant)
+                Vector3 toTarget = currentTargetTransform.position - transform.position;
+                float sqrDistanceToTarget = toTarget.sqrMagnitude;
+                float effectiveAttackRange = enemyData != null ? enemyData.AttackRange : 1.0f;  // Fallback 1m melee
+                float attackRangeWithTolerance = effectiveAttackRange + MELEE_RANGE_TOLERANCE;
+                float sqrAttackRange = attackRangeWithTolerance * attackRangeWithTolerance;
 
-                if (distanceToTarget <= effectiveAttackRange)
+                // Also check agent.remainingDistance as backup (handles NavMesh path length)
+                float agentRemainingDist = (agent != null && agent.hasPath && !agent.pathPending) 
+                    ? agent.remainingDistance 
+                    : Mathf.Sqrt(sqrDistanceToTarget);
+
+                // In melee range check: BOTH direct distance AND agent path must be close
+                bool isInMeleeRange = sqrDistanceToTarget <= sqrAttackRange && agentRemainingDist <= attackRangeWithTolerance;
+
+                // Debug logging for combat diagnostics
+                if (debugCombat)
                 {
-                    // In range - attacca
+                    float realDist = Mathf.Sqrt(sqrDistanceToTarget);
+                    Debug.Log($"<color=magenta>[Combat]</color> {name}: dist={realDist:F2}m, remaining={agentRemainingDist:F2}m, range={effectiveAttackRange:F1}m, inRange={isInMeleeRange}, cooldown={attackCooldown:F2}s");
+                }
+
+                if (isInMeleeRange)
+                {
+                    // IN MELEE RANGE - Stop and attack
+                    if (agent != null && agent.isOnNavMesh)
+                    {
+                        agent.isStopped = true;
+                    }
+
+                    // Face target
+                    if (toTarget.sqrMagnitude > 0.01f)
+                    {
+                        Vector3 lookDir = toTarget;
+                        lookDir.y = 0f;
+                        if (lookDir.sqrMagnitude > 0.01f)
+                        {
+                            transform.rotation = Quaternion.Slerp(
+                                transform.rotation,
+                                Quaternion.LookRotation(lookDir),
+                                Time.deltaTime * 10f
+                            );
+                        }
+                    }
+
+                    // Try melee attack (respects cooldown)
                     TryAttack();
                 }
                 else
                 {
-                    // Muovi verso target
+                    // OUT OF RANGE - Chase target
                     if (agent != null && agent.isActiveAndEnabled && agent.isOnNavMesh)
                     {
+                        agent.isStopped = false;
                         agent.SetDestination(currentTargetTransform.position);
                     }
                 }
             }
             else
             {
-                // Nessun target valido - cerca Waystone come fallback
+                // No valid target - find Waystone as fallback
                 FallbackToWaystone();
             }
+
+            // Stuck detection - ALWAYS runs for recovery
+            DetectAndRecoverFromStuck();
         }
 
         // ============================================
@@ -173,8 +228,12 @@ namespace WildernessSurvival.Gameplay.Enemies
             // Force immediate target acquisition and movement
             FallbackToWaystone();
 
-            // Debug diagnostics (one-time)
-            if (debugMode)
+            // Debug diagnostics (extended NavMesh logging)
+            if (debugNav)
+            {
+                StartCoroutine(LogNavDiagnostics());
+            }
+            else if (debugMode)
             {
                 StartCoroutine(LogInitDiagnosticsDelayed());
             }
@@ -227,6 +286,105 @@ namespace WildernessSurvival.Gameplay.Enemies
             }
         }
 
+        /// <summary>
+        /// Extended NavMesh diagnostics - logs detailed agent state for 3 seconds after spawn.
+        /// </summary>
+        private IEnumerator LogNavDiagnostics()
+        {
+            float elapsed = 0f;
+            while (elapsed < 3f)
+            {
+                if (agent != null)
+                {
+                    string targetName = currentTargetTransform != null ? currentTargetTransform.name : "NULL";
+                    float targetDist = currentTargetTransform != null ? Vector3.Distance(transform.position, currentTargetTransform.position) : -1f;
+                    
+                    Debug.Log($"<color=cyan>[NavDiag]</color> {name} t={elapsed:F1}s " +
+                        $"enabled={agent.enabled} onMesh={agent.isOnNavMesh} " +
+                        $"hasPath={agent.hasPath} status={agent.pathStatus} pending={agent.pathPending} " +
+                        $"stopped={agent.isStopped} speed={agent.speed:F1} accel={agent.acceleration} " +
+                        $"remaining={agent.remainingDistance:F1} stopDist={agent.stoppingDistance:F1} " +
+                        $"vel={agent.velocity.magnitude:F2} " +
+                        $"pos={transform.position} nextPos={agent.nextPosition} " +
+                        $"updatePos={agent.updatePosition} updateRot={agent.updateRotation} " +
+                        $"target={targetName} dist={targetDist:F1}");
+                }
+                yield return new WaitForSeconds(0.5f);
+                elapsed += 0.5f;
+            }
+        }
+
+        /// <summary>
+        /// Detects if the agent is stuck and attempts recovery.
+        /// Stuck = hasPath, remainingDistance > stoppingDistance, velocity near 0 for > 0.75s
+        /// </summary>
+        private void DetectAndRecoverFromStuck()
+        {
+            if (agent == null || !agent.isOnNavMesh) return;
+
+            bool isStuck = agent.hasPath
+                && !agent.pathPending
+                && agent.remainingDistance > agent.stoppingDistance + 0.5f
+                && agent.velocity.magnitude < STUCK_VELOCITY_MIN;
+
+            if (isStuck)
+            {
+                stuckTimer += Time.deltaTime;
+
+                if (stuckTimer >= STUCK_THRESHOLD)
+                {
+                    string targetName = currentTargetTransform != null ? currentTargetTransform.name : "NULL";
+                    Debug.LogWarning($"<color=red>[STUCK]</color> {name} stuck for {stuckTimer:F1}s! " +
+                        $"pos={transform.position} hasPath={agent.hasPath} remaining={agent.remainingDistance:F1} " +
+                        $"vel={agent.velocity.magnitude:F2} stopped={agent.isStopped} " +
+                        $"updatePos={agent.updatePosition} updateRot={agent.updateRotation} " +
+                        $"target={targetName}");
+
+                    // Recovery attempt
+                    TryRecoverFromStuck();
+                    stuckTimer = 0f;
+                }
+            }
+            else
+            {
+                stuckTimer = 0f;
+            }
+        }
+
+        /// <summary>
+        /// Attempts to recover from a stuck state by re-warping and re-pathing.
+        /// </summary>
+        private void TryRecoverFromStuck()
+        {
+            if (agent == null) return;
+
+            // Step 1: Reset path
+            agent.ResetPath();
+
+            // Step 2: Re-warp to nearest NavMesh point (small nudge)
+            if (NavMesh.SamplePosition(transform.position, out NavMeshHit hit, 2f, NavMesh.AllAreas))
+            {
+                agent.Warp(hit.position);
+            }
+
+            // Step 3: Ensure agent is not stopped
+            agent.isStopped = false;
+
+            // Step 4: Re-acquire target
+            if (currentTargetTransform != null)
+            {
+                bool success = agent.SetDestination(currentTargetTransform.position);
+                Debug.Log($"<color=yellow>[RECOVERY]</color> {name} recovery attempted: warped to {hit.position}, SetDestination={success}");
+            }
+            else
+            {
+                Debug.Log($"<color=yellow>[RECOVERY]</color> {name} recovery attempted: warped to {hit.position}, no target to re-path");
+                // Try to find waystone again
+                FallbackToWaystone();
+            }
+        }
+
+
         // ============================================
         // TARGET SELECTION (B4)
         // ============================================
@@ -247,6 +405,13 @@ namespace WildernessSurvival.Gameplay.Enemies
             // Scan per target in range
             int hitCount = Physics.OverlapSphereNonAlloc(transform.position, aggroRange, scanBuffer);
 
+#if UNITY_EDITOR
+            if (debugMode)
+            {
+                Debug.Log($"<color=yellow>[Scan]</color> {name}: found {hitCount} colliders in {aggroRange}m range");
+            }
+#endif
+
             IDamageable bestTarget = null;
             Transform bestTransform = null;
             float bestPriority = float.MaxValue;
@@ -259,6 +424,19 @@ namespace WildernessSurvival.Gameplay.Enemies
 
                 // Cerca IDamageable
                 IDamageable damageable = col.GetComponent<IDamageable>();
+
+#if UNITY_EDITOR
+                if (debugMode && damageable == null)
+                {
+                    // Log only potential targets (not ground, etc)
+                    var workerCtrl = col.GetComponent<WildernessSurvival.Gameplay.Workers.WorkerController>();
+                    if (workerCtrl != null)
+                    {
+                        Debug.Log($"<color=orange>[Scan]</color> {name}: Worker {col.name} has NO IDamageable component! Add WorkerDamageable.");
+                    }
+                }
+#endif
+
                 if (damageable == null || !damageable.IsAlive) continue;
 
                 // Non attaccare se stessi
@@ -270,6 +448,13 @@ namespace WildernessSurvival.Gameplay.Enemies
                 // Calcola priorità (più basso = meglio)
                 float priority = GetTargetPriority(col);
                 float dist = Vector3.Distance(transform.position, col.transform.position);
+
+#if UNITY_EDITOR
+                if (debugMode)
+                {
+                    Debug.Log($"<color=green>[Scan]</color> {name}: Valid target {col.name} - priority={priority}, dist={dist:F1}m");
+                }
+#endif
 
                 // Selezione: priorità più bassa, poi distanza
                 if (priority < bestPriority || (priority == bestPriority && dist < bestDistance))
@@ -448,7 +633,9 @@ namespace WildernessSurvival.Gameplay.Enemies
             attackCooldown = interval;
 
 #if UNITY_EDITOR
-            Debug.Log($"<color=red>[Enemy]</color> {gameObject.name} attacked {currentTargetTransform?.name} for {effectiveDamage:F1} damage");
+            Debug.Log($"<color=red>[Enemy]</color> {gameObject.name} attacked {currentTargetTransform?.name} | " +
+                $"baseDmg={damage:F1} × atkMult={attackMultiplier:F2} = finalDmg={effectiveDamage:F1} | " +
+                $"debuffed={HasWaystoneDebuff}");
 #endif
 
             // Se target è morto, rescan
@@ -537,6 +724,131 @@ namespace WildernessSurvival.Gameplay.Enemies
             {
                 agent.speed = moveSpeed;
             }
+        }
+
+        // ============================================
+        // DEBUG DIAGNOSTICS
+        // ============================================
+
+#if UNITY_EDITOR
+        [TitleGroup("Debug Actions")]
+        [Button("🔍 Dump Nav Debug", ButtonSizes.Large)]
+        [GUIColor(1f, 0.6f, 0.2f)]
+#endif
+        public void DumpNavDebug()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("═══════════════════════════════════════════════════════");
+            sb.AppendLine($"[NAV DEBUG] {name} @ Frame {Time.frameCount}");
+            sb.AppendLine("═══════════════════════════════════════════════════════");
+
+            // ENEMY POSITIONS
+            sb.AppendLine("\n▶ ENEMY POSITIONS:");
+            sb.AppendLine($"   transform.position (WORLD):  {transform.position}");
+            sb.AppendLine($"   transform.localPosition:     {transform.localPosition}");
+            if (transform.parent != null)
+            {
+                sb.AppendLine($"   parent.name:                 {transform.parent.name}");
+                sb.AppendLine($"   parent.position:             {transform.parent.position}");
+            }
+
+            // NAVMESH AGENT STATE
+            sb.AppendLine("\n▶ NAVMESH AGENT:");
+            if (agent != null)
+            {
+                sb.AppendLine($"   agent.enabled:           {agent.enabled}");
+                sb.AppendLine($"   agent.isOnNavMesh:       {agent.isOnNavMesh}");
+                sb.AppendLine($"   agent.isActiveAndEnabled:{agent.isActiveAndEnabled}");
+                sb.AppendLine($"   agent.isStopped:         {agent.isStopped}");
+                sb.AppendLine($"   agent.hasPath:           {agent.hasPath}");
+                sb.AppendLine($"   agent.pathPending:       {agent.pathPending}");
+                sb.AppendLine($"   agent.pathStatus:        {agent.pathStatus}");
+                sb.AppendLine($"   agent.velocity:          {agent.velocity} (mag={agent.velocity.magnitude:F2})");
+                sb.AppendLine($"   agent.desiredVelocity:   {agent.desiredVelocity}");
+                sb.AppendLine($"   agent.speed:             {agent.speed}");
+                sb.AppendLine($"   agent.stoppingDistance:  {agent.stoppingDistance}");
+                sb.AppendLine($"   agent.remainingDistance: {agent.remainingDistance:F2}");
+                sb.AppendLine($"   agent.destination:       {agent.destination}");
+                sb.AppendLine($"   agent.nextPosition:      {agent.nextPosition}");
+                sb.AppendLine($"   agent.updatePosition:    {agent.updatePosition}");
+                sb.AppendLine($"   agent.updateRotation:    {agent.updateRotation}");
+            }
+            else
+            {
+                sb.AppendLine("   [NULL AGENT!]");
+            }
+
+            // TARGET INFO
+            sb.AppendLine("\n▶ TARGET:");
+            if (currentTargetTransform != null)
+            {
+                sb.AppendLine($"   target.name:              {currentTargetTransform.name}");
+                sb.AppendLine($"   target.position (WORLD):  {currentTargetTransform.position}");
+                sb.AppendLine($"   target.localPosition:     {currentTargetTransform.localPosition}");
+                if (currentTargetTransform.parent != null)
+                {
+                    sb.AppendLine($"   target.parent.name:       {currentTargetTransform.parent.name}");
+                }
+
+                // Try to get collider bounds
+                var targetCol = currentTargetTransform.GetComponent<Collider>();
+                if (targetCol != null)
+                {
+                    sb.AppendLine($"   target.collider.bounds.center: {targetCol.bounds.center}");
+                    sb.AppendLine($"   target.collider.bounds.size:   {targetCol.bounds.size}");
+                }
+            }
+            else
+            {
+                sb.AppendLine("   [NULL TARGET TRANSFORM!]");
+            }
+            sb.AppendLine($"   currentTarget (IDamageable): {(currentTarget != null ? "VALID" : "NULL")}");
+
+            // DISTANCE CALCULATIONS
+            sb.AppendLine("\n▶ DISTANCES:");
+            if (currentTargetTransform != null)
+            {
+                Vector3 enemyPos = transform.position;
+                Vector3 targetPos = currentTargetTransform.position;
+
+                float dist3D = Vector3.Distance(enemyPos, targetPos);
+                Vector3 diff = targetPos - enemyPos;
+                float distXZ = Mathf.Sqrt(diff.x * diff.x + diff.z * diff.z);
+                float deltaY = Mathf.Abs(diff.y);
+
+                sb.AppendLine($"   Vector3.Distance (3D):    {dist3D:F2}m");
+                sb.AppendLine($"   Distance XZ (ignore Y):   {distXZ:F2}m");
+                sb.AppendLine($"   Delta Y:                  {deltaY:F2}m");
+
+                if (agent != null && agent.hasPath)
+                {
+                    sb.AppendLine($"   agent.remainingDistance:  {agent.remainingDistance:F2}m");
+                }
+
+                float attackRange = enemyData != null ? enemyData.AttackRange : 1.0f;
+                float rangeWithTol = attackRange + MELEE_RANGE_TOLERANCE;
+                bool inRange = dist3D <= rangeWithTol;
+                sb.AppendLine($"\n   attackRange (from data):  {attackRange:F2}m");
+                sb.AppendLine($"   rangeWithTolerance:       {rangeWithTol:F2}m");
+                sb.AppendLine($"   IS IN MELEE RANGE?        {(inRange ? "✅ YES" : "❌ NO")}");
+            }
+
+            // ENEMY COLLIDER
+            sb.AppendLine("\n▶ ENEMY COLLIDER:");
+            var myCol = GetComponent<Collider>();
+            if (myCol != null)
+            {
+                sb.AppendLine($"   collider.bounds.center: {myCol.bounds.center}");
+                sb.AppendLine($"   collider.bounds.size:   {myCol.bounds.size}");
+            }
+            else
+            {
+                sb.AppendLine($"   [NO COLLIDER ON ROOT]");
+            }
+
+            sb.AppendLine("═══════════════════════════════════════════════════════");
+
+            Debug.Log(sb.ToString());
         }
     }
 }

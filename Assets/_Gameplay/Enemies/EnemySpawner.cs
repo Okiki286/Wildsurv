@@ -105,8 +105,31 @@ namespace WildernessSurvival.Gameplay.Enemies
                 return null;
             }
 
-            // Instantiate
-            GameObject enemy = Instantiate(data.Prefab, position, Quaternion.identity, enemyContainer);
+            // === NAVMESH SNAP ===
+            // Validate spawn position against NavMesh before instantiation
+            Vector3 validSpawnPos = position;
+            if (!UnityEngine.AI.NavMesh.SamplePosition(position, out UnityEngine.AI.NavMeshHit hit, 5f, UnityEngine.AI.NavMesh.AllAreas))
+            {
+                if (debugMode)
+                {
+                    Debug.LogWarning($"[EnemySpawner] Spawn position {position} not on NavMesh within 5m, trying 10m...");
+                }
+                
+                if (!UnityEngine.AI.NavMesh.SamplePosition(position, out hit, 10f, UnityEngine.AI.NavMesh.AllAreas))
+                {
+                    Debug.LogError($"[EnemySpawner] Cannot find NavMesh for {data.DisplayName} at {position}! Skipping spawn.");
+                    return null;
+                }
+            }
+            validSpawnPos = hit.position;
+
+            if (debugMode && Vector3.Distance(position, validSpawnPos) > 0.1f)
+            {
+                Debug.Log($"<color=yellow>[EnemySpawner]</color> Snapped {data.DisplayName} from {position} to NavMesh at {validSpawnPos} (delta={Vector3.Distance(position, validSpawnPos):F2}m)");
+            }
+
+            // Instantiate at validated position
+            GameObject enemy = Instantiate(data.Prefab, validSpawnPos, Quaternion.identity, enemyContainer);
             enemy.name = $"{data.DisplayName}_{totalSpawnedEver}";
 
             // Apply scaled stats
@@ -118,12 +141,13 @@ namespace WildernessSurvival.Gameplay.Enemies
 
             if (debugMode)
             {
-                Debug.Log($"<color=red>[EnemySpawner]</color> Spawned {data.DisplayName} at {position} " +
+                Debug.Log($"<color=red>[EnemySpawner]</color> Spawned {data.DisplayName} at {validSpawnPos} " +
                     $"(HP:{hpMultiplier:F2}x, DMG:{dmgMultiplier:F2}x, SPD:{speedMultiplier:F2}x)");
             }
 
             return enemy;
         }
+
 
         /// <summary>
         /// Spawna un nemico da un Transform point

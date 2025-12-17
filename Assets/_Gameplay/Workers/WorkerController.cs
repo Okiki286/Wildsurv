@@ -38,6 +38,9 @@ namespace WildernessSurvival.Gameplay.Workers
         [Tooltip("Riferimento al WorkerVisualController (auto-find se null)")]
         private WorkerVisualController visualController;
 
+        [SerializeField, ReadOnly]
+        private WorkerDownedStatus downedStatus;
+
         // ============================================
         // MOVEMENT SETTINGS
         // ============================================
@@ -129,6 +132,9 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             agent = GetComponent<NavMeshAgent>();
 
+            // Auto-find WorkerDownedStatus
+            downedStatus = GetComponent<WorkerDownedStatus>();
+
             // Auto-find WorkerVisualController
             if (visualController == null)
             {
@@ -165,10 +171,17 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             linkedInstance = instance;
 
-            // Inizializza il visual controller
+            // Initialize the visual controller
             if (visualController != null)
             {
                 visualController.Initialize(instance);
+            }
+
+            // Wire up the damageable bridge (for enemy targeting)
+            var damageable = GetComponent<WorkerDamageable>();
+            if (damageable != null)
+            {
+                damageable.LinkToInstance(instance);
             }
 
 #if UNITY_EDITOR
@@ -182,6 +195,9 @@ namespace WildernessSurvival.Gameplay.Workers
 
         public void ManualUpdate(float deltaTime)
         {
+            // Skip se downed (authoritative block)
+            if (downedStatus != null && downedStatus.IsDowned) return;
+
             // Skip se in transizione visiva
             if (IsChangingOutfit) return;
 
@@ -335,6 +351,9 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (!isPatrollingWorksite || isForcedIdle || IsChangingOutfit) return;
 
+            // Gate: block if downed
+            if (downedStatus != null && downedStatus.IsDowned) return;
+
             Vector2 randomCircle = Random.insideUnitCircle * workWanderRadius;
             Vector3 randomPoint = currentWorkTargetCenter + new Vector3(randomCircle.x, 0f, randomCircle.y);
 
@@ -355,6 +374,15 @@ namespace WildernessSurvival.Gameplay.Workers
         public void CommandMoveTo(Vector3 position)
         {
             if (agent == null) return;
+
+            // Gate: block movement orders when downed
+            if (downedStatus != null && downedStatus.IsDowned)
+            {
+#if UNITY_EDITOR
+                Debug.Log($"<color=orange>[WorkerController]</color> {gameObject.name} blocked CommandMoveTo: worker is DOWNED");
+#endif
+                return;
+            }
 
             isForcedIdle = false;
             currentMovementState = MovementState.Traveling;

@@ -45,12 +45,16 @@ namespace WildernessSurvival.Gameplay.Structures
         [TitleGroup("Debuff Settings")]
         [Tooltip("Moltiplicatore attacco (0.85 = 85% del danno/velocità normale)")]
         [Range(0.1f, 1f)]
-        [SerializeField] private float attackMultiplier = 0.85f;
+        [SerializeField] private float attackMultiplier = 0.10f;  // TEMP TEST: -90% damage
 
         [TitleGroup("Debuff Settings")]
         [Tooltip("Intervallo tra tick di applicazione debuff (ottimizzazione)")]
         [Range(0.1f, 1f)]
         [SerializeField] private float tickInterval = 0.25f;
+
+        [TitleGroup("Debuff Settings")]
+        [Tooltip("Se true, rimuove debuff da tutti i target quando l'aura viene disabilitata (OnDisable). Default false.")]
+        [SerializeField] private bool removeDebuffsOnDisable = false;
 
         // ============================================
         // DEBUG
@@ -114,7 +118,17 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private void OnDisable()
         {
-            // Rimuovi debuff da tutti i target quando si disattiva
+            // Rimuovi debuff solo se flag è attivo (default: false)
+            // Questo evita di rimuovere debuff se il Waystone è temporaneamente disattivato
+            if (removeDebuffsOnDisable)
+            {
+                RemoveAllDebuffs();
+            }
+        }
+
+        private void OnDestroy()
+        {
+            // Cleanup completo: rimuovi tutti i debuff dai target tracciati
             RemoveAllDebuffs();
         }
 

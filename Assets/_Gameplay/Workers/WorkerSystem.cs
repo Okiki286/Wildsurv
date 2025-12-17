@@ -296,6 +296,19 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (worker == null || structure == null) return false;
 
+            // Gate: block assignment when worker is downed
+            if (worker.PhysicalWorker != null)
+            {
+                var downedStatus = worker.PhysicalWorker.GetComponent<WorkerDownedStatus>();
+                if (downedStatus != null && downedStatus.IsDowned)
+                {
+#if UNITY_EDITOR
+                    Debug.Log($"<color=orange>[WorkerSystem]</color> AssignWorker blocked: {worker.CustomName} is DOWNED");
+#endif
+                    return false;
+                }
+            }
+
             if (worker.IsAssigned) UnassignWorker(worker);
 
             if (structure.AssignWorker(worker))
@@ -593,6 +606,16 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (worker == null)
                 return;
+
+            // Gate: don't add downed workers to idle builder queue
+            if (worker.PhysicalWorker != null)
+            {
+                var downedStatus = worker.PhysicalWorker.GetComponent<WorkerDownedStatus>();
+                if (downedStatus != null && downedStatus.IsDowned)
+                {
+                    return;
+                }
+            }
 
             if (!_idleBuilders.Contains(worker))
             {

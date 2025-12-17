@@ -244,6 +244,17 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (structure == null) return;
 
+            // Gate: block assignment when downed
+            if (PhysicalWorker != null)
+            {
+                var downedStatus = PhysicalWorker.GetComponent<WorkerDownedStatus>();
+                if (downedStatus != null && downedStatus.IsDowned)
+                {
+                    Debug.Log($"<color=orange>[WorkerInstance]</color> {CustomName} blocked AssignTo: worker is DOWNED");
+                    return;
+                }
+            }
+
             AssignedStructure = structure;
             IsAtWorksite = false;
 
@@ -410,13 +421,37 @@ namespace WildernessSurvival.Gameplay.Workers
 
         private void OnDeath()
         {
+            // ═══════════════════════════════════════════════════════════
+            // DOWNED SYSTEM: invece di morte permanente, vai in stato downed
+            // Il worker si rialzerà al mattino con debuff injury
+            // ═══════════════════════════════════════════════════════════
+
+            // Cerca WorkerDownedStatus sul PhysicalWorker
+            WorkerDownedStatus downedStatus = null;
+            if (PhysicalWorker != null)
+            {
+                downedStatus = PhysicalWorker.GetComponent<WorkerDownedStatus>();
+            }
+
+            if (downedStatus != null)
+            {
+                // Usa il sistema downed - il worker si rialzerà al mattino
+                downedStatus.Down();
+                return;
+            }
+
+            // ═══════════════════════════════════════════════════════════
+            // FALLBACK: morte permanente se WorkerDownedStatus non è presente
+            // (backward compatibility o worker senza componente)
+            // ═══════════════════════════════════════════════════════════
             CurrentState = WorkerState.Dead;
             if (AssignedStructure != null)
             {
                 AssignedStructure.RemoveWorker(this);
             }
-            Debug.Log($"<color=red>[WorkerInstance]</color> {CustomName} has died!");
+            Debug.Log($"<color=red>[WorkerInstance]</color> {CustomName} has died! (no WorkerDownedStatus found)");
         }
+
 
         // ============================================
         // EXPERIENCE & LEVELING
