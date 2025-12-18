@@ -65,5 +65,55 @@ PrefabInstance:
     - {fileID: 4369946147596821102, guid: 68597010a0dfd3943b13c31bade925aa, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 1681672486973077575, guid: 68597010a0dfd3943b13c31bade925aa, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 5331118555631881816}
+    - targetCorrespondingSourceObject: {fileID: 1681672486973077575, guid: 68597010a0dfd3943b13c31bade925aa, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 7456565697507828620}
   m_SourcePrefab: {fileID: 100100000, guid: 68597010a0dfd3943b13c31bade925aa, type: 3}
+--- !u!1 &2704006726468677921 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1681672486973077575, guid: 68597010a0dfd3943b13c31bade925aa, type: 3}
+  m_PrefabInstance: {fileID: 3661444076890048870}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &5331118555631881816
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2704006726468677921}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 329a2681bdcec4c45814da46224cba2e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  structureData: {fileID: 11400000, guid: 775e92a7881ef9d41950979ecd8109ec, type: 2}
+  IsPreview: 0
+  visualRoot: {fileID: 0}
+  vfxSpawnPoint: {fileID: 0}
+  workRadius: 1.5
+  workSpots: []
+  constructionVisualMode: 2
+  flatStartYScale: 0.05
+  constructionOverlayRoot: {fileID: 0}
+  overlayDarken: 0.35
+  overlayDesaturate: 0.75
+--- !u!114 &7456565697507828620
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2704006726468677921}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a0934fb1f78a9e46921a1ec6d3f8983, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  enemyLayerMask:
+    serializedVersion: 2
+    m_Bits: 2048
+  debugDiagnostics: 0

@@ -17,10 +17,14 @@ namespace WildernessSurvival.Gameplay.Structures
         // CONFIGURATION
         // ============================================
 
-        [TitleGroup("Settings")]
         [Tooltip("Layer dei nemici (se vuoto usa Physics.AllLayers)")]
         [SerializeField]
         private LayerMask enemyLayerMask = -1; // -1 = all layers
+
+        [TitleGroup("Settings")]
+        [Tooltip("Abilita log diagnostici per debugging")]
+        [SerializeField]
+        private bool debugDiagnostics = false;
 
         // ============================================
         // RUNTIME STATE
@@ -73,7 +77,20 @@ namespace WildernessSurvival.Gameplay.Structures
             if (!isEnabled)
             {
                 enabled = false;
+                return;
             }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            // Diagnostic warning for misconfigured layer mask
+            if (enemyLayerMask.value == 0)
+            {
+                Debug.LogError($"<color=red>[TowerAttack]</color> {name} has enemyLayerMask=0! Tower will NEVER find enemies. Set layer mask in Inspector.");
+            }
+            else if (debugDiagnostics)
+            {
+                Debug.Log($"<color=cyan>[TowerAttack]</color> {name} initialized: dmg={data.AttackDamage}, range={data.AttackRange}m, interval={data.AttackInterval}s, layerMask={enemyLayerMask.value}");
+            }
+#endif
         }
 
         private void Update()
@@ -137,6 +154,13 @@ namespace WildernessSurvival.Gameplay.Structures
                 scanBuffer,
                 enemyLayerMask
             );
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (debugDiagnostics)
+            {
+                Debug.Log($"<color=cyan>[TowerAttack]</color> {name}: Scan pos={transform.position}, range={data.AttackRange}m, mask={enemyLayerMask.value}, found={hitCount} colliders");
+            }
+#endif
 
             EnemyInstance closestEnemy = null;
             float closestDistance = float.MaxValue;

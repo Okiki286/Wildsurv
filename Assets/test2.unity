@@ -4397,7 +4397,7 @@ MonoBehaviour:
   - resource: {fileID: 11400000, guid: a7ed9af0dd233ce48acfe30eb4a63e12, type: 2}
     amount: 300
   - resource: {fileID: 11400000, guid: 430c360c194d3e44088545986d31a0c0, type: 2}
-    amount: 500
+    amount: 250
   - resource: {fileID: 11400000, guid: 721dd21a5ff974d428d0f08704031da1, type: 2}
     amount: 750
   onResourceChanged: {fileID: 0}

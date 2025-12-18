@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 558316865210751819}
   - component: {fileID: 4369946147596821102}
   - component: {fileID: 4327351093102552941}
+  - component: {fileID: 9223372036854775807}
   m_Layer: 9
   m_Name: STR_Tower2_Lv1
   m_TagString: Untagged
@@ -102,6 +103,22 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.6, y: 0.6, z: 0.6}
   m_Center: {x: 0, y: 0.3, z: 0}
+--- !u!114 &9223372036854775807
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1681672486973077575}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a0934fb1f78a9e46921a1ec6d3f8983, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  enemyLayerMask:
+    serializedVersion: 2
+    m_Bits: 2048
+  debugDiagnostics: 1
 --- !u!1 &1771607070516032037
 GameObject:
   m_ObjectHideFlags: 0
