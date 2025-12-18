@@ -3,6 +3,7 @@ using UnityEngine.AI;
 using System.Collections;
 using Sirenix.OdinInspector;
 using WildernessSurvival.Gameplay.Combat;
+using WildernessSurvival.Gameplay.Resources;
 using WildernessSurvival.Core.Systems;
 
 namespace WildernessSurvival.Gameplay.Enemies
@@ -66,6 +67,27 @@ namespace WildernessSurvival.Gameplay.Enemies
         private float attackMultiplier = 1f;
 
         public bool HasWaystoneDebuff { get; private set; }
+
+        // ============================================
+        // REWARDS CONFIG
+        // ============================================
+
+        /// <summary>
+        /// How shards are granted to the player on death
+        /// </summary>
+        public enum ShardDropMode
+        {
+            DirectToInventory,  // Immediately add to player's ResourceSystem
+            WorldDropLater      // Spawn pickup in world (future feature)
+        }
+
+        public const string RES_SHARDS = "shard";  // Must match Shard.asset resourceId
+
+        [TitleGroup("Rewards")]
+        [SerializeField]
+        private ShardDropMode shardDropMode = ShardDropMode.DirectToInventory;
+
+        private bool hasDroppedRewards = false;
 
         // ============================================
         // COMPONENTS
@@ -681,6 +703,13 @@ namespace WildernessSurvival.Gameplay.Enemies
 
         protected virtual void Die()
         {
+            // ========== REWARD DROP (with guard against double-drop) ==========
+            if (!hasDroppedRewards)
+            {
+                hasDroppedRewards = true;
+                DropRewards();
+            }
+
             // Stop NavMesh
             if (agent != null)
             {
@@ -688,12 +717,46 @@ namespace WildernessSurvival.Gameplay.Enemies
                 agent.enabled = false;
             }
 
-            // Drop rewards
-            int shardDrop = Mathf.RoundToInt(enemyData.BaseShardDrop * rewardMultiplier);
-            Debug.Log($"<color=red>[Enemy]</color> {enemyData.DisplayName} died, dropping {shardDrop} shards");
-
             // Destroy
             Destroy(gameObject);
+        }
+
+        /// <summary>
+        /// Handles shard reward crediting. Called once from Die().
+        /// </summary>
+        private void DropRewards()
+        {
+            if (enemyData == null) return;
+
+            int shardDrop = Mathf.RoundToInt(enemyData.BaseShardDrop * rewardMultiplier);
+            string enemyName = enemyData.DisplayName;
+
+            if (shardDropMode == ShardDropMode.DirectToInventory)
+            {
+                if (ResourceSystem.Instance != null)
+                {
+                    // Validate resource key exists
+                    if (ResourceSystem.Instance.GetResourceData(RES_SHARDS) == null)
+                    {
+                        Debug.LogWarning($"<color=orange>[EnemyReward]</color> WARNING: resource key '{RES_SHARDS}' not found in ResourceSystem");
+                        return;
+                    }
+
+                    float shardsBefore = ResourceSystem.Instance.GetResourceAmount(RES_SHARDS);
+                    ResourceSystem.Instance.AddResource(RES_SHARDS, shardDrop);
+                    float shardsAfter = ResourceSystem.Instance.GetResourceAmount(RES_SHARDS);
+
+                    Debug.Log($"<color=green>[EnemyReward]</color> {enemyName} shards BEFORE={shardsBefore:F0} +{shardDrop} AFTER={shardsAfter:F0}");
+                }
+                else
+                {
+                    Debug.LogWarning($"<color=orange>[EnemyReward]</color> ResourceSystem.Instance is null! Cannot credit {shardDrop} shards.");
+                }
+            }
+            else // WorldDropLater
+            {
+                Debug.Log($"<color=yellow>[EnemyReward]</color> TODO WorldDropLater shards={shardDrop}");
+            }
         }
 
         // ============================================
