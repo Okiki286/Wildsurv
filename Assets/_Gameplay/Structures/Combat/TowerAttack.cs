@@ -194,11 +194,17 @@ namespace WildernessSurvival.Gameplay.Structures
             // Infliggi danno (tipo Physical di default per torri)
             target.TakeDamage(damage, DamageType.Physical);
 
+            // Telemetry
+            CombatTelemetry.Instance?.RecordTowerDamage(damage);
+
             // Reset cooldown
             attackCooldown = data.AttackInterval;
 
-#if UNITY_EDITOR
-            Debug.Log($"<color=yellow>[Tower]</color> {data.DisplayName} attacked {target.Data?.DisplayName ?? target.name} for {damage:F1} damage");
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (debugDiagnostics)
+            {
+                Debug.Log($"<color=yellow>[Tower]</color> {data.DisplayName} attacked {target.Data?.DisplayName ?? target.name} for {damage:F1} damage");
+            }
 #endif
 
             // Se target è morto, clear reference

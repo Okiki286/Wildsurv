@@ -650,14 +650,20 @@ namespace WildernessSurvival.Gameplay.Enemies
             // Infliggi danno
             currentTarget.TakeDamage(effectiveDamage, damageType);
 
+            // Telemetry
+            CombatTelemetry.Instance?.RecordEnemyDamage(effectiveDamage);
+
             // Reset cooldown
             float interval = enemyData != null ? enemyData.AttackInterval : 1.5f;
             attackCooldown = interval;
 
-#if UNITY_EDITOR
-            Debug.Log($"<color=red>[Enemy]</color> {gameObject.name} attacked {currentTargetTransform?.name} | " +
-                $"baseDmg={damage:F1} × atkMult={attackMultiplier:F2} = finalDmg={effectiveDamage:F1} | " +
-                $"debuffed={HasWaystoneDebuff}");
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (debugCombat)
+            {
+                Debug.Log($"<color=red>[Enemy]</color> {gameObject.name} attacked {currentTargetTransform?.name} | " +
+                    $"baseDmg={damage:F1} × atkMult={attackMultiplier:F2} = finalDmg={effectiveDamage:F1} | " +
+                    $"debuffed={HasWaystoneDebuff}");
+            }
 #endif
 
             // Se target è morto, rescan
@@ -708,6 +714,9 @@ namespace WildernessSurvival.Gameplay.Enemies
             {
                 hasDroppedRewards = true;
                 DropRewards();
+
+                // Telemetry - record kill
+                CombatTelemetry.Instance?.RecordEnemyKill();
             }
 
             // Stop NavMesh
@@ -747,6 +756,9 @@ namespace WildernessSurvival.Gameplay.Enemies
                     float shardsAfter = ResourceSystem.Instance.GetResourceAmount(RES_SHARDS);
 
                     Debug.Log($"<color=green>[EnemyReward]</color> {enemyName} shards BEFORE={shardsBefore:F0} +{shardDrop} AFTER={shardsAfter:F0}");
+
+                    // Telemetry
+                    CombatTelemetry.Instance?.RecordShardsGained(shardDrop);
                 }
                 else
                 {
@@ -913,5 +925,31 @@ namespace WildernessSurvival.Gameplay.Enemies
 
             Debug.Log(sb.ToString());
         }
+
+        // ============================================
+        // GIZMOS (Editor only)
+        // ============================================
+
+#if UNITY_EDITOR
+        private void OnDrawGizmosSelected()
+        {
+            // Draw melee attack range
+            float attackRange = enemyData != null ? enemyData.AttackRange : 1.5f;
+            Gizmos.color = new Color(1f, 0.2f, 0.2f, 0.3f);
+            Gizmos.DrawWireSphere(transform.position, attackRange);
+
+            // Draw aggro range
+            float aggroRange = enemyData != null ? enemyData.AggroRange : 10f;
+            Gizmos.color = new Color(1f, 1f, 0f, 0.15f);
+            Gizmos.DrawWireSphere(transform.position, aggroRange);
+
+            // Draw line to current target (only if debugCombat enabled)
+            if (debugCombat && currentTargetTransform != null)
+            {
+                Gizmos.color = Color.red;
+                Gizmos.DrawLine(transform.position, currentTargetTransform.position);
+            }
+        }
+#endif
     }
 }
