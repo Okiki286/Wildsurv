@@ -175,6 +175,8 @@ namespace WildernessSurvival.UI
                 StructureCategory.Defense => new Color(0.7f, 0.3f, 0.3f),   // Rosso
                 StructureCategory.Utility => new Color(0.3f, 0.5f, 0.7f),   // Blu
                 StructureCategory.Tech => new Color(0.6f, 0.3f, 0.7f),      // Viola
+                StructureCategory.Meta => new Color(0.9f, 0.9f, 0.5f),      // Giallo
+                StructureCategory.Housing => new Color(0.8f, 0.6f, 0.4f),   // Marrone/Arancio
                 _ => new Color(0.5f, 0.5f, 0.5f)                            // Grigio
             };
         }

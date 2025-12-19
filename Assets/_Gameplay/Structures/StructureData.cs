@@ -360,7 +360,10 @@ namespace WildernessSurvival.Gameplay.Structures
         Tech,
 
         [LabelText("🏠 Meta")]
-        Meta
+        Meta,
+
+        [LabelText("🛏️ Housing")]
+        Housing
     }
 
     [System.Flags]

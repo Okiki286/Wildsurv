@@ -1,6 +1,9 @@
 using UnityEngine;
 using UnityEngine.AI;
 using Sirenix.OdinInspector;
+using WildernessSurvival.Gameplay.Structures;
+using WildernessSurvival.Gameplay.Structures.Housing;
+using WildernessSurvival.Gameplay.Workers.Housing;
 
 namespace WildernessSurvival.Gameplay.Workers
 {
@@ -110,6 +113,25 @@ namespace WildernessSurvival.Gameplay.Workers
         private float currentSpeed;
 
         // ============================================
+        // SHELTER / NIGHT RETREAT STATE
+        // ============================================
+
+        [ShowInInspector, ReadOnly]
+        private bool isGoingToShelter = false;
+
+        [ShowInInspector, ReadOnly]
+        private bool isInShelter = false;
+
+        [ShowInInspector, ReadOnly]
+        private ShelterHome targetShelter;
+
+        [ShowInInspector, ReadOnly]
+        private bool isRetreatingToWaystone = false;
+
+        // Cached visual root for hide/show
+        private GameObject visualRootObject;
+
+        // ============================================
         // PROPERTIES
         // ============================================
 
@@ -118,6 +140,9 @@ namespace WildernessSurvival.Gameplay.Workers
         public bool IsMoving => isMoving;
         public MovementState CurrentMovementState => currentMovementState;
         public WorkerVisualController VisualController => visualController;
+        public bool IsInShelter => isInShelter;
+        public bool IsGoingToShelter => isGoingToShelter;
+        public bool IsRetreatingToWaystone => isRetreatingToWaystone;
 
         /// <summary>
         /// Verifica se il worker è in transizione visiva.
@@ -311,6 +336,13 @@ namespace WildernessSurvival.Gameplay.Workers
 
         private void OnArrivedAtDestination()
         {
+            // Check if this is a shelter/retreat arrival first
+            if (isGoingToShelter || isRetreatingToWaystone)
+            {
+                OnArrivedAtRetreat();
+                return;
+            }
+
             currentMovementState = MovementState.WorkingOnSite;
             currentWorkTargetCenter = transform.position;
 
@@ -493,6 +525,251 @@ namespace WildernessSurvival.Gameplay.Workers
             if (visualController != null)
             {
                 visualController.UpdateAnimator(speed, isMovingAnim, isWorkingAnim);
+            }
+        }
+
+        // ============================================
+        // SHELTER / NIGHT RETREAT COMMANDS
+        // ============================================
+
+        /// <summary>
+        /// Commands the worker to move to a shelter for night retreat.
+        /// When worker arrives, they will enter the shelter and become hidden/non-targetable.
+        /// </summary>
+        public void CommandMoveToShelter(Vector3 shelterPosition, ShelterHome shelter)
+        {
+            if (agent == null) return;
+
+            // Gate: block if downed
+            if (downedStatus != null && downedStatus.IsDowned)
+            {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.Log($"<color=orange>[WorkerController]</color> {gameObject.name} blocked CommandMoveToShelter: worker is DOWNED");
+#endif
+                return;
+            }
+
+            // Reset shelter-related states
+            isGoingToShelter = true;
+            isInShelter = false;
+            isRetreatingToWaystone = false;
+            targetShelter = shelter;
+
+            // Clear work-related states
+            isForcedIdle = false;
+            isPatrollingWorksite = false;
+            currentMovementState = MovementState.Traveling;
+            targetPosition = shelterPosition;
+
+            // Start navigation
+            agent.isStopped = false;
+            agent.SetDestination(shelterPosition);
+            isMoving = true;
+            isPlayingWorkAnimation = false;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"<color=cyan>[WorkerController]</color> {gameObject.name} moving to shelter at {shelterPosition}");
+#endif
+        }
+
+        /// <summary>
+        /// Commands the worker to retreat to Waystone area (for homeless workers at night).
+        /// Worker will remain visible but be in Retreating state.
+        /// </summary>
+        public void CommandMoveToRetreat(Vector3 waystonePosition)
+        {
+            if (agent == null) return;
+
+            // Gate: block if downed
+            if (downedStatus != null && downedStatus.IsDowned)
+            {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.Log($"<color=orange>[WorkerController]</color> {gameObject.name} blocked CommandMoveToRetreat: worker is DOWNED");
+#endif
+                return;
+            }
+
+            // Reset shelter-related states
+            isGoingToShelter = false;
+            isInShelter = false;
+            isRetreatingToWaystone = true;
+            targetShelter = null;
+
+            // Clear work-related states
+            isForcedIdle = false;
+            isPatrollingWorksite = false;
+            currentMovementState = MovementState.Traveling;
+            targetPosition = waystonePosition;
+
+            // Start navigation
+            agent.isStopped = false;
+            agent.SetDestination(waystonePosition);
+            isMoving = true;
+            isPlayingWorkAnimation = false;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"<color=yellow>[WorkerController]</color> {gameObject.name} retreating to Waystone at {waystonePosition}");
+#endif
+        }
+
+        /// <summary>
+        /// Called when worker physically enters shelter.
+        /// Hides the visual representation and stops all movement.
+        /// </summary>
+        public void EnterShelter()
+        {
+            isGoingToShelter = false;
+            isInShelter = true;
+            isRetreatingToWaystone = false;
+
+            // Stop all movement
+            if (agent != null)
+            {
+                agent.isStopped = true;
+                agent.ResetPath();
+                agent.velocity = Vector3.zero;
+            }
+
+            currentMovementState = MovementState.Idle;
+            isMoving = false;
+            isPatrollingWorksite = false;
+            isPlayingWorkAnimation = false;
+
+            // Hide visual
+            HideVisual();
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"<color=green>[WorkerController]</color> {gameObject.name} entered shelter - hidden");
+#endif
+        }
+
+        /// <summary>
+        /// Called when worker exits shelter (day start or shelter destroyed).
+        /// Restores visual representation and positions worker at exit point.
+        /// </summary>
+        public void ExitShelter(Vector3 exitPosition)
+        {
+            isGoingToShelter = false;
+            isInShelter = false;
+            isRetreatingToWaystone = false;
+            targetShelter = null;
+
+            // Teleport to exit position
+            if (agent != null && agent.isOnNavMesh)
+            {
+                agent.Warp(exitPosition);
+                agent.isStopped = false;
+            }
+            else
+            {
+                transform.position = exitPosition;
+            }
+
+            currentMovementState = MovementState.Idle;
+            isForcedIdle = false;
+
+            // Show visual
+            ShowVisual();
+
+            // Restore job from instance
+            if (linkedInstance != null)
+            {
+                linkedInstance.RestoreJobAfterRetreat();
+            }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"<color=yellow>[WorkerController]</color> {gameObject.name} exited shelter at {exitPosition}");
+#endif
+        }
+
+        /// <summary>
+        /// Hides the worker's visual representation (for shelter entry).
+        /// </summary>
+        private void HideVisual()
+        {
+            // Cache and hide visual root if available
+            if (visualController != null)
+            {
+                visualRootObject = visualController.gameObject;
+                if (visualRootObject != null && visualRootObject != gameObject)
+                {
+                    visualRootObject.SetActive(false);
+                }
+            }
+            else
+            {
+                // Fallback: disable all renderers
+                var renderers = GetComponentsInChildren<Renderer>();
+                foreach (var r in renderers)
+                {
+                    r.enabled = false;
+                }
+            }
+
+            // Disable colliders so enemies can't target
+            var colliders = GetComponentsInChildren<Collider>();
+            foreach (var col in colliders)
+            {
+                col.enabled = false;
+            }
+        }
+
+        /// <summary>
+        /// Shows the worker's visual representation (for shelter exit).
+        /// </summary>
+        private void ShowVisual()
+        {
+            // Show visual root if cached
+            if (visualRootObject != null)
+            {
+                visualRootObject.SetActive(true);
+            }
+            else
+            {
+                // Fallback: enable all renderers
+                var renderers = GetComponentsInChildren<Renderer>();
+                foreach (var r in renderers)
+                {
+                    r.enabled = true;
+                }
+            }
+
+            // Re-enable colliders
+            var colliders = GetComponentsInChildren<Collider>();
+            foreach (var col in colliders)
+            {
+                col.enabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Called when worker arrives at retreat destination (shelter or waystone).
+        /// Notifies appropriate system.
+        /// </summary>
+        private void OnArrivedAtRetreat()
+        {
+            if (isGoingToShelter && targetShelter != null)
+            {
+                // Arrived at shelter - notify system to enter
+                if (WorkerNightRetreatSystem.Instance != null && linkedInstance != null)
+                {
+                    WorkerNightRetreatSystem.Instance.NotifyWorkerArrivedAtShelter(linkedInstance, targetShelter);
+                }
+            }
+            else if (isRetreatingToWaystone)
+            {
+                // Arrived at waystone - just idle in place
+                isRetreatingToWaystone = false;
+                currentMovementState = MovementState.Idle;
+
+                if (linkedInstance != null)
+                {
+                    linkedInstance.SetState(WorkerState.Idle);
+                }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.Log($"<color=yellow>[WorkerController]</color> {gameObject.name} arrived at Waystone retreat spot");
+#endif
             }
         }
 

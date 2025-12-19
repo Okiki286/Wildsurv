@@ -467,6 +467,19 @@ namespace WildernessSurvival.Gameplay.Enemies
                 // Non attaccare altri nemici
                 if (col.GetComponent<EnemyInstance>() != null) continue;
 
+                // Skip workers that are sheltered (in house during night)
+                var workerController = col.GetComponent<WildernessSurvival.Gameplay.Workers.WorkerController>();
+                if (workerController != null && workerController.IsInShelter)
+                {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                    if (debugMode)
+                    {
+                        Debug.Log($"<color=gray>[Scan]</color> {name}: Skipping {col.name} - worker is SHELTERED");
+                    }
+#endif
+                    continue;
+                }
+
                 // Calcola priorità (più basso = meglio)
                 float priority = GetTargetPriority(col);
                 float dist = Vector3.Distance(transform.position, col.transform.position);

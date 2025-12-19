@@ -4,6 +4,7 @@ using System;
 using WildernessSurvival.Gameplay.Combat;
 using WildernessSurvival.Gameplay.Enemies;
 using WildernessSurvival.Gameplay.Structures;
+using WildernessSurvival.Gameplay.Structures.Housing;
 
 namespace WildernessSurvival.Gameplay.Workers
 {
@@ -68,6 +69,32 @@ namespace WildernessSurvival.Gameplay.Workers
 
         [ShowInInspector, ReadOnly]
         public bool IsAtWorksite { get; set; } = false;
+
+        // ============================================
+        // HOUSING / NIGHT RETREAT STATE
+        // ============================================
+
+        [TitleGroup("Housing")]
+        [ShowInInspector, ReadOnly]
+        public ShelterHome AssignedHome { get; set; }
+
+        [ShowInInspector, ReadOnly]
+        public bool HasAssignedHome => AssignedHome != null;
+
+        [ShowInInspector, ReadOnly]
+        public bool IsSheltered { get; private set; } = false;
+
+        /// <summary>
+        /// Job saved before night retreat, to be restored at day start.
+        /// </summary>
+        [ShowInInspector, ReadOnly]
+        private WorkerJobData savedJobBeforeRetreat;
+
+        /// <summary>
+        /// Structure saved before night retreat, for restoration.
+        /// </summary>
+        [ShowInInspector, ReadOnly]
+        private StructureController savedStructureBeforeRetreat;
 
         // ============================================
         // PHYSICAL REPRESENTATION
@@ -473,6 +500,91 @@ namespace WildernessSurvival.Gameplay.Workers
         private float GetExpRequiredForLevel(int level)
         {
             return 100f * Mathf.Pow(1.5f, level - 1);
+        }
+
+        // ============================================
+        // SHELTER / NIGHT RETREAT
+        // ============================================
+
+        /// <summary>
+        /// Sets the sheltered state. When sheltered, worker is hidden and non-targetable.
+        /// Called by ShelterHome when worker enters/exits.
+        /// </summary>
+        public void SetSheltered(bool sheltered)
+        {
+            IsSheltered = sheltered;
+
+            if (sheltered)
+            {
+                CurrentState = WorkerState.Sheltered;
+            }
+            else if (CurrentState == WorkerState.Sheltered)
+            {
+                CurrentState = WorkerState.Idle;
+            }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"<color=cyan>[WorkerInstance]</color> {CustomName} sheltered state: {sheltered}");
+#endif
+        }
+
+        /// <summary>
+        /// Saves current job and structure assignment before night retreat.
+        /// Will be restored when day starts.
+        /// </summary>
+        public void SaveJobBeforeRetreat()
+        {
+            savedJobBeforeRetreat = CurrentJob;
+            savedStructureBeforeRetreat = AssignedStructure;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"<color=cyan>[WorkerInstance]</color> {CustomName} saved job before retreat: " +
+                $"{savedJobBeforeRetreat?.JobName ?? "None"}, Structure: {savedStructureBeforeRetreat?.name ?? "None"}");
+#endif
+        }
+
+        /// <summary>
+        /// Restores job and potentially re-assigns to structure after night retreat.
+        /// Called when day starts and worker exits shelter.
+        /// </summary>
+        public void RestoreJobAfterRetreat()
+        {
+            // If there was a saved job, restore it
+            if (savedJobBeforeRetreat != null)
+            {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.Log($"<color=cyan>[WorkerInstance]</color> {CustomName} restoring job: {savedJobBeforeRetreat.JobName}");
+#endif
+                SetJob(savedJobBeforeRetreat);
+                savedJobBeforeRetreat = null;
+            }
+
+            // Structure reassignment is handled by WorkerSystem auto-assign
+            // We just clear the saved reference
+            savedStructureBeforeRetreat = null;
+        }
+
+        /// <summary>
+        /// Checks if this worker can be targeted by enemies.
+        /// Returns false if downed, sheltered, or dead.
+        /// </summary>
+        public bool IsTargetable()
+        {
+            if (!IsAlive) return false;
+            if (IsSheltered) return false;
+            if (CurrentState == WorkerState.Dead) return false;
+
+            // Check downed status on physical worker
+            if (PhysicalWorker != null)
+            {
+                var downedStatus = PhysicalWorker.GetComponent<WorkerDownedStatus>();
+                if (downedStatus != null && downedStatus.IsDowned)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
     }
 }

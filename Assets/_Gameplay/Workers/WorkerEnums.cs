@@ -11,6 +11,7 @@ namespace WildernessSurvival.Gameplay.Workers
         Working,
         Resting,
         Retreating,
+        Sheltered,  // Worker is inside a shelter (night retreat) - non-targetable
         Combat,
         Dead
     }

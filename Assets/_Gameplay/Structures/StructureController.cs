@@ -818,9 +818,39 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private void ReleaseAllWorkers()
         {
+            // ════════════════════════════════════════════════════════════════════
+            // PROPER UNASSIGNMENT: Notify WorkerSystem for each assigned worker
+            // This ensures workers reset to Idle/Villager and become available
+            // ════════════════════════════════════════════════════════════════════
+            if (WorkerSystem.Instance != null)
+            {
+                // 1. Unassign all regular workers
+                foreach (var worker in assignedWorkerInstances.ToArray()) // ToArray to avoid concurrent modification
+                {
+                    if (worker != null)
+                    {
+                        WorkerSystem.Instance.UnassignWorker(worker);
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                        Debug.Log($"<color=orange>[Structure]</color> {worker.CustomName} unassigned because {structureData?.DisplayName} destroyed -> default job restored");
+#endif
+                    }
+                }
+
+                // 2. Unassign current builder (special case for Building state)
+                if (CurrentBuilder != null)
+                {
+                    WorkerSystem.Instance.UnassignWorker(CurrentBuilder);
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                    Debug.Log($"<color=orange>[Structure]</color> {CurrentBuilder.CustomName} (builder) unassigned because {structureData?.DisplayName} destroyed -> default job restored");
+#endif
+                }
+            }
+
+            // Safety clear of all lists
             assignedWorkers.Clear();
             assignedHeroes.Clear();
             buildersAssigned.Clear();
+            assignedWorkerInstances.Clear();
             CurrentBuilder = null;
             workerCount = 0;
         }
@@ -1263,6 +1293,17 @@ namespace WildernessSurvival.Gameplay.Structures
         {
             if (worker == null) return false;
             if (assignedWorkerInstances.Contains(worker)) return false;
+
+            // SAFETY: Housing structures cannot accept workers for production jobs (Operating state)
+            // Workers should be assigned via ShelterHome.AssignResident() instead
+            // BUT: allow builders during construction phase
+            if (structureData != null && structureData.Category == StructureCategory.Housing && currentState != StructureState.Building)
+            {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.LogWarning($"<color=orange>[Structure]</color> {structureData.DisplayName} is HOUSING - use ShelterHome.AssignResident() instead!");
+#endif
+                return false;
+            }
 
             if (currentState == StructureState.Building)
             {

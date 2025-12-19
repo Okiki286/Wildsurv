@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Sirenix.OdinInspector;
 using WildernessSurvival.Gameplay.Workers;
 using WildernessSurvival.Gameplay.Structures;
+using WildernessSurvival.Gameplay.Structures.Housing;
 
 namespace WildernessSurvival.UI
 {
@@ -92,6 +93,8 @@ namespace WildernessSurvival.UI
         // ============================================
 
         private StructureController currentStructure;
+        private ShelterHome currentShelter; // Cached ShelterHome for Housing structures
+        private bool isHousingMode = false; // True when showing Housing UI
         private List<WorkerSlotUI> slotUIList = new List<WorkerSlotUI>();
         private List<AvailableWorkerUI> availableUIList = new List<AvailableWorkerUI>();
         private AudioSource audioSource;
@@ -169,15 +172,52 @@ namespace WildernessSurvival.UI
                 return;
             }
 
-            // Check if structure supports workers
-            if (structure.Data.WorkerSlots <= 0)
+            // Determine if this is a Housing structure
+            bool isHousing = structure.Data != null && structure.Data.Category == StructureCategory.Housing;
+            bool isBuilding = structure.State == StructureState.Building;
+
+            // For Housing structures, get ShelterHome component
+            ShelterHome shelter = null;
+            if (isHousing)
             {
-                Debug.Log($"[WorkerAssignmentUI] {structure.Data.DisplayName} has no worker slots");
-                PlaySound(errorSound);
-                return;
+                shelter = structure.GetComponent<ShelterHome>();
+            }
+
+            // Check if structure supports workers/residents
+            if (isHousing)
+            {
+                // Housing: allow if Building (1 builder slot) OR if Operating with ShelterHome
+                if (isBuilding)
+                {
+                    // Building mode: show builder slot
+                    isHousingMode = false; // Use standard builder logic
+                }
+                else
+                {
+                    // Operating mode: need ShelterHome for residents
+                    if (shelter == null)
+                    {
+                        Debug.LogWarning($"[WorkerAssignmentUI] {structure.Data.DisplayName} is Housing but has no ShelterHome component!");
+                        PlaySound(errorSound);
+                        return;
+                    }
+                    isHousingMode = true;
+                }
+            }
+            else
+            {
+                // Non-Housing: standard WorkerSlots check
+                if (structure.Data.WorkerSlots <= 0)
+                {
+                    Debug.Log($"[WorkerAssignmentUI] {structure.Data.DisplayName} has no worker slots");
+                    PlaySound(errorSound);
+                    return;
+                }
+                isHousingMode = false;
             }
 
             currentStructure = structure;
+            currentShelter = shelter;
 
             // Update all UI elements
             UpdateStructureInfo();
@@ -190,12 +230,13 @@ namespace WildernessSurvival.UI
             {
                 assignmentPanel.SetActive(true);
             }
-            
+
             PlaySound(openSound);
 
             if (debugMode)
             {
-                Debug.Log($"<color=green>[WorkerAssignmentUI]</color> Opened for {structure.Data.DisplayName}");
+                string mode = isHousingMode ? "HOUSING-RESIDENTS" : (isHousing && isBuilding ? "HOUSING-BUILDER" : "STANDARD");
+                Debug.Log($"<color=green>[WorkerAssignmentUI]</color> Opened for {structure.Data.DisplayName} ({mode})");
             }
         }
 
@@ -211,11 +252,13 @@ namespace WildernessSurvival.UI
             }
 
             currentStructure = null;
-            
+            currentShelter = null;
+            isHousingMode = false;
+
             // Disattiva tutti gli elementi pooled invece di distruggerli
             ClearSlotUIs();
             ClearAvailableUIs();
-            
+
             PlaySound(closeSound);
 
             if (debugMode)
@@ -281,23 +324,47 @@ namespace WildernessSurvival.UI
             if (currentStructure == null || structureStatsText == null) return;
 
             var data = currentStructure.Data;
-            int assignedCount = currentStructure.WorkerCount;
-            int maxSlots = data.WorkerSlots;
-
             string stats = $"HP: {currentStructure.CurrentHealth}/{data.MaxHealth}\n";
-            stats += $"Workers: {assignedCount}/{maxSlots}";
 
+            int assignedCount;
+            int maxSlots;
+            string slotLabel;
+
+            if (isHousingMode && currentShelter != null)
+            {
+                // Housing Operating mode: show residents
+                assignedCount = currentShelter.ResidentCount;
+                maxSlots = currentShelter.Capacity;
+                slotLabel = "Residents";
+            }
+            else if (currentStructure.State == StructureState.Building)
+            {
+                // Building mode (including Housing): show builder
+                assignedCount = currentStructure.CurrentBuilder != null ? 1 : 0;
+                maxSlots = 1;
+                slotLabel = "Builder";
+            }
+            else
+            {
+                // Standard Operating mode
+                assignedCount = currentStructure.WorkerCount;
+                maxSlots = data.WorkerSlots;
+                slotLabel = "Workers";
+            }
+
+            stats += $"{slotLabel}: {assignedCount}/{maxSlots}";
             structureStatsText.text = stats;
 
             // Update slots header
             if (slotsHeaderText != null)
             {
-                slotsHeaderText.text = $"Assigned Workers ({assignedCount}/{maxSlots})";
+                slotsHeaderText.text = $"Assigned {slotLabel} ({assignedCount}/{maxSlots})";
             }
         }
 
         /// <summary>
         /// Refresh worker slots con Object Pooling (zero allocazioni dopo warm-up)
+        /// Supports: Standard structures, Building mode, and Housing residents mode
         /// </summary>
         private void RefreshWorkerSlots()
         {
@@ -314,14 +381,42 @@ namespace WildernessSurvival.UI
                 return;
             }
 
-            int totalSlots = currentStructure.Data.WorkerSlots;
-            var assignedWorkers = currentStructure.GetAssignedWorkerInstances();
+            int totalSlots;
+            List<WorkerInstance> assignedWorkers = new List<WorkerInstance>();
+
+            if (isHousingMode && currentShelter != null)
+            {
+                // Housing Operating mode: show residents
+                totalSlots = currentShelter.Capacity;
+                foreach (var resident in currentShelter.Residents)
+                {
+                    assignedWorkers.Add(resident);
+                }
+            }
+            else if (currentStructure.State == StructureState.Building)
+            {
+                // Building mode (including Housing): show 1 builder slot
+                totalSlots = 1;
+                if (currentStructure.CurrentBuilder != null)
+                {
+                    assignedWorkers.Add(currentStructure.CurrentBuilder);
+                }
+            }
+            else
+            {
+                // Standard Operating mode
+                totalSlots = currentStructure.Data.WorkerSlots;
+                assignedWorkers.AddRange(currentStructure.GetAssignedWorkerInstances());
+            }
+
+            // Choose correct callback based on mode
+            System.Action<WorkerInstance> unassignCallback = isHousingMode ? OnResidentUnassigned : OnWorkerUnassigned;
 
             // Riutilizza o crea slot UI
             for (int i = 0; i < totalSlots; i++)
             {
                 WorkerSlotUI slotUI;
-                
+
                 if (i < slotUIList.Count)
                 {
                     // Ricicla elemento esistente
@@ -358,7 +453,7 @@ namespace WildernessSurvival.UI
 
                 // Inizializza con dati corretti
                 WorkerInstance worker = i < assignedWorkers.Count ? assignedWorkers[i] : null;
-                slotUI.Initialize(worker, OnWorkerUnassigned);
+                slotUI.Initialize(worker, unassignCallback);
             }
 
             // Disattiva gli slot in eccesso (oltre totalSlots)
@@ -372,12 +467,14 @@ namespace WildernessSurvival.UI
 
             if (debugMode)
             {
-                Debug.Log($"[WorkerAssignmentUI] Pooled Slots: {totalSlots} active, {slotUIList.Count - totalSlots} pooled inactive");
+                string mode = isHousingMode ? "RESIDENTS" : "WORKERS";
+                Debug.Log($"[WorkerAssignmentUI] Pooled Slots ({mode}): {totalSlots} active, {slotUIList.Count - totalSlots} pooled inactive");
             }
         }
 
         /// <summary>
         /// Refresh available workers con Object Pooling (zero allocazioni dopo warm-up)
+        /// Supports both standard worker assignment and Housing resident assignment
         /// </summary>
         private void RefreshAvailableWorkers()
         {
@@ -395,22 +492,56 @@ namespace WildernessSurvival.UI
             }
 
             var availableWorkers = WorkerSystem.Instance.GetAvailableWorkers();
-            int neededCount = availableWorkers.Count;
+
+            // For Housing residents mode, also include assigned workers (they can have a home AND a job)
+            List<WorkerInstance> eligibleWorkers;
+            if (isHousingMode && currentShelter != null)
+            {
+                // For housing, show all workers that don't already have this home assigned
+                eligibleWorkers = new List<WorkerInstance>();
+                eligibleWorkers.AddRange(availableWorkers);
+                eligibleWorkers.AddRange(WorkerSystem.Instance.GetAssignedWorkers());
+
+                // Filter out workers already assigned to this shelter
+                eligibleWorkers.RemoveAll(w => w.AssignedHome == currentShelter);
+            }
+            else
+            {
+                eligibleWorkers = availableWorkers;
+            }
+
+            int neededCount = eligibleWorkers.Count;
 
             // Update count text
             if (availableCountText != null)
             {
-                availableCountText.text = $"Available Workers ({neededCount})";
+                string label = isHousingMode ? "Available for Residence" : "Available Workers";
+                availableCountText.text = $"{label} ({neededCount})";
             }
 
-            // Check if structure has free slots
-            bool hasFreeSslots = currentStructure != null && currentStructure.HasFreeWorkerSlot();
+            // Check if structure/shelter has free slots
+            bool hasFreeSlots;
+            if (isHousingMode && currentShelter != null)
+            {
+                hasFreeSlots = currentShelter.HasFreeResidentSlot;
+            }
+            else if (currentStructure != null && currentStructure.State == StructureState.Building)
+            {
+                hasFreeSlots = currentStructure.CurrentBuilder == null;
+            }
+            else
+            {
+                hasFreeSlots = currentStructure != null && currentStructure.HasFreeWorkerSlot();
+            }
+
+            // Choose correct callback based on mode
+            System.Action<WorkerInstance> assignCallback = isHousingMode ? OnResidentAssigned : OnWorkerAssigned;
 
             // Riutilizza o crea worker UI
             for (int i = 0; i < neededCount; i++)
             {
                 AvailableWorkerUI workerUI;
-                WorkerInstance worker = availableWorkers[i];
+                WorkerInstance worker = eligibleWorkers[i];
 
                 if (i < availableUIList.Count)
                 {
@@ -447,7 +578,7 @@ namespace WildernessSurvival.UI
                 }
 
                 // Inizializza con dati corretti
-                workerUI.Initialize(worker, hasFreeSslots, OnWorkerAssigned);
+                workerUI.Initialize(worker, hasFreeSlots, assignCallback);
             }
 
             // Disattiva gli elementi in eccesso (oltre neededCount)
@@ -461,7 +592,8 @@ namespace WildernessSurvival.UI
 
             if (debugMode)
             {
-                Debug.Log($"[WorkerAssignmentUI] Pooled Available: {neededCount} active, {availableUIList.Count - neededCount} pooled inactive");
+                string mode = isHousingMode ? "RESIDENTS" : "WORKERS";
+                Debug.Log($"[WorkerAssignmentUI] Pooled Available ({mode}): {neededCount} active, {availableUIList.Count - neededCount} pooled inactive");
             }
         }
 
@@ -471,8 +603,9 @@ namespace WildernessSurvival.UI
 
             var data = currentStructure.Data;
 
-            // Only show for Resource structures
-            if (data.Category != StructureCategory.Resource || string.IsNullOrEmpty(data.ProducesResourceId))
+            // Hide for Housing (no production) and non-Resource structures
+            if (isHousingMode || data.Category == StructureCategory.Housing ||
+                data.Category != StructureCategory.Resource || string.IsNullOrEmpty(data.ProducesResourceId))
             {
                 productionPanel.SetActive(false);
                 return;
@@ -590,7 +723,7 @@ namespace WildernessSurvival.UI
             WorkerSystem.Instance.UnassignWorker(worker);
 
             PlaySound(unassignSound);
-            
+
             // Refresh both lists
             RefreshWorkerSlots();
             RefreshAvailableWorkers();
@@ -599,6 +732,64 @@ namespace WildernessSurvival.UI
             if (debugMode)
             {
                 Debug.Log($"<color=yellow>[WorkerAssignmentUI]</color> Unassigned {worker.CustomName}");
+            }
+        }
+
+        // ============================================
+        // HOUSING RESIDENT CALLBACKS
+        // ============================================
+
+        /// <summary>
+        /// Called when assigning a worker as resident to a Housing structure.
+        /// Does NOT create a production job - only sets home for night retreat.
+        /// </summary>
+        private void OnResidentAssigned(WorkerInstance worker)
+        {
+            if (worker == null || currentShelter == null) return;
+
+            bool success = currentShelter.AssignResident(worker);
+
+            if (success)
+            {
+                PlaySound(assignSound);
+
+                // Refresh both lists
+                RefreshWorkerSlots();
+                RefreshAvailableWorkers();
+                UpdateStructureStats();
+
+                if (debugMode)
+                {
+                    Debug.Log($"<color=cyan>[WorkerAssignmentUI]</color> {worker.CustomName} assigned as RESIDENT to {currentStructure.Data.DisplayName}");
+                }
+            }
+            else
+            {
+                PlaySound(errorSound);
+                Debug.LogWarning($"[WorkerAssignmentUI] Failed to assign {worker.CustomName} as resident (shelter full?)");
+            }
+        }
+
+        /// <summary>
+        /// Called when removing a worker from Housing residence.
+        /// Does NOT affect their production job assignment.
+        /// </summary>
+        private void OnResidentUnassigned(WorkerInstance worker)
+        {
+            if (worker == null || currentShelter == null) return;
+
+            currentShelter.UnassignResident(worker);
+
+            PlaySound(unassignSound);
+
+            // Refresh both lists
+            RefreshWorkerSlots();
+            RefreshAvailableWorkers();
+            UpdateStructureStats();
+
+            if (debugMode)
+            {
+                Debug.Log($"<color=orange>[WorkerAssignmentUI]</color> {worker.CustomName} removed from residence");
             }
         }
 
@@ -614,6 +805,7 @@ namespace WildernessSurvival.UI
                 StructureCategory.Defense => new Color(0.7f, 0.3f, 0.3f),
                 StructureCategory.Utility => new Color(0.3f, 0.5f, 0.7f),
                 StructureCategory.Tech => new Color(0.6f, 0.3f, 0.7f),
+                StructureCategory.Housing => new Color(0.9f, 0.7f, 0.4f), // Warm orange for homes
                 _ => Color.gray
             };
         }

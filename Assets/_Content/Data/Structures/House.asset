@@ -10,24 +10,24 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 61c39855eeaad5c4eb20f5ce1ad32c5d, type: 3}
-  m_Name: Waystone
+  m_Name: House
   m_EditorClassIdentifier: 
-  structureId: waystone
-  displayName: Waystone
+  structureId: house
+  displayName: House
   icon: {fileID: 0}
-  prefab: {fileID: 3492724680479693441, guid: e1274bc514b08624b9786ecbf2a81ab4, type: 3}
+  prefab: {fileID: 286089031207816942, guid: ea7cbfb9cdc912041ab98ccfe4ceac0e, type: 3}
   description: 
-  category: 2
+  category: 5
   tier: 1
   maxLevel: 3
-  isUnique: 1
+  isUnique: 0
   isBaseCenter: 0
   buildCosts: []
   buildTime: 5
   requiresBuilder: 1
-  workerSlots: 2
+  workerSlots: 0
   heroSlots: 0
-  allowedRoles: 4
+  allowedRoles: 1
   producesResourceId: 
   baseProductionRate: 5
   attackDamage: 10

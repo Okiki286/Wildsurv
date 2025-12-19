@@ -647,6 +647,38 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         // ============================================
+        // HOUSING ASSIGNMENT API
+        // ============================================
+
+        /// <summary>
+        /// Assigns a worker to a shelter as their permanent home.
+        /// Worker will automatically retreat to this shelter at night.
+        /// </summary>
+        /// <param name="worker">Worker to assign</param>
+        /// <param name="shelter">Shelter to assign as home</param>
+        /// <returns>True if assignment successful</returns>
+        public bool AssignWorkerHome(WorkerInstance worker, WildernessSurvival.Gameplay.Structures.Housing.ShelterHome shelter)
+        {
+            if (worker == null || shelter == null) return false;
+
+            return shelter.AssignResident(worker);
+        }
+
+        /// <summary>
+        /// Removes a worker's home assignment.
+        /// Worker will retreat to Waystone at night instead.
+        /// </summary>
+        public void UnassignWorkerHome(WorkerInstance worker)
+        {
+            if (worker == null) return;
+
+            if (worker.AssignedHome != null)
+            {
+                worker.AssignedHome.UnassignResident(worker);
+            }
+        }
+
+        // ============================================
         // LEGACY AUTO-ASSIGNMENT (DEPRECATED)
         // ============================================
 
