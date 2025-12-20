@@ -133,6 +133,16 @@ namespace WildernessSurvival.Gameplay.Enemies
             }
         }
 
+        // [POOLING-SAFE] Reset state on enable for respawned enemies
+        private void OnEnable()
+        {
+            // Only reset if already initialized (not first spawn)
+            if (isInitialized)
+            {
+                ResetStateForPooling();
+            }
+        }
+
         private void Start()
         {
             // If not initialized by spawner, use defaults
@@ -176,25 +186,52 @@ namespace WildernessSurvival.Gameplay.Enemies
             enemyData = data;
 
             maxHealth = data.BaseHealth * hpMul;
-            currentHealth = maxHealth;
             baseDamage = data.AttackDamage * dmgMul;
             baseMoveSpeed = data.MoveSpeed * spdMul;
             rewardMultiplier = rwdMul;
-
-            // Reset debuff state
-            hasWaystoneDebuff = false;
-            moveSpeedMultiplier = 1f;
-            attackMultiplier = 1f;
 
             // Setup NavMeshAgent
             SetupNavMeshAgent();
 
             isInitialized = true;
 
+            // Reset state for first spawn
+            ResetStateForPooling();
+
             if (debugMode)
             {
                 Debug.Log($"<color=red>[EnemyController]</color> {name} initialized: HP={maxHealth:F0}, DMG={baseDamage:F1}, SPD={baseMoveSpeed:F1}");
             }
+        }
+
+        /// <summary>
+        /// [POOLING-SAFE] Reset all mutable state for reuse from pool.
+        /// </summary>
+        private void ResetStateForPooling()
+        {
+            // Reset health
+            currentHealth = maxHealth;
+
+            // Reset debuff state
+            hasWaystoneDebuff = false;
+            moveSpeedMultiplier = 1f;
+            attackMultiplier = 1f;
+
+            // Reset targeting
+            targetTransform = null;
+            destinationUpdateTimer = 0f;
+
+            // Reset NavMeshAgent
+            if (navAgent != null && navAgent.isOnNavMesh)
+            {
+                navAgent.isStopped = false;
+                navAgent.velocity = Vector3.zero;
+                navAgent.ResetPath();
+                navAgent.speed = CurrentMoveSpeed;
+            }
+
+            // Find initial target
+            UpdateTarget();
         }
 
         /// <summary>
@@ -416,7 +453,16 @@ namespace WildernessSurvival.Gameplay.Enemies
 
             // TODO: Drop resources, notify systems, play VFX/SFX
 
-            Destroy(gameObject);
+            // [MODIFY] POOLING: Return to pool instead of Destroy
+            if (EnemyPooler.Instance != null)
+            {
+                EnemyPooler.Instance.ReturnEnemy(gameObject);
+            }
+            else
+            {
+                // Fallback: Destroy if pooler not available
+                Destroy(gameObject);
+            }
         }
 
         // ============================================

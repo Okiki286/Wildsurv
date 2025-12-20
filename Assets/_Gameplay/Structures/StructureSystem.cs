@@ -96,6 +96,16 @@ namespace WildernessSurvival.Gameplay.Structures
         private int buildingCount = 0;
 
         // ============================================
+        // EVENT: Notifica cambiamenti strutture (no polling)
+        // ============================================
+
+        /// <summary>
+        /// Evento invocato quando i conteggi strutture cambiano.
+        /// Usalo per aggiornare UI senza polling.
+        /// </summary>
+        public event System.Action OnStructuresChanged;
+
+        // ============================================
         // REGISTRI & LOOKUP
         // ============================================
 
@@ -110,6 +120,12 @@ namespace WildernessSurvival.Gameplay.Structures
 
         // Timer produzione
         private float productionTimer = 0f;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        // Dev-only: timer per check invarianti contatori
+        private float _devCheckTimer = 0f;
+        private const float DEV_CHECK_INTERVAL = 10f;
+#endif
 
         // ============================================
         // FIX3: OCCUPANCY GRID (no Physics per placement)
@@ -465,6 +481,16 @@ namespace WildernessSurvival.Gameplay.Structures
         {
             UpdateCounts();
             UpdateProductionTick();
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            // Dev-only: check invarianti contatori ogni 10 secondi
+            _devCheckTimer += Time.deltaTime;
+            if (_devCheckTimer >= DEV_CHECK_INTERVAL)
+            {
+                _devCheckTimer = 0f;
+                ValidateCounterInvariants();
+            }
+#endif
         }
 
         // ============================================
@@ -501,9 +527,9 @@ namespace WildernessSurvival.Gameplay.Structures
 
         private void UpdateCounts()
         {
-            totalStructureCount = allStructures.Count;
-            operationalCount = allStructures.Count(s => s.IsOperational);
-            buildingCount = allStructures.Count(s => s.State == StructureState.Building);
+            // FIX: I contatori sono ora gestiti incrementalmente in Register/Unregister.
+            // Questo metodo non fa più nulla ma è mantenuto per backward compatibility.
+            // totalStructureCount, operationalCount, buildingCount sono già aggiornati.
         }
 
         // ============================================
@@ -637,6 +663,14 @@ namespace WildernessSurvival.Gameplay.Structures
             if (!allStructures.Contains(structure))
             {
                 allStructures.Add(structure);
+                totalStructureCount++;
+
+                // FIX: NON incrementare buildingCount/operationalCount qui!
+                // Il conteggio stato avviene già tramite NotifyStructureStateChanged
+                // chiamato da StructureController.ChangeState() durante Initialize().
+                // Incrementare qui causerebbe doppio conteggio.
+
+                OnStructuresChanged?.Invoke();
             }
 
             // Per categoria
@@ -657,24 +691,124 @@ namespace WildernessSurvival.Gameplay.Structures
                 structuresById[id].Add(structure);
             }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
             Debug.Log($"<color=orange>[StructureSystem]</color> Registered {structure.Data.DisplayName}");
+#endif
         }
 
         private void UnregisterStructure(StructureController structure)
         {
             if (structure == null) return;
 
-            allStructures.Remove(structure);
-            structuresByCategory[structure.Data.Category].Remove(structure);
-
-            string id = structure.Data.StructureId;
-            if (structuresById.ContainsKey(id))
+            if (allStructures.Remove(structure))
             {
-                structuresById[id].Remove(structure);
+                totalStructureCount = Mathf.Max(0, totalStructureCount - 1);
+
+                // Decrementa contatore stato (REGOLA: State == Operating, non IsOperational)
+                if (structure.State == StructureState.Building)
+                    buildingCount = Mathf.Max(0, buildingCount - 1);
+                else if (structure.State == StructureState.Operating)
+                    operationalCount = Mathf.Max(0, operationalCount - 1);
+
+                OnStructuresChanged?.Invoke();
             }
 
-            Debug.Log($"<color=orange>[StructureSystem]</color> Unregistered {structure.Data.DisplayName}");
+            if (structure.Data != null)
+            {
+                structuresByCategory[structure.Data.Category].Remove(structure);
+
+                string id = structure.Data.StructureId;
+                if (structuresById.ContainsKey(id))
+                {
+                    structuresById[id].Remove(structure);
+                }
+            }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"<color=orange>[StructureSystem]</color> Unregistered {structure.Data?.DisplayName ?? structure.name}");
+#endif
         }
+
+        /// <summary>
+        /// Chiamato da StructureController quando lo stato cambia (es. Building -> Operating).
+        /// Aggiorna i contatori incrementali senza usare LINQ.
+        /// </summary>
+        /// <param name="oldState">Stato precedente</param>
+        /// <param name="newState">Nuovo stato</param>
+        public void NotifyStructureStateChanged(StructureState oldState, StructureState newState)
+        {
+            // Decrementa vecchio stato
+            if (oldState == StructureState.Building)
+                buildingCount = Mathf.Max(0, buildingCount - 1);
+            else if (oldState == StructureState.Operating)
+                operationalCount = Mathf.Max(0, operationalCount - 1);
+
+            // Incrementa nuovo stato
+            if (newState == StructureState.Building)
+                buildingCount++;
+            else if (newState == StructureState.Operating)
+                operationalCount++;
+
+            OnStructuresChanged?.Invoke();
+        }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        /// <summary>
+        /// Dev-only: valida che i contatori incrementali siano coerenti con la lista.
+        /// Eseguito ogni 10 secondi. Usa LINQ qui perché è solo dev e raramente.
+        /// </summary>
+        private void ValidateCounterInvariants()
+        {
+            int expectedTotal = allStructures.Count;
+            int expectedBuilding = allStructures.Count(s => s != null && s.State == StructureState.Building);
+            int expectedOperational = allStructures.Count(s => s != null && s.State == StructureState.Operating);
+
+            bool hasMismatch = false;
+            string mismatchDetails = "";
+
+            if (totalStructureCount != expectedTotal)
+            {
+                hasMismatch = true;
+                mismatchDetails += $" total({totalStructureCount}!={expectedTotal})";
+            }
+            if (buildingCount != expectedBuilding)
+            {
+                hasMismatch = true;
+                mismatchDetails += $" building({buildingCount}!={expectedBuilding})";
+            }
+            if (operationalCount != expectedOperational)
+            {
+                hasMismatch = true;
+                mismatchDetails += $" operational({operationalCount}!={expectedOperational})";
+            }
+
+            if (hasMismatch)
+            {
+                // Trova una struttura "sospetta" per debug
+                string suspectInfo = "none";
+                for (int i = 0; i < allStructures.Count; i++)
+                {
+                    var s = allStructures[i];
+                    if (s == null) continue;
+
+                    // Sospetta = IsOperational non corrisponde a State == Operating
+                    bool stateIsOperating = s.State == StructureState.Operating;
+                    if (s.IsOperational != stateIsOperating)
+                    {
+                        suspectInfo = $"{s.name} State={s.State} IsOperational={s.IsOperational}";
+                        break;
+                    }
+                }
+
+                Debug.LogWarning($"<color=red>[StructureSystem] COUNTER MISMATCH!</color>{mismatchDetails} | Suspect: {suspectInfo}");
+
+                // Auto-fix: risincronizza contatori
+                totalStructureCount = expectedTotal;
+                buildingCount = expectedBuilding;
+                operationalCount = expectedOperational;
+            }
+        }
+#endif
 
         // ============================================
         // QUERY STRUTTURE

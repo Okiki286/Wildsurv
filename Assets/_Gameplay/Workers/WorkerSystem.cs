@@ -401,6 +401,24 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (worker == null) return;
 
+            // [NEW] HARDENING: Notify structure BEFORE detaching if worker was at worksite
+            // This ensures build/production speed is recalculated even in edge cases:
+            // - Manual unassign via UI
+            // - Worker downed/death
+            // - Night retreat
+            // - Structure destroyed
+            // - Swap to new structure
+            if (worker.IsAtWorksite && worker.AssignedStructure != null)
+            {
+                var structure = worker.AssignedStructure;
+                structure.OnWorkerDepartedFromSite();
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.Log($"<color=yellow>[WorkerSystem]</color> {worker.CustomName} departed from {structure.name} " +
+                    $"(was at worksite, triggering recalculation)");
+#endif
+            }
+
             // 1. Rimuovi dalla struttura
             if (worker.AssignedStructure != null)
             {
@@ -450,21 +468,30 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (structure == null) return;
 
-            var workersToUnassign = assignedWorkers
-                .Where(w => w.AssignedStructure == structure)
-                .ToList();
-
-            foreach (var worker in workersToUnassign)
+            // OPTIMIZATION: Manual loop instead of LINQ to avoid GC allocations
+            cachedWorkersToAssign.Clear();
+            for (int i = 0; i < assignedWorkers.Count; i++)
             {
-                UnassignWorker(worker);
+                var worker = assignedWorkers[i];
+                if (worker != null && worker.AssignedStructure == structure)
+                {
+                    cachedWorkersToAssign.Add(worker);
+                }
+            }
+
+            for (int i = 0; i < cachedWorkersToAssign.Count; i++)
+            {
+                UnassignWorker(cachedWorkersToAssign[i]);
             }
 
 #if UNITY_EDITOR
-            if (workersToUnassign.Count > 0)
+            if (cachedWorkersToAssign.Count > 0)
             {
-                Debug.Log($"<color=orange>[WorkerSystem]</color> Unassigned {workersToUnassign.Count} workers from {structure.name}");
+                Debug.Log($"<color=orange>[WorkerSystem]</color> Unassigned {cachedWorkersToAssign.Count} workers from {structure.name}");
             }
 #endif
+
+            cachedWorkersToAssign.Clear();
         }
 
         // ============================================

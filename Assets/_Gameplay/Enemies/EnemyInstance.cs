@@ -54,6 +54,12 @@ namespace WildernessSurvival.Gameplay.Enemies
 
         private float targetScanTimer;
         private const float TARGET_SCAN_INTERVAL = 0.5f;
+        // Staggered scan: ogni nemico inizia con delay random per distribuire il carico CPU
+        private bool hasInitializedScanDelay = false;
+
+        // Throttling for NavMesh destination updates (mobile optimization)
+        private Vector3 lastSetDestination = Vector3.positiveInfinity;
+        private const float DESTINATION_UPDATE_THRESHOLD = 0.5f; // Update only if target moved >0.5m
 
         // ============================================
         // DEBUFF STATE
@@ -122,6 +128,65 @@ namespace WildernessSurvival.Gameplay.Enemies
         private void Awake()
         {
             agent = GetComponent<NavMeshAgent>();
+        }
+
+        // [NEW] POOLING-SAFE: Register with telemetry on enable + RESET STATE
+        private void OnEnable()
+        {
+            CombatTelemetry.Instance?.RegisterEnemy(gameObject);
+
+            // ✅ CRITICAL: Reset completo dello stato per pooling
+            // Solo se già inizializzato (non alla prima spawn)
+            if (isInitialized)
+            {
+                ResetStateForPooling();
+            }
+        }
+
+        // [NEW] POOLING-SAFE: Unregister from telemetry on disable
+        private void OnDisable()
+        {
+            CombatTelemetry.Instance?.UnregisterEnemy(gameObject);
+        }
+
+        /// <summary>
+        /// [POOLING-SAFE] Resetta TUTTO lo stato del nemico per il riutilizzo.
+        /// Chiamato in OnEnable() ad ogni riattivazione dal pool.
+        /// </summary>
+        private void ResetStateForPooling()
+        {
+            // ===== RESET COMBAT STATE =====
+            currentHealth = maxHealth;  // ✅ Reset HP
+            attackCooldown = 0f;
+            targetScanTimer = hasInitializedScanDelay 
+                ? UnityEngine.Random.Range(0f, TARGET_SCAN_INTERVAL) 
+                : 0f;
+            currentTarget = null;
+            currentTargetTransform = null;
+            lastSetDestination = Vector3.positiveInfinity;
+
+            // ===== RESET DEBUFF STATE =====
+            moveMultiplier = 1f;
+            attackMultiplier = 1f;
+            HasWaystoneDebuff = false;
+
+            // ===== RESET FLAGS =====
+            hasDroppedRewards = false;  // ✅ Permette drop rewards
+            stuckTimer = 0f;
+
+            // ===== RESET NAVMESH AGENT =====
+            if (agent != null && agent.isOnNavMesh)
+            {
+                agent.isStopped = false;
+                agent.velocity = Vector3.zero;
+                agent.ResetPath();
+                
+                // Re-apply speed (potrebbe essere stato debuffato)
+                agent.speed = moveSpeed;
+            }
+
+            // ===== ACQUIRE INITIAL TARGET =====
+            FallbackToWaystone();
         }
 
         private void Update()
@@ -199,7 +264,17 @@ namespace WildernessSurvival.Gameplay.Enemies
                     if (agent != null && agent.isActiveAndEnabled && agent.isOnNavMesh)
                     {
                         agent.isStopped = false;
-                        agent.SetDestination(currentTargetTransform.position);
+
+                        // OPTIMIZATION: Only update destination if target moved significantly
+                        Vector3 targetPos = currentTargetTransform.position;
+                        float sqrDistToLastDest = (targetPos - lastSetDestination).sqrMagnitude;
+                        float threshold = DESTINATION_UPDATE_THRESHOLD * DESTINATION_UPDATE_THRESHOLD;
+
+                        if (sqrDistToLastDest > threshold)
+                        {
+                            agent.SetDestination(targetPos);
+                            lastSetDestination = targetPos;
+                        }
                     }
                 }
             }
@@ -218,37 +293,43 @@ namespace WildernessSurvival.Gameplay.Enemies
         // ============================================
 
         /// <summary>
-        /// Inizializza il nemico con stats scalate
+        /// Inizializza il nemico con stats scalate.
+        /// Chiamato SOLO una volta dal pooler alla creazione.
         /// </summary>
         public void Initialize(EnemyData data, float hpMul, float dmgMul, float spdMul, float rwdMul)
         {
             enemyData = data;
 
-            // Calculate scaled stats
+            // Calculate scaled stats (ONE-TIME)
             maxHealth = data.BaseHealth * hpMul;
-            currentHealth = maxHealth;
             damage = data.AttackDamage * dmgMul;
             moveSpeed = data.MoveSpeed * spdMul;
             rewardMultiplier = rwdMul;
 
-            // Apply NavMeshAgent settings
+            // Apply NavMeshAgent settings (ONE-TIME)
             if (agent == null) agent = GetComponent<NavMeshAgent>();
             if (agent != null)
             {
                 agent.speed = moveSpeed;
                 agent.stoppingDistance = data.AttackRange * 0.9f;
-                agent.isStopped = false;
             }
 
             // Ensure we're on NavMesh
             EnsureOnNavMesh();
 
-            // Initial target scan
-            targetScanTimer = 0f; // Force immediate scan
+            // Staggered scan: ogni nemico inizia con delay random per distribuire il carico CPU
+            if (!hasInitializedScanDelay)
+            {
+                targetScanTimer = UnityEngine.Random.Range(0f, TARGET_SCAN_INTERVAL);
+                hasInitializedScanDelay = true;
+            }
+
+            // Mark as initialized BEFORE ResetState (check in OnEnable)
             isInitialized = true;
 
-            // Force immediate target acquisition and movement
-            FallbackToWaystone();
+            // ✅ PRIMO RESET (per la prima spawn)
+            // I successivi reset avverranno in OnEnable()
+            ResetStateForPooling();
 
             // Debug diagnostics (extended NavMesh logging)
             if (debugNav)
@@ -501,6 +582,12 @@ namespace WildernessSurvival.Gameplay.Enemies
                 }
             }
 
+            // Pulizia buffer per evitare riferimenti stale (safe per GC)
+            for (int i = 0; i < hitCount; i++)
+            {
+                scanBuffer[i] = null;
+            }
+
             // Se trovato un target migliore, aggiorna
             if (bestTarget != null)
             {
@@ -730,6 +817,7 @@ namespace WildernessSurvival.Gameplay.Enemies
 
                 // Telemetry - record kill
                 CombatTelemetry.Instance?.RecordEnemyKill();
+                // [REMOVED] UnregisterEnemy - now handled by OnDisable (pooling-safe)
             }
 
             // Stop NavMesh
@@ -739,8 +827,16 @@ namespace WildernessSurvival.Gameplay.Enemies
                 agent.enabled = false;
             }
 
-            // Destroy
-            Destroy(gameObject);
+            // [POOLING] Return to pool instead of destroying
+            if (EnemyPooler.Instance != null)
+            {
+                EnemyPooler.Instance.ReturnEnemy(gameObject);
+            }
+            else
+            {
+                // Fallback: Destroy if pooler not available
+                Destroy(gameObject);
+            }
         }
 
         /// <summary>

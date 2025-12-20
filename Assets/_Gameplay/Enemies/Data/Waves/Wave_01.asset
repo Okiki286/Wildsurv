@@ -24,6 +24,10 @@ MonoBehaviour:
     count: 3
     spawnDelay: 2
     spawnInterval: 0
+  - enemyData: {fileID: 11400000, guid: accdfe91b1a7acc419aab6f9af5edab7, type: 2}
+    count: 3
+    spawnDelay: 1
+    spawnInterval: 15
   healthMultiplier: 1
   damageMultiplier: 1
   speedMultiplier: 1

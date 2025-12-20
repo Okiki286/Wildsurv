@@ -104,6 +104,12 @@ namespace WildernessSurvival.Gameplay.Structures.Housing
 
         private void Start()
         {
+            // [FIX] Don't register Ghost/Preview objects as valid shelters
+            if (name.Contains("Ghost") || name.Contains("Preview") || name.Contains("(Clone)_Preview"))
+            {
+                return;
+            }
+
             // Register with WorkerNightRetreatSystem if it exists
             if (WorkerNightRetreatSystem.Instance != null)
             {

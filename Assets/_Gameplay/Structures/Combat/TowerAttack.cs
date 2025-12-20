@@ -93,6 +93,22 @@ namespace WildernessSurvival.Gameplay.Structures
 #endif
         }
 
+        // [MODIFY] POOLING-SAFE: Use OnEnable instead of Start
+        private void OnEnable()
+        {
+            // Only register if this tower can actually attack
+            if (data != null && data.AttackDamage > 0f && data.AttackRange > 0f)
+            {
+                CombatTelemetry.Instance?.RegisterTower(gameObject);
+            }
+        }
+
+        // [MODIFY] POOLING-SAFE: Use OnDisable instead of OnDestroy
+        private void OnDisable()
+        {
+            CombatTelemetry.Instance?.UnregisterTower(gameObject);
+        }
+
         private void Update()
         {
             if (!isEnabled) return;

@@ -299,8 +299,9 @@ namespace WildernessSurvival.Gameplay.Workers
                 return;
             }
 
-            isMoving = currentSpeed > 0.01f;
-            isPlayingWorkAnimation = currentSpeed < workAnimationSpeedThreshold;
+            // [MODIFY] Mobile optimization: only play work anim/rotate if nearly stationary
+            bool isStationaryEnough = currentSpeed < workAnimationSpeedThreshold;
+            isPlayingWorkAnimation = isStationaryEnough;
 
             if (isPlayingWorkAnimation)
             {
@@ -358,6 +359,7 @@ namespace WildernessSurvival.Gameplay.Workers
             isPatrollingWorksite = true;
             workTimer = 0.5f;
 
+
             if (linkedInstance != null && linkedInstance.IsAssigned && !linkedInstance.IsAtWorksite)
             {
                 linkedInstance.IsAtWorksite = true;
@@ -370,8 +372,8 @@ namespace WildernessSurvival.Gameplay.Workers
                     linkedInstance.PendingJob = null;
                 }
 
-                linkedInstance.AssignedStructure?.RecalculateBuildSpeed();
-                linkedInstance.AssignedStructure?.RecalculateProduction();
+                // [MODIFY] Trigger event-driven recalculation (mobile optimization)
+                linkedInstance.AssignedStructure?.OnWorkerArrivedAtSite();
 
 #if UNITY_EDITOR
                 Debug.Log($"<color=green>[WorkerController]</color> {linkedInstance.CustomName} arrived at worksite!");

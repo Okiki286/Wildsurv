@@ -403,10 +403,16 @@ namespace WildernessSurvival.Gameplay.Structures
         private void ChangeState(StructureState newState)
         {
             if (currentState == newState) return;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
             Debug.Log($"<color=orange>[Structure]</color> {structureData.DisplayName}: {currentState} → {newState}");
+#endif
 
             StructureState previousState = currentState;
             currentState = newState;
+
+            // Notifica StructureSystem del cambio stato per aggiornare i contatori
+            StructureSystem.Instance?.NotifyStructureStateChanged(previousState, newState);
+
             OnStateChanged(newState, previousState);
         }
 
@@ -550,7 +556,7 @@ namespace WildernessSurvival.Gameplay.Structures
                 return;
             }
 
-            RecalculateBuildSpeed();
+            // [REMOVED] RecalculateBuildSpeed() - ora event-driven (chiamato da OnWorkerArrivedAtSite)
 
             float progressDelta = (currentBuildSpeed / structureData.BuildTime) * deltaTime;
             buildProgress += progressDelta;
@@ -691,6 +697,51 @@ namespace WildernessSurvival.Gameplay.Structures
             {
                 Debug.Log($"<color=orange>[Structure]</color> {structureData.DisplayName} build speed: {currentBuildSpeed:F2}x ({buildersAtSite}/{assignedWorkerInstances.Count} at site)");
             }
+#endif
+        }
+
+        // ============================================
+        // EVENT-DRIVEN RECALCULATION (MOBILE OPTIMIZATION)
+        // ============================================
+
+        /// <summary>
+        /// [NEW] Called when a worker arrives/departs from worksite.
+        /// Triggers reactive recalculation instead of per-frame polling.
+        /// </summary>
+        public void OnWorkerArrivedAtSite()
+        {
+            if (currentState == StructureState.Building)
+            {
+                RecalculateBuildSpeed();
+            }
+            else if (currentState == StructureState.Operating)
+            {
+                RecalculateProduction();
+            }
+        }
+
+        /// <summary>
+        /// [NEW] Called when a worker departs from worksite.
+        /// </summary>
+        public void OnWorkerDepartedFromSite()
+        {
+            OnWorkerArrivedAtSite(); // Same recalculation logic
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            // Telemetry: count workers still at site
+            int workersAtSite = 0;
+            foreach (var instance in assignedWorkerInstances)
+            {
+                if (instance != null && instance.IsAtWorksite)
+                    workersAtSite++;
+            }
+
+            string metric = currentState == StructureState.Building 
+                ? $"buildSpeed={currentBuildSpeed:F2}x" 
+                : $"prodRate={currentProductionRate:F1}/min";
+
+            Debug.Log($"<color=magenta>[StructureController]</color> {structureData.DisplayName} " +
+                $"OnWorkerDeparted: workersAtSite={workersAtSite}/{assignedWorkerInstances.Count}, {metric}");
 #endif
         }
 

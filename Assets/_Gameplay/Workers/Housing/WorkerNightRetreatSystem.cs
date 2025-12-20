@@ -528,6 +528,21 @@ namespace WildernessSurvival.Gameplay.Workers.Housing
             // Just mark IsAtWorksite = false so production/build doesn't count them.
             // Assignment is preserved; worker returns automatically at day start.
             // ════════════════════════════════════════════════════════════════════
+
+            // [NEW] HARDENING: Notify structure BEFORE setting IsAtWorksite = false
+            // This ensures build/production speed drops to 0 during night
+            if (worker.IsAtWorksite && worker.AssignedStructure != null)
+            {
+                worker.AssignedStructure.OnWorkerDepartedFromSite();
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                if (debugMode)
+                {
+                    Debug.Log($"<color=yellow>[NightRetreat]</color> {worker.CustomName} departing from {worker.AssignedStructure.name} for night");
+                }
+#endif
+            }
+
             worker.IsAtWorksite = false;
 
             // Stop physical movement

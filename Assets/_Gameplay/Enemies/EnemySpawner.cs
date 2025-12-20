@@ -128,8 +128,25 @@ namespace WildernessSurvival.Gameplay.Enemies
                 Debug.Log($"<color=yellow>[EnemySpawner]</color> Snapped {data.DisplayName} from {position} to NavMesh at {validSpawnPos} (delta={Vector3.Distance(position, validSpawnPos):F2}m)");
             }
 
-            // Instantiate at validated position
-            GameObject enemy = Instantiate(data.Prefab, validSpawnPos, Quaternion.identity, enemyContainer);
+            // [MODIFY] POOLING: Get from pool instead of Instantiate
+            GameObject enemy = null;
+            if (EnemyPooler.Instance != null)
+            {
+                enemy = EnemyPooler.Instance.GetEnemy(data.Prefab, validSpawnPos, Quaternion.identity);
+            }
+            else
+            {
+                // Fallback: Instantiate if pooler not available (backward compatibility)
+                enemy = Instantiate(data.Prefab, validSpawnPos, Quaternion.identity, enemyContainer);
+                Debug.LogWarning("[EnemySpawner] EnemyPooler not found! Using Instantiate fallback (not optimal for performance).");
+            }
+
+            if (enemy == null)
+            {
+                Debug.LogError($"[EnemySpawner] Failed to spawn {data.DisplayName}!");
+                return null;
+            }
+
             enemy.name = $"{data.DisplayName}_{totalSpawnedEver}";
 
             // Apply scaled stats
