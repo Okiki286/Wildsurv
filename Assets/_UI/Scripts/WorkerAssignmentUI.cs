@@ -6,6 +6,7 @@ using Sirenix.OdinInspector;
 using WildernessSurvival.Gameplay.Workers;
 using WildernessSurvival.Gameplay.Structures;
 using WildernessSurvival.Gameplay.Structures.Housing;
+using WildernessSurvival.Gameplay.Core;
 
 namespace WildernessSurvival.UI
 {
@@ -68,6 +69,15 @@ namespace WildernessSurvival.UI
         [SerializeField] private TextMeshProUGUI totalProductionText;
 
         // ============================================
+        // RIFERIMENTI UI - RECRUIT (WAYSTONE ONLY)
+        // ============================================
+
+        [TitleGroup("Recruit (Waystone)")]
+        [Tooltip("Sezione UI per il reclutamento, visibile solo sul Waystone")]
+        [SerializeField] private GameObject recruitSection;
+        [SerializeField] private RecruitUI recruitUIComponent;
+
+        // ============================================
         // CONFIGURAZIONE
         // ============================================
 
@@ -95,6 +105,7 @@ namespace WildernessSurvival.UI
         private StructureController currentStructure;
         private ShelterHome currentShelter; // Cached ShelterHome for Housing structures
         private bool isHousingMode = false; // True when showing Housing UI
+        private bool isWaystoneMode = false; // True when showing Waystone UI
         private List<WorkerSlotUI> slotUIList = new List<WorkerSlotUI>();
         private List<AvailableWorkerUI> availableUIList = new List<AvailableWorkerUI>();
         private AudioSource audioSource;
@@ -219,6 +230,15 @@ namespace WildernessSurvival.UI
             currentStructure = structure;
             currentShelter = shelter;
 
+            if (isHousingMode && currentShelter != null)
+            {
+                currentShelter.SyncResidents();
+            }
+
+            // Check if this is the Waystone
+            isWaystoneMode = structure.GetComponent<WaystoneBeaconController>() != null;
+            UpdateRecruitSection();
+
             // Update all UI elements
             UpdateStructureInfo();
             RefreshWorkerSlots();
@@ -254,6 +274,13 @@ namespace WildernessSurvival.UI
             currentStructure = null;
             currentShelter = null;
             isHousingMode = false;
+            isWaystoneMode = false;
+
+            // Hide recruit section
+            if (recruitSection != null)
+            {
+                recruitSection.SetActive(false);
+            }
 
             // Disattiva tutti gli elementi pooled invece di distruggerli
             ClearSlotUIs();
@@ -497,13 +524,21 @@ namespace WildernessSurvival.UI
             List<WorkerInstance> eligibleWorkers;
             if (isHousingMode && currentShelter != null)
             {
-                // For housing, show all workers that don't already have this home assigned
+                // For housing, we show all workers who don't already live elsewhere.
+                // We ALSO filter out workers who live HERE (they are in the assigned list).
                 eligibleWorkers = new List<WorkerInstance>();
                 eligibleWorkers.AddRange(availableWorkers);
                 eligibleWorkers.AddRange(WorkerSystem.Instance.GetAssignedWorkers());
 
-                // Filter out workers already assigned to this shelter
-                eligibleWorkers.RemoveAll(w => w.AssignedHome == currentShelter);
+                // Filter out workers who already have a home (any home)
+                // This prevents assigning a worker to multiple houses or accidental re-assignment.
+                // If the user wants to MOVE a worker, they should unassign from House A first,
+                // or we could show them but marked. For now, let's just show homeless workers + current residents (to be filtered).
+                
+                eligibleWorkers.RemoveAll(w => w.AssignedHome != null);
+                
+                // [Optional] If you want to show workers with homes but let them be reassigned,
+                // you would only filter currentShelter. But removing all assignedHome != null is safer for now.
             }
             else
             {
@@ -639,6 +674,37 @@ namespace WildernessSurvival.UI
             if (totalProductionText != null)
             {
                 totalProductionText.text = $"<b>Total: {totalRate:F1}/min</b>";
+            }
+        }
+
+        /// <summary>
+        /// Mostra/nasconde la sezione Recruit in base a isWaystoneMode.
+        /// </summary>
+        private void UpdateRecruitSection()
+        {
+            if (recruitSection == null) return;
+
+            if (isWaystoneMode)
+            {
+                recruitSection.SetActive(true);
+
+                // Force refresh del RecruitUI
+                if (recruitUIComponent != null)
+                {
+                    recruitUIComponent.enabled = true;
+                    recruitUIComponent.Bind(); // Immediate refresh
+                }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                if (debugMode)
+                {
+                    Debug.Log("<color=cyan>[WorkerAssignmentUI]</color> Waystone detected - Recruit section VISIBLE");
+                }
+#endif
+            }
+            else
+            {
+                recruitSection.SetActive(false);
             }
         }
 

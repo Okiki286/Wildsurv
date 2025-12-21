@@ -847,7 +847,10 @@ namespace WildernessSurvival.Gameplay.Enemies
             if (enemyData == null) return;
 
             int shardDrop = Mathf.RoundToInt(enemyData.BaseShardDrop * rewardMultiplier);
-            string enemyName = enemyData.DisplayName;
+
+            // [POOLING SAFE] Cattura posizione PRIMA di qualsiasi disattivazione
+            // Il nemico verrà pooled subito dopo, quindi salviamo la posizione ora
+            Vector3 deathPosition = transform.position;
 
             if (shardDropMode == ShardDropMode.DirectToInventory)
             {
@@ -856,27 +859,40 @@ namespace WildernessSurvival.Gameplay.Enemies
                     // Validate resource key exists
                     if (ResourceSystem.Instance.GetResourceData(RES_SHARDS) == null)
                     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
                         Debug.LogWarning($"<color=orange>[EnemyReward]</color> WARNING: resource key '{RES_SHARDS}' not found in ResourceSystem");
+#endif
                         return;
                     }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
                     float shardsBefore = ResourceSystem.Instance.GetResourceAmount(RES_SHARDS);
-                    ResourceSystem.Instance.AddResource(RES_SHARDS, shardDrop);
-                    float shardsAfter = ResourceSystem.Instance.GetResourceAmount(RES_SHARDS);
+#endif
 
-                    Debug.Log($"<color=green>[EnemyReward]</color> {enemyName} shards BEFORE={shardsBefore:F0} +{shardDrop} AFTER={shardsAfter:F0}");
+                    // [ECONOMY FEEDBACK] Usa nuovo overload con worldPos e sourceTag
+                    // L'evento OnResourceChanged viene emesso internamente da ResourceSystem
+                    ResourceSystem.Instance.AddResource(RES_SHARDS, shardDrop, deathPosition, ResourceSourceTags.EnemyDrop);
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                    float shardsAfter = ResourceSystem.Instance.GetResourceAmount(RES_SHARDS);
+                    Debug.Log($"<color=green>[EnemyReward]</color> {enemyData.DisplayName} shards BEFORE={shardsBefore:F0} +{shardDrop} AFTER={shardsAfter:F0}");
+#endif
 
                     // Telemetry
                     CombatTelemetry.Instance?.RecordShardsGained(shardDrop);
                 }
                 else
                 {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
                     Debug.LogWarning($"<color=orange>[EnemyReward]</color> ResourceSystem.Instance is null! Cannot credit {shardDrop} shards.");
+#endif
                 }
             }
             else // WorldDropLater
             {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
                 Debug.Log($"<color=yellow>[EnemyReward]</color> TODO WorldDropLater shards={shardDrop}");
+#endif
             }
         }
 

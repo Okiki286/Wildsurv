@@ -105,7 +105,7 @@ namespace WildernessSurvival.Gameplay.Structures
         private PlacementPose lastPose;
 
         // Anti double-apply centering flag (usato solo per inizializzazione iniziale)
-        private bool ghostCenteringApplied = false;
+
 
         // Cached prefab reference
         private GameObject currentPrefabForCentering = null;
@@ -213,7 +213,7 @@ namespace WildernessSurvival.Gameplay.Structures
 
             selectedStructure = null;
             rotationStep = 0;
-            ghostCenteringApplied = false;
+
             currentPrefabForCentering = null;
 
             // Reset preview centering state
@@ -238,7 +238,6 @@ namespace WildernessSurvival.Gameplay.Structures
 
             selectedStructure = structure;
             rotationStep = 0;
-            ghostCenteringApplied = false;
             currentPrefabForCentering = structure.Prefab;
 
             // Reset preview centering state
@@ -295,8 +294,6 @@ namespace WildernessSurvival.Gameplay.Structures
                     _previewVisualBaseLocalPos,
                     deltaLocal
                 );
-
-                ghostCenteringApplied = true;
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
                 if (debugMode)
@@ -576,8 +573,13 @@ namespace WildernessSurvival.Gameplay.Structures
                 return;
             }
 
-            // ResourceSystem ha già metodo PayCost(StructureCost[])
-            bool paid = ResourceSystem.Instance.PayCost(selectedStructure.BuildCosts);
+            // [ECONOMY FEEDBACK] Usa nuovo overload con worldPos e sourceTag
+            // La posizione di piazzamento viene passata per feedback visivo (se abilitato)
+            bool paid = ResourceSystem.Instance.PayCost(
+                selectedStructure.BuildCosts,
+                position,
+                ResourceSourceTags.BuildCost
+            );
             if (!paid)
             {
                 Debug.LogError("[BuildMode] Failed to pay costs!");
@@ -590,8 +592,10 @@ namespace WildernessSurvival.Gameplay.Structures
             Quaternion rotation = Quaternion.Euler(0, rotationStep * 90, 0);
             StructureSystem.Instance.SpawnStructure(selectedStructure, position, rotation);
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
             if (debugMode)
                 Debug.Log($"[BuildMode] ✅ Placed {selectedStructure.DisplayName} at {position}");
+#endif
         }
 
         private bool ValidatePlacement(Vector3 position)

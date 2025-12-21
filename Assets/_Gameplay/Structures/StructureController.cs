@@ -777,10 +777,18 @@ namespace WildernessSurvival.Gameplay.Structures
 
                 if (ResourceSystem.Instance != null)
                 {
-                    ResourceSystem.Instance.AddResource(structureData.ProducesResourceId, amountToAdd);
+                    // [ECONOMY FEEDBACK] Usa nuovo overload con worldPos e sourceTag
+                    ResourceSystem.Instance.AddResource(
+                        structureData.ProducesResourceId,
+                        amountToAdd,
+                        transform.position,
+                        ResourceSourceTags.Production
+                    );
                 }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
                 Debug.Log($"<color=cyan>[Structure]</color> {structureData.DisplayName} produced {amountToAdd}x {structureData.ProducesResourceId}");
+#endif
             }
         }
 
@@ -795,7 +803,14 @@ namespace WildernessSurvival.Gameplay.Structures
 
             if (ResourceSystem.Instance != null)
             {
-                ResourceSystem.Instance.AddResource(structureData.ProducesResourceId, amountThisTick);
+                // [ECONOMY FEEDBACK] Usa nuovo overload con worldPos e sourceTag
+                // Nota: per tick frazionari potrebbe non emettere eventi (delta < 1)
+                ResourceSystem.Instance.AddResource(
+                    structureData.ProducesResourceId,
+                    amountThisTick,
+                    transform.position,
+                    ResourceSourceTags.Production
+                );
             }
         }
 

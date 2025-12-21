@@ -208,10 +208,29 @@ namespace WildernessSurvival.UI
         public void ShowChangeAnimation(string resourceId, float amount)
         {
             ResourceDisplayItem display = GetDisplayForResource(resourceId);
-            
+
             if (display != null && display.IsValid())
             {
                 display.ShowFloatingText(amount, increaseColor, decreaseColor);
+            }
+        }
+
+        /// <summary>
+        /// Trigger animazione pulse/flash per cambio risorsa.
+        /// Chiamato da EconomyFeedbackSystem quando una risorsa cambia.
+        /// </summary>
+        /// <param name="resourceId">ID risorsa</param>
+        /// <param name="delta">Quantità cambiata (positiva = gain, negativa = spend)</param>
+        public void AnimateResourceChange(string resourceId, int delta)
+        {
+            if (delta == 0) return;
+
+            ResourceDisplayItem display = GetDisplayForResource(resourceId);
+
+            if (display != null && display.IsValid())
+            {
+                // Animazione pulse
+                display.AnimateChange(delta > 0, delta, increaseColor, decreaseColor, pulseScale);
             }
         }
 

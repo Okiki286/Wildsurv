@@ -1,10 +1,57 @@
 using Sirenix.OdinInspector;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using WildernessSurvival.Core.Events;
 
 namespace WildernessSurvival.Gameplay.Resources
 {
+    // ============================================
+    // RESOURCE CHANGE INFO (per Economy Feedback)
+    // ============================================
+
+    /// <summary>
+    /// Dati di un cambio risorsa. Usato per feedback visivo/audio.
+    /// Struct per evitare allocazioni GC.
+    /// </summary>
+    public readonly struct ResourceChangeInfo
+    {
+        public readonly string ResourceId;
+        public readonly int Delta;
+        public readonly int NewTotal;
+        public readonly Vector3 WorldPos;
+        public readonly bool HasWorldPos;
+        public readonly string SourceTag;
+
+        public ResourceChangeInfo(string resourceId, int delta, int newTotal,
+                                   Vector3 worldPos, bool hasWorldPos, string sourceTag)
+        {
+            ResourceId = resourceId;
+            Delta = delta;
+            NewTotal = newTotal;
+            WorldPos = worldPos;
+            HasWorldPos = hasWorldPos;
+            SourceTag = sourceTag ?? string.Empty;
+        }
+
+        public bool IsGain => Delta > 0;
+        public bool IsSpend => Delta < 0;
+    }
+
+    // ============================================
+    // SOURCE TAGS (costanti per evitare typo)
+    // ============================================
+
+    public static class ResourceSourceTags
+    {
+        public const string EnemyDrop = "EnemyDrop";
+        public const string Production = "Production";
+        public const string BuildCost = "BuildCost";
+        public const string UpgradeCost = "UpgradeCost";
+        public const string Debug = "Debug";
+        public const string StartingResources = "Starting";
+    }
+
     /// <summary>
     /// Sistema centrale per la gestione di tutte le risorse.
     /// Singleton accessibile da qualsiasi sistema.
@@ -36,8 +83,8 @@ namespace WildernessSurvival.Gameplay.Resources
 
         [TitleGroup("Eventi")]
         [FoldoutGroup("Eventi/Resource Events")]
-        [Tooltip("Evento quando una risorsa cambia quantità")]
-        [SerializeField] private StringEvent onResourceChanged;
+        [Tooltip("Evento quando una risorsa cambia quantità (legacy ScriptableObject)")]
+        [SerializeField] private StringEvent onResourceChangedLegacy;
 
         [FoldoutGroup("Eventi/Resource Events")]
         [Tooltip("Evento quando risorse insufficienti")]
@@ -46,6 +93,16 @@ namespace WildernessSurvival.Gameplay.Resources
         [TitleGroup("Debug")]
         [ToggleLeft]
         [SerializeField] private bool debugMode = false;
+
+        // ============================================
+        // EVENTO CENTRALIZZATO (Economy Feedback)
+        // ============================================
+
+        /// <summary>
+        /// Evento statico per feedback economy. Sottoscritto da EconomyFeedbackSystem.
+        /// Usa ResourceChangeInfo struct per zero-alloc.
+        /// </summary>
+        public static event Action<ResourceChangeInfo> OnResourceChanged;
 
         // ============================================
         // RUNTIME DATA
@@ -142,67 +199,151 @@ namespace WildernessSurvival.Gameplay.Resources
         // ============================================
 
         /// <summary>
-        /// Aggiunge una quantità di risorsa
+        /// Aggiunge una quantità di risorsa (overload senza posizione)
         /// </summary>
         public bool AddResource(string resourceId, float amount)
         {
+            return AddResource(resourceId, amount, Vector3.zero, false, null);
+        }
+
+        /// <summary>
+        /// Aggiunge una quantità di risorsa con posizione mondo per feedback visivo.
+        /// </summary>
+        /// <param name="resourceId">ID risorsa</param>
+        /// <param name="amount">Quantità da aggiungere</param>
+        /// <param name="worldPos">Posizione mondo per popup (es. nemico morto)</param>
+        /// <param name="sourceTag">Tag sorgente (es. "EnemyDrop", "Production")</param>
+        public bool AddResource(string resourceId, float amount, Vector3 worldPos, string sourceTag = null)
+        {
+            return AddResource(resourceId, amount, worldPos, true, sourceTag);
+        }
+
+        /// <summary>
+        /// Implementazione interna AddResource con tutti i parametri.
+        /// </summary>
+        private bool AddResource(string resourceId, float amount, Vector3 worldPos, bool hasWorldPos, string sourceTag)
+        {
             if (!resourceAmounts.ContainsKey(resourceId))
             {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
                 Debug.LogWarning($"[ResourceSystem] Risorsa sconosciuta: {resourceId}");
+#endif
                 return false;
             }
 
+            float oldAmount = resourceAmounts[resourceId];
             var data = resourceLookup[resourceId];
-            float newAmount = resourceAmounts[resourceId] + amount;
+            float newAmount = oldAmount + amount;
 
             // Applica cap se definito
-            if (data.HasMaxStorage) // ✅ Property corretta
+            if (data.HasMaxStorage)
             {
-                newAmount = Mathf.Min(newAmount, data.MaxStorage); // ✅ Property corretta
+                newAmount = Mathf.Min(newAmount, data.MaxStorage);
             }
+
+            // Calcola delta effettivo (potrebbe essere diverso se capped)
+            int effectiveDelta = Mathf.RoundToInt(newAmount - oldAmount);
 
             resourceAmounts[resourceId] = newAmount;
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
             if (debugMode)
             {
-                Debug.Log($"<color=cyan>[ResourceSystem]</color> +{amount} {data.DisplayName} → Totale: {newAmount}"); // ✅ Property corretta
+                Debug.Log($"<color=cyan>[ResourceSystem]</color> +{amount} {data.DisplayName} → Totale: {newAmount}");
             }
+#endif
 
-            // Notifica cambio
-            onResourceChanged?.Raise(resourceId);
+            // Notifica cambio (legacy ScriptableObject event)
+            onResourceChangedLegacy?.Raise(resourceId);
+
+            // Notifica cambio (nuovo evento centralizzato per feedback)
+            if (effectiveDelta != 0)
+            {
+                var info = new ResourceChangeInfo(
+                    resourceId,
+                    effectiveDelta,
+                    Mathf.RoundToInt(newAmount),
+                    worldPos,
+                    hasWorldPos,
+                    sourceTag
+                );
+                OnResourceChanged?.Invoke(info);
+            }
 
             return true;
         }
 
         /// <summary>
-        /// Rimuove una quantità di risorsa. Ritorna false se insufficiente.
+        /// Rimuove una quantità di risorsa. Ritorna false se insufficiente. (overload senza posizione)
         /// </summary>
         public bool RemoveResource(string resourceId, float amount)
         {
+            return RemoveResource(resourceId, amount, Vector3.zero, false, null);
+        }
+
+        /// <summary>
+        /// Rimuove una quantità di risorsa con posizione mondo per feedback visivo.
+        /// </summary>
+        public bool RemoveResource(string resourceId, float amount, Vector3 worldPos, string sourceTag = null)
+        {
+            return RemoveResource(resourceId, amount, worldPos, true, sourceTag);
+        }
+
+        /// <summary>
+        /// Implementazione interna RemoveResource con tutti i parametri.
+        /// </summary>
+        private bool RemoveResource(string resourceId, float amount, Vector3 worldPos, bool hasWorldPos, string sourceTag)
+        {
             if (!resourceAmounts.ContainsKey(resourceId))
             {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
                 Debug.LogWarning($"[ResourceSystem] Risorsa sconosciuta: {resourceId}");
+#endif
                 return false;
             }
 
             if (resourceAmounts[resourceId] < amount)
             {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
                 if (debugMode)
                 {
                     Debug.Log($"<color=red>[ResourceSystem]</color> Insufficiente {resourceId}: richiesto {amount}, disponibile {resourceAmounts[resourceId]}");
                 }
+#endif
                 onResourceInsufficient?.Raise(resourceId);
                 return false;
             }
 
+            float oldAmount = resourceAmounts[resourceId];
             resourceAmounts[resourceId] -= amount;
+            float newAmount = resourceAmounts[resourceId];
 
+            int effectiveDelta = -Mathf.RoundToInt(oldAmount - newAmount); // Negativo per spesa
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
             if (debugMode)
             {
-                Debug.Log($"<color=orange>[ResourceSystem]</color> -{amount} {resourceLookup[resourceId].DisplayName} → Totale: {resourceAmounts[resourceId]}"); // ✅ Property corretta
+                Debug.Log($"<color=orange>[ResourceSystem]</color> -{amount} {resourceLookup[resourceId].DisplayName} → Totale: {newAmount}");
+            }
+#endif
+
+            // Notifica cambio (legacy ScriptableObject event)
+            onResourceChangedLegacy?.Raise(resourceId);
+
+            // Notifica cambio (nuovo evento centralizzato per feedback)
+            if (effectiveDelta != 0)
+            {
+                var info = new ResourceChangeInfo(
+                    resourceId,
+                    effectiveDelta,
+                    Mathf.RoundToInt(newAmount),
+                    worldPos,
+                    hasWorldPos,
+                    sourceTag
+                );
+                OnResourceChanged?.Invoke(info);
             }
 
-            onResourceChanged?.Raise(resourceId);
             return true;
         }
 
@@ -257,18 +398,36 @@ namespace WildernessSurvival.Gameplay.Resources
         }
 
         /// <summary>
-        /// Paga un costo multiplo. Ritorna false se non può permetterselo.
+        /// Paga un costo multiplo. Ritorna false se non può permetterselo. (overload senza posizione)
         /// </summary>
         public bool PayCost(ResourceCost[] costs)
+        {
+            return PayCost(costs, Vector3.zero, false, null);
+        }
+
+        /// <summary>
+        /// Paga un costo multiplo con posizione mondo per feedback visivo.
+        /// </summary>
+        public bool PayCost(ResourceCost[] costs, Vector3 worldPos, string sourceTag = null)
+        {
+            return PayCost(costs, worldPos, true, sourceTag);
+        }
+
+        /// <summary>
+        /// Implementazione interna PayCost con tutti i parametri.
+        /// </summary>
+        private bool PayCost(ResourceCost[] costs, Vector3 worldPos, bool hasWorldPos, string sourceTag)
         {
             if (!CanAfford(costs))
             {
                 return false;
             }
 
-            foreach (var cost in costs)
+            if (costs == null) return true;
+
+            for (int i = 0; i < costs.Length; i++)
             {
-                RemoveResource(cost.resourceId, cost.amount);
+                RemoveResource(costs[i].resourceId, costs[i].amount, worldPos, hasWorldPos, sourceTag);
             }
             return true;
         }
@@ -311,18 +470,36 @@ namespace WildernessSurvival.Gameplay.Resources
         }
 
         /// <summary>
-        /// Paga un costo da StructureData. Ritorna false se non può permetterselo.
+        /// Paga un costo da StructureData. Ritorna false se non può permetterselo. (overload senza posizione)
         /// </summary>
         public bool PayCost(WildernessSurvival.Gameplay.Structures.StructureCost[] costs)
+        {
+            return PayCost(costs, Vector3.zero, false, null);
+        }
+
+        /// <summary>
+        /// Paga un costo da StructureData con posizione mondo per feedback visivo.
+        /// </summary>
+        public bool PayCost(WildernessSurvival.Gameplay.Structures.StructureCost[] costs, Vector3 worldPos, string sourceTag = null)
+        {
+            return PayCost(costs, worldPos, true, sourceTag);
+        }
+
+        /// <summary>
+        /// Implementazione interna PayCost per StructureCost con tutti i parametri.
+        /// </summary>
+        private bool PayCost(WildernessSurvival.Gameplay.Structures.StructureCost[] costs, Vector3 worldPos, bool hasWorldPos, string sourceTag)
         {
             if (!CanAfford(costs))
             {
                 return false;
             }
 
-            foreach (var cost in costs)
+            if (costs == null || costs.Length == 0) return true;
+
+            for (int i = 0; i < costs.Length; i++)
             {
-                RemoveResource(cost.resourceId, cost.amount);
+                RemoveResource(costs[i].resourceId, costs[i].amount, worldPos, hasWorldPos, sourceTag);
             }
             return true;
         }

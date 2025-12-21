@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Food
   m_EditorClassIdentifier: 
   resourceId: food
-  icon: {fileID: 0}
+  icon: {fileID: 21300000, guid: 140f165398261457abe0df4f9dcdd7e2, type: 3}
   displayName: Food
   uiColor: {r: 0.3137255, g: 0.78431374, b: 0.3137255, a: 1}
   description: Essential for worker survival
@@ -30,4 +30,4 @@ MonoBehaviour:
   craftRequirements: []
   previewWorkers: 1
   previewHeroes: 0
-  productionPreviewText: "\U0001F4CA Produzione: 1.8/min"
+  productionPreviewText: "\xF0\u0178\u201C\u0160 Produzione: 1.8/min"

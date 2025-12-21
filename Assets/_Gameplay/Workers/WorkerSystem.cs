@@ -95,6 +95,7 @@ namespace WildernessSurvival.Gameplay.Workers
         public int WorkerInstanceCount => allWorkerInstances.Count;
         public int AvailableWorkerCount => availableWorkers.Count;
         public int AssignedInstanceCount => assignedWorkers.Count;
+        public IReadOnlyList<WorkerInstance> AllWorkerInstances => allWorkerInstances;
 
         // ============================================
         // LIFECYCLE

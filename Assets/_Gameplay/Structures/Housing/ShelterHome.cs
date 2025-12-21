@@ -110,6 +110,9 @@ namespace WildernessSurvival.Gameplay.Structures.Housing
                 return;
             }
 
+            // [NEW] Sync residents on start to restore state if needed
+            SyncResidents();
+
             // Register with WorkerNightRetreatSystem if it exists
             if (WorkerNightRetreatSystem.Instance != null)
             {
@@ -154,6 +157,11 @@ namespace WildernessSurvival.Gameplay.Structures.Housing
         public bool AssignResident(WorkerInstance worker)
         {
             if (worker == null) return false;
+            
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"<color=cyan>[ShelterHome]</color> {name}: AssignResident called for {worker.CustomName}. Current list count: {residents.Count}");
+#endif
+
             if (residents.Contains(worker)) return true; // Already assigned
             if (residents.Count >= capacity)
             {
@@ -166,6 +174,9 @@ namespace WildernessSurvival.Gameplay.Structures.Housing
             // Unassign from previous home if any
             if (worker.AssignedHome != null && worker.AssignedHome != this)
             {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.Log($"<color=yellow>[ShelterHome]</color> {name}: Worker {worker.CustomName} already has home {worker.AssignedHome.name}. Unassigning first.");
+#endif
                 worker.AssignedHome.UnassignResident(worker);
             }
 
@@ -173,7 +184,7 @@ namespace WildernessSurvival.Gameplay.Structures.Housing
             worker.AssignedHome = this;
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-            Debug.Log($"<color=cyan>[ShelterHome]</color> {name}: {worker.CustomName} assigned as resident ({residents.Count}/{capacity})");
+            Debug.Log($"<color=green>[ShelterHome]</color> {name}: {worker.CustomName} assigned successfully. New count: {residents.Count}");
 #endif
 
             return true;
@@ -186,7 +197,21 @@ namespace WildernessSurvival.Gameplay.Structures.Housing
         public void UnassignResident(WorkerInstance worker)
         {
             if (worker == null) return;
-            if (!residents.Contains(worker)) return;
+            
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"<color=orange>[ShelterHome]</color> {name}: UnassignResident called for {worker.CustomName}. List contains: {residents.Contains(worker)}");
+#endif
+
+            if (!residents.Contains(worker)) 
+            {
+                // [FIX] Force clear AssignedHome even if not in list to fix inconsistency bugs
+                if (worker.AssignedHome == this)
+                {
+                    Debug.LogWarning($"<color=red>[ShelterHome]</color> {name}: Worker {worker.CustomName} had this as AssignedHome but was NOT in residents list! Fixing inconsistency.");
+                    worker.AssignedHome = null;
+                }
+                return;
+            }
 
             // If inside, eject first
             if (currentlyInside.Contains(worker))
@@ -201,7 +226,30 @@ namespace WildernessSurvival.Gameplay.Structures.Housing
             }
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-            Debug.Log($"<color=orange>[ShelterHome]</color> {name}: {worker.CustomName} unassigned from residence");
+            Debug.Log($"<color=orange>[ShelterHome]</color> {name}: {worker.CustomName} unassigned. Remaining: {residents.Count}");
+#endif
+        }
+
+        /// <summary>
+        /// [NEW] Hard-syncs the residents list with the global worker state.
+        /// Fixes inconsistency bugs where workers have AssignedHome set but aren't in the list.
+        /// </summary>
+        public void SyncResidents()
+        {
+            if (WorkerSystem.Instance == null) return;
+
+            residents.Clear();
+            var allWorkers = WorkerSystem.Instance.AllWorkerInstances;
+            foreach (var worker in allWorkers)
+            {
+                if (worker.AssignedHome == this)
+                {
+                    residents.Add(worker);
+                }
+            }
+            
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"<color=cyan>[ShelterHome]</color> {name}: Synced residents. Count: {residents.Count}");
 #endif
         }
 

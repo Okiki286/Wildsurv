@@ -831,6 +831,8 @@ MonoBehaviour:
   baseProductionText: {fileID: 1871890029666027749}
   bonusProductionText: {fileID: 6500475233079983990}
   totalProductionText: {fileID: 4289792945579189868}
+  recruitSection: {fileID: 0}
+  recruitUIComponent: {fileID: 0}
   closeKey: 27
   toggleKey: 9
   closeOnClickOutside: 1

@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9cd2393f1e0fde243bb1fa32a433ebab, type: 3}
+  m_Name: EconomyRules
+  m_EditorClassIdentifier: 
+  foodModel: 0
+  baseRecruitCost: 40
+  costPerExtraWorker: 15
+  recruitPerDayCap: 1
+  startingWorkerCount: 2
+  defaultBedsPerHouse: 2
+  foodUpkeepPerWorker: 1
+  starvationWorkSpeedMult: 0.8
+  starvationBlocksRecruit: 1
