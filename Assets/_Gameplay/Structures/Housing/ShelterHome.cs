@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Sirenix.OdinInspector;
 using WildernessSurvival.Gameplay.Workers;
 using WildernessSurvival.Gameplay.Workers.Housing;
+using WildernessSurvival.Core.Navigation;
 using System;
 
 namespace WildernessSurvival.Gameplay.Structures.Housing
@@ -33,6 +34,28 @@ namespace WildernessSurvival.Gameplay.Structures.Housing
         [SerializeField]
         [Tooltip("Punto dove i worker spawneranno se lo shelter viene distrutto (opzionale, usa transform.position se null)")]
         private Transform exitPoint;
+
+        [TitleGroup("Approach Slots")]
+        [SerializeField]
+        [Tooltip("Optional: ApproachSlots component for managing entrance positions. If null, uses EntryPosition directly.")]
+        private ApproachSlots entranceSlots;
+
+        [TitleGroup("Approach Slots")]
+        [SerializeField]
+        [Tooltip("Auto-create ApproachSlots at runtime if not assigned")]
+        private bool autoCreateSlots = true;
+
+        [TitleGroup("Approach Slots")]
+        [SerializeField]
+        [Range(2, 8)]
+        [Tooltip("Number of slots to create if auto-creating")]
+        private int autoSlotCount = 4;
+
+        [TitleGroup("Approach Slots")]
+        [SerializeField]
+        [Range(0.5f, 2f)]
+        [Tooltip("Radius for auto-created slots")]
+        private float autoSlotRadius = 0.8f;
 
         // ============================================
         // RUNTIME STATE
@@ -84,14 +107,51 @@ namespace WildernessSurvival.Gameplay.Structures.Housing
         public IReadOnlyList<WorkerInstance> CurrentlyInside => currentlyInside;
 
         /// <summary>
-        /// Position where workers should move to when entering shelter.
+        /// Position where workers should move to when entering shelter (base position without slots).
         /// </summary>
         public Vector3 EntryPosition => entryPoint != null ? entryPoint.position : transform.position;
+
+        /// <summary>
+        /// Gets an entry position for a specific worker, using approach slots if available.
+        /// Reserves a slot for the worker if one is free.
+        /// </summary>
+        /// <param name="worker">The worker requesting entry position</param>
+        /// <returns>The position to move to (slot position or fallback)</returns>
+        public Vector3 GetEntryPositionForWorker(WorkerInstance worker)
+        {
+            if (entranceSlots != null && worker != null)
+            {
+                if (entranceSlots.TryReserveSlot(worker, out Vector3 slotPos))
+                {
+                    return slotPos;
+                }
+                // All slots full, use fallback queue position
+                return entranceSlots.GetFallbackQueuePos(worker);
+            }
+            return EntryPosition;
+        }
+
+        /// <summary>
+        /// Releases any entrance slot held by the worker.
+        /// Called automatically when worker exits or is unassigned.
+        /// </summary>
+        public void ReleaseEntranceSlot(WorkerInstance worker)
+        {
+            if (entranceSlots != null && worker != null)
+            {
+                entranceSlots.ReleaseSlot(worker);
+            }
+        }
 
         /// <summary>
         /// Position where workers spawn when shelter is destroyed.
         /// </summary>
         public Vector3 ExitPosition => exitPoint != null ? exitPoint.position : transform.position;
+
+        /// <summary>
+        /// The ApproachSlots component for this shelter, if available.
+        /// </summary>
+        public ApproachSlots EntranceSlots => entranceSlots;
 
         // ============================================
         // LIFECYCLE
@@ -100,6 +160,27 @@ namespace WildernessSurvival.Gameplay.Structures.Housing
         private void Awake()
         {
             structureController = GetComponent<StructureController>();
+            InitializeEntranceSlots();
+        }
+
+        private void InitializeEntranceSlots()
+        {
+            // Try to find existing ApproachSlots if not assigned
+            if (entranceSlots == null)
+            {
+                entranceSlots = GetComponent<ApproachSlots>();
+            }
+
+            // Auto-create if enabled and still null
+            if (entranceSlots == null && autoCreateSlots)
+            {
+                entranceSlots = gameObject.AddComponent<ApproachSlots>();
+                entranceSlots.Initialize(autoSlotCount, autoSlotRadius, entryPoint);
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.Log($"<color=cyan>[ShelterHome]</color> {name}: Auto-created ApproachSlots with {autoSlotCount} slots");
+#endif
+            }
         }
 
         private void Start()
@@ -225,6 +306,9 @@ namespace WildernessSurvival.Gameplay.Structures.Housing
                 worker.AssignedHome = null;
             }
 
+            // Release any entrance slot the worker may have reserved
+            ReleaseEntranceSlot(worker);
+
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             Debug.Log($"<color=orange>[ShelterHome]</color> {name}: {worker.CustomName} unassigned. Remaining: {residents.Count}");
 #endif
@@ -283,6 +367,9 @@ namespace WildernessSurvival.Gameplay.Structures.Housing
             // Hide the physical worker
             if (worker.PhysicalWorker != null)
             {
+                // [NEW] Physical warp inside the building before hiding
+                // This ensures the worker isn't left at the external approach slot
+                worker.PhysicalWorker.Warp(EntryPosition);
                 worker.PhysicalWorker.EnterShelter();
             }
 
@@ -305,6 +392,9 @@ namespace WildernessSurvival.Gameplay.Structures.Housing
 
             currentlyInside.Remove(worker);
             worker.SetSheltered(false);
+
+            // Release entrance slot when exiting
+            ReleaseEntranceSlot(worker);
 
             // Show the physical worker
             if (worker.PhysicalWorker != null)

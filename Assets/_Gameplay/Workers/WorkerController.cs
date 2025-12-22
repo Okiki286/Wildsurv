@@ -113,6 +113,29 @@ namespace WildernessSurvival.Gameplay.Workers
         private float currentSpeed;
 
         // ============================================
+        // STUCK DETECTION (Mobile-Friendly)
+        // ============================================
+
+        private Vector3 stuckCheckLastPosition;
+        private float stuckTimer;
+        private int stuckRecoveryAttempts;
+
+        [BoxGroup("Stuck Detection")]
+        [SerializeField]
+        [PropertyRange(1f, 3f)]
+        [Tooltip("Seconds without movement before considering stuck")]
+        private float stuckThresholdSeconds = 1.5f;
+
+        [BoxGroup("Stuck Detection")]
+        [SerializeField]
+        [PropertyRange(0.5f, 3f)]
+        [Tooltip("Random offset radius for recovery fallback")]
+        private float stuckRecoveryOffsetRadius = 1.5f;
+
+        private const float MIN_MOVEMENT_DELTA_SQR = 0.01f; // 0.1m squared
+        private const int MAX_RECOVERY_ATTEMPTS = 3;
+
+        // ============================================
         // SHELTER / NIGHT RETREAT STATE
         // ============================================
 
@@ -143,6 +166,32 @@ namespace WildernessSurvival.Gameplay.Workers
         public bool IsInShelter => isInShelter;
         public bool IsGoingToShelter => isGoingToShelter;
         public bool IsRetreatingToWaystone => isRetreatingToWaystone;
+
+        /// <summary>
+        /// [NEW] Warps the worker to a specific position, handling both NavMesh and Transform.
+        /// </summary>
+        public void Warp(Vector3 position)
+        {
+            if (agent != null && agent.isActiveAndEnabled && agent.isOnNavMesh)
+            {
+                agent.Warp(position);
+            }
+            else
+            {
+                transform.position = position;
+            }
+        }
+
+        /// <summary>
+        /// [NEW] Enables or disables the NavMesh agent safely.
+        /// </summary>
+        public void SetNavMeshActive(bool active)
+        {
+            if (agent != null)
+            {
+                agent.enabled = active;
+            }
+        }
 
         /// <summary>
         /// Verifica se il worker è in transizione visiva.
@@ -287,6 +336,9 @@ namespace WildernessSurvival.Gameplay.Workers
                 linkedInstance.IsAtWorksite = false;
                 linkedInstance.SetState(WorkerState.Moving);
             }
+
+            // Stuck detection check while traveling
+            CheckIfStuck(deltaTime);
         }
 
         private void UpdateWorkingOnSiteState(float deltaTime)
@@ -343,6 +395,9 @@ namespace WildernessSurvival.Gameplay.Workers
                 OnArrivedAtRetreat();
                 return;
             }
+
+            // Reset stuck detection on successful arrival
+            ResetStuckDetection();
 
             currentMovementState = MovementState.WorkingOnSite;
             currentWorkTargetCenter = transform.position;
@@ -416,6 +471,21 @@ namespace WildernessSurvival.Gameplay.Workers
                 Debug.Log($"<color=orange>[WorkerController]</color> {gameObject.name} blocked CommandMoveTo: worker is DOWNED");
 #endif
                 return;
+            }
+
+            // ════════════════════════════════════════════════════════════════════
+            // [GHOST FIX] Reset shelter/retreat flags & restore visuals
+            // This prevents "invisible worker" bugs and ensures proper state reset
+            // ════════════════════════════════════════════════════════════════════
+            bool wasSheltered = isInShelter;
+            isGoingToShelter = false;
+            isInShelter = false;
+            isRetreatingToWaystone = false;
+            targetShelter = null;
+
+            if (wasSheltered)
+            {
+                ShowVisual();
             }
 
             isForcedIdle = false;
@@ -516,6 +586,119 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             isForcedIdle = false;
             if (agent != null) agent.isStopped = false;
+        }
+
+        // ============================================
+        // STUCK DETECTION & RECOVERY
+        // ============================================
+
+        /// <summary>
+        /// Checks if worker is stuck (not moving while in Traveling state).
+        /// Uses position delta tracking, zero allocations per frame.
+        /// </summary>
+        private void CheckIfStuck(float deltaTime)
+        {
+            // Skip if not actively traveling
+            if (currentMovementState != MovementState.Traveling) return;
+            if (agent == null || !agent.hasPath) return;
+
+            Vector3 currentPos = transform.position;
+            float deltaSqr = (currentPos - stuckCheckLastPosition).sqrMagnitude;
+
+            if (deltaSqr < MIN_MOVEMENT_DELTA_SQR)
+            {
+                // Not moving - accumulate timer
+                stuckTimer += deltaTime;
+
+                if (stuckTimer >= stuckThresholdSeconds)
+                {
+                    RecoverFromStuck();
+                }
+            }
+            else
+            {
+                // Moving fine - reset timer
+                stuckTimer = 0f;
+                stuckRecoveryAttempts = 0;
+            }
+
+            stuckCheckLastPosition = currentPos;
+        }
+
+        /// <summary>
+        /// Attempts recovery when worker is stuck.
+        /// Strategy: 1) Re-path, 2) Request alternate slot, 3) Random offset.
+        /// </summary>
+        private void RecoverFromStuck()
+        {
+            stuckTimer = 0f;
+            stuckRecoveryAttempts++;
+
+            if (stuckRecoveryAttempts > MAX_RECOVERY_ATTEMPTS)
+            {
+                // Give up - force idle to prevent infinite loop
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.LogWarning($"<color=red>[StuckRecovery]</color> {gameObject.name} exceeded max recovery attempts, forcing idle");
+#endif
+                ForceIdle();
+                return;
+            }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"<color=orange>[StuckRecovery]</color> {gameObject.name} stuck detected, attempt {stuckRecoveryAttempts}/{MAX_RECOVERY_ATTEMPTS}");
+#endif
+
+            // Attempt 1 & 2: Re-path to target (may work if obstruction cleared)
+            if (stuckRecoveryAttempts <= 2)
+            {
+                // ════════════════════════════════════════════════════════════════════
+                // [GHOST FIX] If worker is retreating to shelter, do NOT redirect to worksite
+                // Just re-path to current target (shelter position)
+                // ════════════════════════════════════════════════════════════════════
+                if (isGoingToShelter || isRetreatingToWaystone)
+                {
+                    agent.SetDestination(targetPosition);
+                    return;
+                }
+
+                // Request new slot from structure if assigned
+                if (linkedInstance?.AssignedStructure != null)
+                {
+                    Vector3 newTarget = linkedInstance.AssignedStructure.GetWorkPositionForWorker(linkedInstance);
+                    agent.SetDestination(newTarget);
+                    targetPosition = newTarget;
+                    return;
+                }
+
+                // Otherwise just re-path to current target
+                agent.SetDestination(targetPosition);
+                return;
+            }
+
+            // Attempt 3: Random NavMesh offset as fallback
+            Vector2 randomCircle = Random.insideUnitCircle * stuckRecoveryOffsetRadius;
+            Vector3 offsetPos = transform.position + new Vector3(randomCircle.x, 0f, randomCircle.y);
+
+            if (NavMesh.SamplePosition(offsetPos, out NavMeshHit hit, stuckRecoveryOffsetRadius, NavMesh.AllAreas))
+            {
+                // Move to safe offset first, then re-path to target
+                agent.SetDestination(hit.position);
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.Log($"<color=yellow>[StuckRecovery]</color> {gameObject.name} applying random offset to {hit.position}");
+#endif
+            }
+        }
+
+        /// <summary>
+        /// Resets stuck detection state.
+        /// Called when worker successfully arrives or changes state.
+        /// </summary>
+        private void ResetStuckDetection()
+        {
+            stuckTimer = 0f;
+            stuckRecoveryAttempts = 0;
+            stuckCheckLastPosition = transform.position;
         }
 
         // ============================================
@@ -657,14 +840,11 @@ namespace WildernessSurvival.Gameplay.Workers
             targetShelter = null;
 
             // Teleport to exit position
-            if (agent != null && agent.isOnNavMesh)
+            Warp(exitPosition);
+
+            if (agent != null)
             {
-                agent.Warp(exitPosition);
                 agent.isStopped = false;
-            }
-            else
-            {
-                transform.position = exitPosition;
             }
 
             currentMovementState = MovementState.Idle;
@@ -689,29 +869,33 @@ namespace WildernessSurvival.Gameplay.Workers
         /// </summary>
         private void HideVisual()
         {
+            bool rootHidden = false;
+
             // Cache and hide visual root if available
             if (visualController != null)
             {
                 visualRootObject = visualController.gameObject;
+                // Only deactive if it's NOT this object (to keep this script running)
                 if (visualRootObject != null && visualRootObject != gameObject)
                 {
                     visualRootObject.SetActive(false);
+                    rootHidden = true;
                 }
             }
-            else
+
+            // ALWAYS disable all renderers in children as a reliable fail-safe
+            // This handles cases where visualRootObject == gameObject
+            var renderers = GetComponentsInChildren<Renderer>();
+            foreach (var r in renderers)
             {
-                // Fallback: disable all renderers
-                var renderers = GetComponentsInChildren<Renderer>();
-                foreach (var r in renderers)
-                {
-                    r.enabled = false;
-                }
+                r.enabled = false;
             }
 
             // Disable colliders so enemies can't target
             var colliders = GetComponentsInChildren<Collider>();
             foreach (var col in colliders)
             {
+                // Never disable our own collider if it's the main one, but usually it's in children
                 col.enabled = false;
             }
         }
@@ -722,18 +906,16 @@ namespace WildernessSurvival.Gameplay.Workers
         private void ShowVisual()
         {
             // Show visual root if cached
-            if (visualRootObject != null)
+            if (visualRootObject != null && visualRootObject != gameObject)
             {
                 visualRootObject.SetActive(true);
             }
-            else
+
+            // Re-enable all renderers (matching the HideVisual fail-safe)
+            var renderers = GetComponentsInChildren<Renderer>();
+            foreach (var r in renderers)
             {
-                // Fallback: enable all renderers
-                var renderers = GetComponentsInChildren<Renderer>();
-                foreach (var r in renderers)
-                {
-                    r.enabled = true;
-                }
+                r.enabled = true;
             }
 
             // Re-enable colliders

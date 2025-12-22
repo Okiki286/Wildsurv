@@ -2,6 +2,7 @@
 using Sirenix.OdinInspector;
 using System.Collections.Generic;
 using WildernessSurvival.Gameplay.Structures;
+using WildernessSurvival.Core.Events;
 using System.Linq;
 
 namespace WildernessSurvival.Gameplay.Workers
@@ -69,6 +70,11 @@ namespace WildernessSurvival.Gameplay.Workers
         [TitleGroup("Global Settings")]
         [SerializeField] private bool paused = false;
 
+        [TitleGroup("Day Night Events")]
+        [SerializeField]
+        [Tooltip("Reference to OnDayStarted event from DayNightSystem")]
+        private GameEvent onDayStartedEvent;
+
         [TitleGroup("Debug Settings")]
         [SerializeField] private bool debugAutoAssign = true;
         [SerializeField] private bool debugJobSystem = true;
@@ -107,11 +113,81 @@ namespace WildernessSurvival.Gameplay.Workers
             else Destroy(gameObject);
         }
 
+        private void OnEnable()
+        {
+            // Subscribe to DayStarted event
+            if (onDayStartedEvent != null)
+            {
+                onDayStartedEvent.AddListener(RefreshIdleBuildersOnDayStart);
+            }
+        }
+
+        private void OnDisable()
+        {
+            // Unsubscribe from DayStarted event
+            if (onDayStartedEvent != null)
+            {
+                onDayStartedEvent.RemoveListener(RefreshIdleBuildersOnDayStart);
+            }
+        }
+
         private void OnDestroy()
         {
             _pendingBuildStructures.Clear();
             _idleBuilders.Clear();
             _autoAssignDirty = false;
+        }
+
+        // ============================================
+        // DAYBREAK REFRESH (GHOST FIX PHASE 2)
+        // ============================================
+
+        /// <summary>
+        /// Called when day starts. Re-populates the idle builders queue with
+        /// any workers who were "forgotten" during the night (shelter oversight fix).
+        /// </summary>
+        private void RefreshIdleBuildersOnDayStart()
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"<color=cyan>[WorkerSystem]</color> Daybreak - Refreshing idle builders queue...");
+#endif
+
+            int addedCount = 0;
+
+            foreach (var worker in allWorkerInstances)
+            {
+                if (worker == null) continue;
+
+                // Skip if worker is sheltered (should not happen at day start, but safety first)
+                if (worker.IsSheltered) continue;
+
+                // Skip if worker is already assigned to a structure
+                if (worker.IsAssigned) continue;
+
+                // Skip if worker is downed
+                if (worker.PhysicalWorker != null)
+                {
+                    var downedStatus = worker.PhysicalWorker.GetComponent<WorkerDownedStatus>();
+                    if (downedStatus != null && downedStatus.IsDowned) continue;
+                }
+
+                // If worker is effectively idle but NOT in the queue, add them
+                if (!_idleBuilders.Contains(worker))
+                {
+                    _idleBuilders.Add(worker);
+                    addedCount++;
+                }
+            }
+
+            // Mark auto-assign as dirty if we found new candidates
+            if (addedCount > 0)
+            {
+                _autoAssignDirty = true;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.Log($"<color=green>[WorkerSystem]</color> Daybreak - Added {addedCount} workers to idle queue. Total: {_idleBuilders.Count}");
+#endif
+            }
         }
 
         private void Start()
@@ -127,7 +203,28 @@ namespace WildernessSurvival.Gameplay.Workers
             }
 #endif
 
+            // AUTO-FIND: Try to find day event if not assigned (Stress Test / Zero Setup Fix)
+            if (onDayStartedEvent == null)
+            {
+                TryAutoFindDayEvent();
+            }
+
             SpawnStartingWorkers();
+        }
+
+        private void TryAutoFindDayEvent()
+        {
+            var allEvents = UnityEngine.Resources.FindObjectsOfTypeAll<GameEvent>();
+            foreach (var ev in allEvents)
+            {
+                if (ev.name.Contains("DayStarted") || ev.name.Contains("OnDayStarted"))
+                {
+                    onDayStartedEvent = ev;
+                    onDayStartedEvent.AddListener(RefreshIdleBuildersOnDayStart);
+                    Debug.Log($"<color=cyan>[WorkerSystem]</color> Auto-detected Day-Start event: {ev.name}");
+                    return;
+                }
+            }
         }
 
         private void Update()
@@ -172,10 +269,45 @@ namespace WildernessSurvival.Gameplay.Workers
             }
 
             // Auto-Assignment Loop (Event-Driven with Throttling)
-            if (_autoAssignDirty && Time.time >= _nextAutoAssignTime)
+            if (Time.time >= _nextAutoAssignTime)
             {
-                TryAutoAssignBuilders();
-                _nextAutoAssignTime = Time.time + autoAssignInterval;
+                // FALLBACK PULSE: If we have work but no candidates, do a quick sanity check
+                // This recovers workers "lost" due to race conditions or skipped notifications.
+                if (_pendingBuildStructures.Count > 0 && _idleBuilders.Count == 0)
+                {
+                    QuickSanityCheckForIdleBuilders();
+                }
+
+                if (_autoAssignDirty)
+                {
+                    TryAutoAssignBuilders();
+                    _nextAutoAssignTime = Time.time + autoAssignInterval;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Fallback check specifically for "Stress Test" scenarios where notifications might be missed.
+        /// Re-populates the idle builder queue if we have pending work but no idle builders.
+        /// </summary>
+        private void QuickSanityCheckForIdleBuilders()
+        {
+            bool foundAny = false;
+            foreach (var worker in allWorkerInstances)
+            {
+                if (worker == null || worker.IsAssigned || worker.IsSheltered) continue;
+                
+                // If they are effectively idle but not in queue, add them
+                if (!_idleBuilders.Contains(worker))
+                {
+                    _idleBuilders.Add(worker);
+                    foundAny = true;
+                }
+            }
+
+            if (foundAny)
+            {
+                _autoAssignDirty = true;
             }
         }
 
@@ -520,7 +652,8 @@ namespace WildernessSurvival.Gameplay.Workers
             for (int i = _idleBuilders.Count - 1; i >= 0; i--)
             {
                 var worker = _idleBuilders[i];
-                if (worker == null || worker.IsAssigned)
+                // [GHOST FIX] Skip null, already assigned, or sheltered workers
+                if (worker == null || worker.IsAssigned || worker.IsSheltered)
                 {
                     _idleBuilders.RemoveAt(i);
                 }

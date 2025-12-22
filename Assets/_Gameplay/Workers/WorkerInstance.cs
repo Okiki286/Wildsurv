@@ -289,8 +289,8 @@ namespace WildernessSurvival.Gameplay.Workers
             {
                 CurrentState = WorkerState.Moving;
 
-                // Usa GetClosestWorkSpot per posizionare il worker sul perimetro
-                Vector3 workPosition = structure.GetClosestWorkSpot(PhysicalWorker.transform.position);
+                // Use slot-based positioning to prevent worker blocking
+                Vector3 workPosition = structure.GetWorkPositionForWorker(this);
                 PhysicalWorker.CommandMoveTo(workPosition);
             }
             else
@@ -308,11 +308,41 @@ namespace WildernessSurvival.Gameplay.Workers
         public void Unassign()
         {
             var previousStructure = AssignedStructure;
+
+            // Release any work slots held at the previous structure
+            if (previousStructure != null)
+            {
+                previousStructure.ReleaseWorkSlot(this);
+            }
+
             AssignedStructure = null;
             IsAtWorksite = false;
             CurrentState = WorkerState.Idle;
 
             Debug.Log($"<color=orange>[WorkerInstance]</color> {CustomName} unassigned from {previousStructure?.Data?.DisplayName}");
+        }
+
+        /// <summary>
+        /// Releases all approach slots held by this worker (work slots and shelter entrance slots).
+        /// Called when worker is downed, dies, or otherwise becomes unavailable.
+        /// </summary>
+        public void ReleaseAllSlots()
+        {
+            // Release work slot from assigned structure
+            if (AssignedStructure != null)
+            {
+                AssignedStructure.ReleaseWorkSlot(this);
+            }
+
+            // Release entrance slot from assigned home
+            if (AssignedHome != null)
+            {
+                AssignedHome.ReleaseEntranceSlot(this);
+            }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"<color=yellow>[WorkerInstance]</color> {CustomName}: Released all approach slots");
+#endif
         }
 
         // ============================================
@@ -452,6 +482,9 @@ namespace WildernessSurvival.Gameplay.Workers
             // DOWNED SYSTEM: invece di morte permanente, vai in stato downed
             // Il worker si rialzerà al mattino con debuff injury
             // ═══════════════════════════════════════════════════════════
+
+            // Release all approach slots immediately (whether downed or dead)
+            ReleaseAllSlots();
 
             // Cerca WorkerDownedStatus sul PhysicalWorker
             WorkerDownedStatus downedStatus = null;

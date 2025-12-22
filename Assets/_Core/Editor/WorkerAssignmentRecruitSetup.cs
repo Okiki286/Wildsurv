@@ -2,18 +2,20 @@ using UnityEngine;
 using UnityEditor;
 using UnityEngine.UI;
 using TMPro;
+using WildernessSurvival.Gameplay.Resources;
 
 namespace WildernessSurvival.Core.Editor
 {
     /// <summary>
-    /// Editor tool per aggiungere la sezione Recruit all'interno del WorkerAssignmentUI panel.
+    /// Editor tool per creare/aggiornare il RecruitButton con costo integrato.
+    /// Il costo (icona + valore) è direttamente dentro il bottone.
     /// </summary>
     public static class WorkerAssignmentRecruitSetup
     {
-        [MenuItem("Tools/Wilderness/Population/Add Recruit Section to WorkerAssignmentUI")]
-        public static void AddRecruitSectionToWorkerAssignmentUI()
+        [MenuItem("Tools/Wilderness/Population/Create Recruit Button (Merged Cost)")]
+        public static void CreateRecruitButtonWithMergedCost()
         {
-            // 1. Trova il WorkerAssignmentUI nella scena o chiedi di aprire il prefab
+            // 1. Trova il WorkerAssignmentUI nella scena
             var workerAssignmentUI = Object.FindFirstObjectByType<UI.WorkerAssignmentUI>();
             
             if (workerAssignmentUI == null)
@@ -23,11 +25,10 @@ namespace WildernessSurvival.Core.Editor
                 return;
             }
 
-            // 2. Trova il pannello principale (assignmentPanel)
+            // 2. Trova il pannello principale
             Transform panelTransform = workerAssignmentUI.transform.Find("AssignmentPanel");
             if (panelTransform == null)
             {
-                // Fallback: usa il primo figlio
                 if (workerAssignmentUI.transform.childCount > 0)
                 {
                     panelTransform = workerAssignmentUI.transform.GetChild(0);
@@ -39,138 +40,185 @@ namespace WildernessSurvival.Core.Editor
                 }
             }
 
-            // 3. Verifica se esiste già
-            var existingSection = panelTransform.Find("RecruitSection");
-            if (existingSection != null)
+            // 3. Elimina vecchia RecruitSection se esiste
+            var oldSection = panelTransform.Find("RecruitSection");
+            if (oldSection != null)
             {
-                Debug.Log("[RecruitSetup] RecruitSection already exists! Selecting it.");
-                Selection.activeGameObject = existingSection.gameObject;
-                return;
+                Object.DestroyImmediate(oldSection.gameObject);
+                Debug.Log("[RecruitSetup] Old RecruitSection deleted.");
             }
 
-            // 4. Crea RecruitSection
-            GameObject recruitSection = new GameObject("RecruitSection");
-            recruitSection.transform.SetParent(panelTransform, false);
-            
-            RectTransform sectionRect = recruitSection.AddComponent<RectTransform>();
-            sectionRect.anchorMin = new Vector2(0, 1);
-            sectionRect.anchorMax = new Vector2(1, 1);
-            sectionRect.pivot = new Vector2(0.5f, 1);
-            sectionRect.anchoredPosition = new Vector2(0, -560); // Sotto AvailableWorkersContainer
-            sectionRect.sizeDelta = new Vector2(-100, 70);
-            
-            // Background
-            Image sectionBg = recruitSection.AddComponent<Image>();
-            sectionBg.color = new Color(0.15f, 0.35f, 0.25f, 0.9f); // Verde scuro
-            
-            // Horizontal Layout
-            HorizontalLayoutGroup layout = recruitSection.AddComponent<HorizontalLayoutGroup>();
-            layout.padding = new RectOffset(15, 15, 10, 10);
-            layout.spacing = 15;
-            layout.childAlignment = TextAnchor.MiddleCenter;
-            layout.childForceExpandWidth = false;
-            layout.childForceExpandHeight = false;
-            layout.childControlWidth = false;
-            layout.childControlHeight = false;
+            // Elimina vecchio RecruitButton se esiste
+            var oldButton = panelTransform.Find("RecruitButton");
+            if (oldButton != null)
+            {
+                Object.DestroyImmediate(oldButton.gameObject);
+                Debug.Log("[RecruitSetup] Old RecruitButton deleted.");
+            }
 
-            // 5. Crea Button
+            // 4. Carica icona Food da ResourceData
+            Sprite foodSprite = null;
+            var foodData = AssetDatabase.LoadAssetAtPath<ResourceData>("Assets/_Content/Data/Resources/Food.asset");
+            if (foodData != null && foodData.Icon != null)
+            {
+                foodSprite = foodData.Icon;
+                Debug.Log($"[RecruitSetup] Food icon loaded: {foodSprite.name}");
+            }
+            else
+            {
+                Debug.LogWarning("[RecruitSetup] Could not load Food icon from ResourceData!");
+            }
+
+            // ═══════════════════════════════════════════════════════════
+            // 5. CREA RECRUIT BUTTON (con costo integrato)
+            // ═══════════════════════════════════════════════════════════
+
             GameObject buttonObj = new GameObject("RecruitButton");
-            buttonObj.transform.SetParent(recruitSection.transform, false);
+            buttonObj.transform.SetParent(panelTransform, false);
             
             RectTransform buttonRect = buttonObj.AddComponent<RectTransform>();
-            buttonRect.sizeDelta = new Vector2(200, 50);
+            buttonRect.anchorMin = new Vector2(0.5f, 0);
+            buttonRect.anchorMax = new Vector2(0.5f, 0);
+            buttonRect.pivot = new Vector2(0.5f, 0);
+            buttonRect.anchoredPosition = new Vector2(0, 30);
+            buttonRect.sizeDelta = new Vector2(280, 50);
             
             Image buttonImg = buttonObj.AddComponent<Image>();
-            buttonImg.color = new Color(0.2f, 0.6f, 0.3f, 1f);
+            buttonImg.color = new Color(0.2f, 0.55f, 0.35f, 1f);
             
             Button button = buttonObj.AddComponent<Button>();
             button.targetGraphic = buttonImg;
             ColorBlock colors = button.colors;
-            colors.normalColor = new Color(0.2f, 0.6f, 0.3f);
-            colors.highlightedColor = new Color(0.3f, 0.7f, 0.4f);
-            colors.pressedColor = new Color(0.15f, 0.5f, 0.25f);
+            colors.normalColor = new Color(0.2f, 0.55f, 0.35f);
+            colors.highlightedColor = new Color(0.3f, 0.65f, 0.45f);
+            colors.pressedColor = new Color(0.15f, 0.45f, 0.25f);
             colors.disabledColor = new Color(0.3f, 0.3f, 0.3f);
             button.colors = colors;
 
-            // Button Text
+            // HorizontalLayoutGroup sul bottone
+            HorizontalLayoutGroup layout = buttonObj.AddComponent<HorizontalLayoutGroup>();
+            layout.padding = new RectOffset(15, 15, 5, 5);
+            layout.spacing = 10;
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childControlWidth = false;
+            layout.childControlHeight = false;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+
+            // ═══════════════════════════════════════════════════════════
+            // 6. FIGLI: [ButtonText] -> [FoodIcon] -> [CostText]
+            // ═══════════════════════════════════════════════════════════
+
+            // A) Button Text
             GameObject buttonTextObj = new GameObject("ButtonText");
             buttonTextObj.transform.SetParent(buttonObj.transform, false);
             
             RectTransform buttonTextRect = buttonTextObj.AddComponent<RectTransform>();
-            buttonTextRect.anchorMin = Vector2.zero;
-            buttonTextRect.anchorMax = Vector2.one;
-            buttonTextRect.offsetMin = Vector2.zero;
-            buttonTextRect.offsetMax = Vector2.zero;
+            buttonTextRect.sizeDelta = new Vector2(130, 40);
             
             TextMeshProUGUI buttonText = buttonTextObj.AddComponent<TextMeshProUGUI>();
+            buttonText.raycastTarget = false;
             buttonText.text = "Recruit Worker";
-            buttonText.fontSize = 20;
+            buttonText.fontSize = 18;
             buttonText.alignment = TextAlignmentOptions.Center;
             buttonText.color = Color.white;
 
-            // 6. Crea Cost Section
-            GameObject costSection = new GameObject("CostSection");
-            costSection.transform.SetParent(recruitSection.transform, false);
-            
-            RectTransform costRect = costSection.AddComponent<RectTransform>();
-            costRect.sizeDelta = new Vector2(100, 50);
-            
-            HorizontalLayoutGroup costLayout = costSection.AddComponent<HorizontalLayoutGroup>();
-            costLayout.spacing = 5;
-            costLayout.childAlignment = TextAnchor.MiddleCenter;
-            costLayout.childForceExpandWidth = false;
-            costLayout.childForceExpandHeight = false;
-
-            // Food Icon placeholder
-            GameObject iconObj = new GameObject("FoodIcon");
-            iconObj.transform.SetParent(costSection.transform, false);
+            // B) Food Icon (l'icona dinamica!)
+            GameObject iconObj = new GameObject("CostIcon");
+            iconObj.transform.SetParent(buttonObj.transform, false);
             
             RectTransform iconRect = iconObj.AddComponent<RectTransform>();
-            iconRect.sizeDelta = new Vector2(32, 32);
+            iconRect.sizeDelta = new Vector2(24, 24);
             
             Image foodIcon = iconObj.AddComponent<Image>();
-            foodIcon.color = new Color(1f, 0.8f, 0.2f); // Giallo placeholder
+            foodIcon.raycastTarget = false;
+            foodIcon.color = Color.white; // Bianco per mostrare il colore originale della sprite
+            foodIcon.preserveAspect = true;
+            if (foodSprite != null)
+            {
+                foodIcon.sprite = foodSprite;
+            }
 
-            // Cost Text
+            // C) Cost Text
             GameObject costTextObj = new GameObject("CostText");
-            costTextObj.transform.SetParent(costSection.transform, false);
+            costTextObj.transform.SetParent(buttonObj.transform, false);
             
             RectTransform costTextRect = costTextObj.AddComponent<RectTransform>();
-            costTextRect.sizeDelta = new Vector2(60, 40);
+            costTextRect.sizeDelta = new Vector2(50, 40);
             
             TextMeshProUGUI costText = costTextObj.AddComponent<TextMeshProUGUI>();
+            costText.raycastTarget = false;
             costText.text = "40";
-            costText.fontSize = 24;
+            costText.fontSize = 20;
+            costText.fontStyle = FontStyles.Bold;
             costText.alignment = TextAlignmentOptions.Left;
-            costText.color = new Color(1f, 0.9f, 0.4f); // Giallo oro
+            costText.color = Color.white;
 
-            // 7. Aggiungi RecruitUI component
-            var recruitUI = recruitSection.AddComponent<UI.RecruitUI>();
+            // ═══════════════════════════════════════════════════════════
+            // 7. AGGIUNGI RECRUIT UI COMPONENT
+            // ═══════════════════════════════════════════════════════════
 
-            // 8. Assegna riferimenti via SerializedObject
+            var recruitUI = buttonObj.AddComponent<UI.RecruitUI>();
+
+            // Assegna riferimenti via SerializedObject
             SerializedObject so = new SerializedObject(recruitUI);
             so.FindProperty("recruitButton").objectReferenceValue = button;
             so.FindProperty("buttonText").objectReferenceValue = buttonText;
             so.FindProperty("costText").objectReferenceValue = costText;
-            so.FindProperty("foodIcon").objectReferenceValue = foodIcon;
+            so.FindProperty("costIconImage").objectReferenceValue = foodIcon;
             so.ApplyModifiedPropertiesWithoutUndo();
 
-            // 9. Aggiorna WorkerAssignmentUI references
+            // ═══════════════════════════════════════════════════════════
+            // 8. AGGIORNA WORKER ASSIGNMENT UI
+            // ═══════════════════════════════════════════════════════════
+
             SerializedObject uiSo = new SerializedObject(workerAssignmentUI);
-            uiSo.FindProperty("recruitSection").objectReferenceValue = recruitSection;
+            uiSo.FindProperty("recruitButton").objectReferenceValue = buttonObj;
             uiSo.FindProperty("recruitUIComponent").objectReferenceValue = recruitUI;
             uiSo.ApplyModifiedPropertiesWithoutUndo();
 
-            // 10. Seleziona e ping
-            Selection.activeGameObject = recruitSection;
-            EditorGUIUtility.PingObject(recruitSection);
+            // 9. Seleziona e ping
+            Selection.activeGameObject = buttonObj;
+            EditorGUIUtility.PingObject(buttonObj);
 
-            Debug.Log("<color=green>[RecruitSetup]</color> ✅ RecruitSection added to WorkerAssignmentUI!\n" +
-                "• Button: RecruitButton\n" +
-                "• CostText assigned\n" +
-                "• RecruitUI component configured\n" +
-                "• WorkerAssignmentUI references updated\n\n" +
+            Debug.Log("<color=green>[RecruitSetup]</color> ✅ RecruitButton created with merged cost!\n" +
+                "Structure:\n" +
+                "  └─ RecruitButton (Button + HorizontalLayoutGroup)\n" +
+                "      ├─ ButtonText ('Recruit Worker')\n" +
+                "      ├─ CostIcon (Food sprite)\n" +
+                "      └─ CostText ('40')\n\n" +
                 "⚠️ Remember to SAVE the prefab! (Ctrl+S or Apply)");
+        }
+
+        [MenuItem("Tools/Wilderness/Population/Remove Old BottomBar")]
+        public static void RemoveBottomBar()
+        {
+            // Cerca BottomBar nella scena
+            var allRoots = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
+            foreach (var root in allRoots)
+            {
+                var bottomBar = root.transform.Find("BottomBar");
+                if (bottomBar != null)
+                {
+                    Object.DestroyImmediate(bottomBar.gameObject);
+                    Debug.Log("<color=green>[RecruitSetup]</color> BottomBar deleted from " + root.name);
+                    return;
+                }
+
+                // Cerca ricorsivamente
+                var bars = root.GetComponentsInChildren<Transform>(true);
+                foreach (var t in bars)
+                {
+                    if (t.name.Contains("BottomBar") || t.name.Contains("RecruitBar"))
+                    {
+                        Object.DestroyImmediate(t.gameObject);
+                        Debug.Log("<color=green>[RecruitSetup]</color> " + t.name + " deleted from " + root.name);
+                        return;
+                    }
+                }
+            }
+            Debug.Log("[RecruitSetup] No BottomBar found in scene.");
         }
     }
 }
+

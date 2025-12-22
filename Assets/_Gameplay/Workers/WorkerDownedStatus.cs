@@ -359,6 +359,12 @@ namespace WildernessSurvival.Gameplay.Workers
 
         private void DisableWorkerFunctions()
         {
+            // Release all approach slots when going down
+            if (workerInstance != null)
+            {
+                workerInstance.ReleaseAllSlots();
+            }
+
             // Unassign dal structure se assegnato
             if (workerInstance != null && workerInstance.IsAssigned)
             {

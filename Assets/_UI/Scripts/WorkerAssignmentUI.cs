@@ -73,8 +73,8 @@ namespace WildernessSurvival.UI
         // ============================================
 
         [TitleGroup("Recruit (Waystone)")]
-        [Tooltip("Sezione UI per il reclutamento, visibile solo sul Waystone")]
-        [SerializeField] private GameObject recruitSection;
+        [Tooltip("Bottone Recruit, visibile solo sul Waystone")]
+        [SerializeField] private GameObject recruitButton;
         [SerializeField] private RecruitUI recruitUIComponent;
 
         // ============================================
@@ -276,10 +276,10 @@ namespace WildernessSurvival.UI
             isHousingMode = false;
             isWaystoneMode = false;
 
-            // Hide recruit section
-            if (recruitSection != null)
+            // Hide recruit button
+            if (recruitButton != null)
             {
-                recruitSection.SetActive(false);
+                recruitButton.SetActive(false);
             }
 
             // Disattiva tutti gli elementi pooled invece di distruggerli
@@ -678,15 +678,15 @@ namespace WildernessSurvival.UI
         }
 
         /// <summary>
-        /// Mostra/nasconde la sezione Recruit in base a isWaystoneMode.
+        /// Mostra/nasconde il bottone Recruit in base a isWaystoneMode.
         /// </summary>
         private void UpdateRecruitSection()
         {
-            if (recruitSection == null) return;
+            if (recruitButton == null) return;
 
             if (isWaystoneMode)
             {
-                recruitSection.SetActive(true);
+                recruitButton.SetActive(true);
 
                 // Force refresh del RecruitUI
                 if (recruitUIComponent != null)
@@ -698,13 +698,13 @@ namespace WildernessSurvival.UI
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
                 if (debugMode)
                 {
-                    Debug.Log("<color=cyan>[WorkerAssignmentUI]</color> Waystone detected - Recruit section VISIBLE");
+                    Debug.Log("<color=cyan>[WorkerAssignmentUI]</color> Waystone detected - Recruit button VISIBLE");
                 }
 #endif
             }
             else
             {
-                recruitSection.SetActive(false);
+                recruitButton.SetActive(false);
             }
         }
 

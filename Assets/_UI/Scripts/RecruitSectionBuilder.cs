@@ -96,6 +96,7 @@ namespace WildernessSurvival.UI
             textRect.anchoredPosition = Vector2.zero;
 
             TextMeshProUGUI buttonText = buttonTextObj.AddComponent<TextMeshProUGUI>();
+            buttonText.raycastTarget = false; // Prevents blocking button clicks
             buttonText.text = "Recruit Worker";
             buttonText.fontSize = fontSize;
             buttonText.color = textColor;
@@ -127,6 +128,7 @@ namespace WildernessSurvival.UI
             iconRect.sizeDelta = new Vector2(iconSize, iconSize);
 
             Image costIcon = iconObj.AddComponent<Image>();
+            costIcon.raycastTarget = false; // Prevents blocking button clicks
             costIcon.color = textColor;
             costIcon.preserveAspect = true;
             // Sprite will be set dynamically by RecruitUI
@@ -140,6 +142,7 @@ namespace WildernessSurvival.UI
             costTextRect.sizeDelta = new Vector2(50, 30);
 
             TextMeshProUGUI costText = costTextObj.AddComponent<TextMeshProUGUI>();
+            costText.raycastTarget = false; // Prevents blocking button clicks
             costText.text = "70";
             costText.fontSize = fontSize + 2;
             costText.fontStyle = FontStyles.Bold;

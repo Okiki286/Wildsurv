@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Sirenix.OdinInspector;
 using WildernessSurvival.Core.Events;
 using WildernessSurvival.Core.Systems;
+using WildernessSurvival.Core.Navigation;
 using WildernessSurvival.Gameplay.Structures;
 using WildernessSurvival.Gameplay.Structures.Housing;
 using WildernessSurvival.Gameplay.Workers;
@@ -58,6 +59,16 @@ namespace WildernessSurvival.Gameplay.Workers.Housing
         [Tooltip("Maximum distance from Waystone center for homeless workers")]
         private float waystoneMaxRadius = 3f;
 
+        [TitleGroup("Waystone Retreat Settings")]
+        [SerializeField]
+        [Tooltip("Enable ApproachSlots for Waystone to prevent worker blocking")]
+        private bool useWaystoneSlots = true;
+
+        [SerializeField]
+        [Range(4, 12)]
+        [Tooltip("Number of slots around Waystone for homeless workers")]
+        private int waystoneSlotCount = 8;
+
         [TitleGroup("Debug")]
         [SerializeField]
         private bool debugMode = true;
@@ -81,6 +92,9 @@ namespace WildernessSurvival.Gameplay.Workers.Housing
 
         // Track workers retreating to waystone (for potential future use)
         private readonly HashSet<WorkerInstance> workersRetreatingToWaystone = new HashSet<WorkerInstance>();
+
+        // Waystone ApproachSlots (created dynamically on first use)
+        private ApproachSlots waystoneSlots;
 
         // ============================================
         // LIFECYCLE
@@ -318,6 +332,9 @@ namespace WildernessSurvival.Gameplay.Workers.Housing
                 }
             }
 
+            // Release all Waystone slots before clearing the set
+            ReleaseAllWaystoneSlots();
+
             // Clear retreating workers set
             workersRetreatingToWaystone.Clear();
 
@@ -338,7 +355,8 @@ namespace WildernessSurvival.Gameplay.Workers.Housing
 
                     if (worker.PhysicalWorker != null)
                     {
-                        Vector3 workPos = worker.AssignedStructure.GetClosestWorkSpot(worker.PhysicalWorker.transform.position);
+                        // Use slot-based work position to prevent blocking
+                        Vector3 workPos = worker.AssignedStructure.GetWorkPositionForWorker(worker);
                         worker.PhysicalWorker.CommandMoveTo(workPos);
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -420,11 +438,13 @@ namespace WildernessSurvival.Gameplay.Workers.Housing
             // Set state to retreating
             worker.SetState(WorkerState.Retreating);
 
-            // Command physical worker to move to shelter
+            // Command physical worker to move to shelter using slot-based entry
             if (worker.PhysicalWorker != null)
             {
                 var controller = worker.PhysicalWorker;
-                Vector3 targetPos = shelter.EntryPosition;
+
+                // Use slot-based entry position if available
+                Vector3 targetPos = shelter.GetEntryPositionForWorker(worker);
 
                 // Use NavMesh sample to ensure valid position
                 if (NavMesh.SamplePosition(targetPos, out NavMeshHit hit, 3f, NavMesh.AllAreas))
@@ -459,9 +479,12 @@ namespace WildernessSurvival.Gameplay.Workers.Housing
 
             // Get Waystone position
             Vector3 waystonePos = Vector3.zero;
+            Transform waystoneTransform = null;
+
             if (BaseCenterSystem.Instance != null && BaseCenterSystem.Instance.HasCenter)
             {
                 waystonePos = BaseCenterSystem.Instance.CenterPosition;
+                waystoneTransform = BaseCenterSystem.Instance.CurrentCenter;
             }
             else
             {
@@ -470,6 +493,7 @@ namespace WildernessSurvival.Gameplay.Workers.Housing
                 if (beacon != null)
                 {
                     waystonePos = beacon.transform.position;
+                    waystoneTransform = beacon.transform;
                 }
                 else
                 {
@@ -478,8 +502,16 @@ namespace WildernessSurvival.Gameplay.Workers.Housing
                 }
             }
 
-            // Calculate random position within radius
-            Vector3 targetPos = GetRandomPositionAroundWaystone(waystonePos);
+            // Calculate target position - use slots if enabled
+            Vector3 targetPos;
+            if (useWaystoneSlots)
+            {
+                targetPos = GetWaystoneSlotPosition(worker, waystonePos, waystoneTransform);
+            }
+            else
+            {
+                targetPos = GetRandomPositionAroundWaystone(waystonePos);
+            }
 
             // Command physical worker to move
             if (worker.PhysicalWorker != null)
@@ -490,6 +522,97 @@ namespace WildernessSurvival.Gameplay.Workers.Housing
                 if (debugMode)
                 {
                     Debug.Log($"<color=yellow>[NightRetreat]</color> {worker.CustomName} retreating to Waystone area");
+                }
+#endif
+            }
+        }
+
+        /// <summary>
+        /// Gets a slot position around the Waystone for the worker.
+        /// Creates ApproachSlots if not already existing.
+        /// </summary>
+        private Vector3 GetWaystoneSlotPosition(WorkerInstance worker, Vector3 waystonePos, Transform waystoneTransform)
+        {
+            // Initialize waystone slots if needed
+            if (waystoneSlots == null)
+            {
+                InitializeWaystoneSlots(waystonePos, waystoneTransform);
+            }
+
+            if (waystoneSlots != null)
+            {
+                if (waystoneSlots.TryReserveSlot(worker, out Vector3 slotPos))
+                {
+                    // Validate on NavMesh
+                    if (NavMesh.SamplePosition(slotPos, out NavMeshHit hit, 3f, NavMesh.AllAreas))
+                    {
+                        return hit.position;
+                    }
+                    return slotPos;
+                }
+
+                // All slots full, use fallback queue position
+                Vector3 fallbackPos = waystoneSlots.GetFallbackQueuePos(worker);
+                if (NavMesh.SamplePosition(fallbackPos, out NavMeshHit fallbackHit, 3f, NavMesh.AllAreas))
+                {
+                    return fallbackHit.position;
+                }
+                return fallbackPos;
+            }
+
+            // Fallback to random if slots failed
+            return GetRandomPositionAroundWaystone(waystonePos);
+        }
+
+        /// <summary>
+        /// Initializes the ApproachSlots for the Waystone.
+        /// </summary>
+        private void InitializeWaystoneSlots(Vector3 waystonePos, Transform waystoneTransform)
+        {
+            // Create a new GameObject to hold the ApproachSlots
+            var slotsGO = new GameObject("WaystoneRetreatSlots");
+            slotsGO.transform.position = waystonePos;
+
+            if (waystoneTransform != null)
+            {
+                slotsGO.transform.SetParent(waystoneTransform, true);
+            }
+            else
+            {
+                slotsGO.transform.SetParent(transform, false);
+            }
+
+            waystoneSlots = slotsGO.AddComponent<ApproachSlots>();
+            waystoneSlots.Initialize(waystoneSlotCount, waystoneMaxRadius);
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (debugMode)
+            {
+                Debug.Log($"<color=cyan>[NightRetreat]</color> Created Waystone ApproachSlots with {waystoneSlotCount} slots at radius {waystoneMaxRadius}");
+            }
+#endif
+        }
+
+        /// <summary>
+        /// Releases all Waystone slots for workers who were retreating.
+        /// Called at day start.
+        /// </summary>
+        private void ReleaseAllWaystoneSlots()
+        {
+            if (waystoneSlots != null)
+            {
+                foreach (var worker in workersRetreatingToWaystone)
+                {
+                    if (worker != null)
+                    {
+                        waystoneSlots.ReleaseSlot(worker);
+                    }
+                }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                if (debugMode)
+                {
+                    Debug.Log($"<color=cyan>[NightRetreat]</color> Released {workersRetreatingToWaystone.Count} Waystone slots");
                 }
 #endif
             }

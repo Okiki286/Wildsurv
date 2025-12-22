@@ -2,6 +2,7 @@ using Sirenix.OdinInspector;
 using System.Collections.Generic;
 using UnityEngine;
 using WildernessSurvival.Core.Systems;
+using WildernessSurvival.Core.Navigation;
 using WildernessSurvival.Gameplay.Combat;
 using WildernessSurvival.Gameplay.Enemies;
 using WildernessSurvival.Gameplay.Resources;
@@ -134,6 +135,22 @@ namespace WildernessSurvival.Gameplay.Structures
         [Tooltip("Punti preferiti dove i worker si posizionano per lavorare (opzionale)")]
         private Transform[] workSpots;
 
+        [BoxGroup("Workers/Approach Slots")]
+        [SerializeField]
+        [Tooltip("Optional: ApproachSlots component for managing work positions. Auto-created if null.")]
+        private ApproachSlots workSlots;
+
+        [BoxGroup("Workers/Approach Slots")]
+        [SerializeField]
+        [Tooltip("Auto-create ApproachSlots at runtime if not assigned")]
+        private bool autoCreateWorkSlots = true;
+
+        [BoxGroup("Workers/Approach Slots")]
+        [SerializeField]
+        [Range(2, 8)]
+        [Tooltip("Number of work slots to auto-create")]
+        private int autoWorkSlotCount = 4;
+
         [BoxGroup("Workers/Stats")]
         [ReadOnly, ShowInInspector]
         [PropertyRange(0f, 3f)]
@@ -243,6 +260,11 @@ namespace WildernessSurvival.Gameplay.Structures
             set => workRadius = Mathf.Max(0.1f, value);
         }
 
+        /// <summary>
+        /// The ApproachSlots component for work positions, if available.
+        /// </summary>
+        public ApproachSlots WorkSlots => workSlots;
+
         // ============================================
         // UNITY LIFECYCLE
         // ============================================
@@ -258,6 +280,28 @@ namespace WildernessSurvival.Gameplay.Structures
             if (IsPreview)
             {
                 return;
+            }
+
+            InitializeWorkSlots();
+        }
+
+        private void InitializeWorkSlots()
+        {
+            // Try to find existing ApproachSlots if not assigned
+            if (workSlots == null)
+            {
+                workSlots = GetComponent<ApproachSlots>();
+            }
+
+            // Auto-create if enabled and still null
+            if (workSlots == null && autoCreateWorkSlots)
+            {
+                workSlots = gameObject.AddComponent<ApproachSlots>();
+                workSlots.Initialize(autoWorkSlotCount, workRadius);
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.Log($"<color=cyan>[StructureController]</color> {name}: Auto-created ApproachSlots with {autoWorkSlotCount} work slots at radius {workRadius}");
+#endif
             }
         }
 
@@ -677,13 +721,24 @@ namespace WildernessSurvival.Gameplay.Structures
             currentBuildSpeed = 0f;
             int buildersAtSite = 0;
 
+            // ════════════════════════════════════════════════════════════════════
+            // [GHOST FIX SIMPLIFIED] Only rely on IsAtWorksite flag.
+            // The IsSheltered check in WorkerSystem prevents sheltered workers
+            // from being assigned, preventing ghost construction.
+            // Physical distance check removed - it was comparing to center pivot,
+            // not to the worker's assigned slot position.
+            // ════════════════════════════════════════════════════════════════════
+
             foreach (var instance in assignedWorkerInstances)
             {
-                if (instance != null && instance.IsAtWorksite)
-                {
-                    currentBuildSpeed += instance.GetConstructionBonus();
-                    buildersAtSite++;
-                }
+                if (instance == null) continue;
+                if (!instance.IsAtWorksite) continue;
+
+                // Safety: Skip sheltered workers (belt-and-suspenders)
+                if (instance.IsSheltered) continue;
+
+                currentBuildSpeed += instance.GetConstructionBonus();
+                buildersAtSite++;
             }
 
             if (buildersAtSite == 0)
@@ -1414,6 +1469,9 @@ namespace WildernessSurvival.Gameplay.Structures
                     CurrentBuilder = null;
                 }
 
+                // Release any work slot the worker may have reserved
+                ReleaseWorkSlot(worker);
+
                 worker.Unassign();
 
                 if (currentState == StructureState.Operating)
@@ -1580,6 +1638,44 @@ namespace WildernessSurvival.Gameplay.Structures
             }
 
             return best != null ? best.position : GetWorkPosition(fromPosition);
+        }
+
+        /// <summary>
+        /// Gets a work position for a specific worker using approach slots.
+        /// Reserves a slot for the worker to prevent blocking.
+        /// </summary>
+        /// <param name="worker">The worker requesting a work position</param>
+        /// <returns>The position to move to (slot position or fallback)</returns>
+        public Vector3 GetWorkPositionForWorker(WorkerInstance worker)
+        {
+            if (workSlots != null && worker != null)
+            {
+                if (workSlots.TryReserveSlot(worker, out Vector3 slotPos))
+                {
+                    return slotPos;
+                }
+                // All slots full, use fallback queue position
+                return workSlots.GetFallbackQueuePos(worker);
+            }
+
+            // Fallback to legacy position calculation
+            if (worker != null && worker.PhysicalWorker != null)
+            {
+                return GetClosestWorkSpot(worker.PhysicalWorker.transform.position);
+            }
+            return GetWorkPosition(transform.position + Vector3.forward);
+        }
+
+        /// <summary>
+        /// Releases any work slot held by the worker.
+        /// Called automatically when worker is unassigned or leaves the worksite.
+        /// </summary>
+        public void ReleaseWorkSlot(WorkerInstance worker)
+        {
+            if (workSlots != null && worker != null)
+            {
+                workSlots.ReleaseSlot(worker);
+            }
         }
 
 #if UNITY_EDITOR
