@@ -1,6 +1,7 @@
 using UnityEngine;
 using System;
 using WildernessSurvival.Core.Events;
+using WildernessSurvival.Core.Managers;
 using WildernessSurvival.Gameplay.Combat;
 using WildernessSurvival.Gameplay.Enemies;
 #if UNITY_EDITOR
@@ -375,6 +376,16 @@ namespace WildernessSurvival.Gameplay.Core
             Debug.Log("<color=red>[WaystoneBeacon]</color> ⚠️ BEACON DISTRUTTO! Game Over imminente...");
             
             OnDestroyed?.Invoke();
+            
+            // Trigger Game Over via GameManager
+            if (GameManager.Instance != null)
+            {
+                GameManager.Instance.TriggerGameOver("Waystone Destroyed");
+            }
+            else
+            {
+                Debug.LogError("[WaystoneBeacon] GameManager.Instance is null! Cannot trigger Game Over.");
+            }
             
             // Disabilita collider
             Collider col = GetComponent<Collider>();

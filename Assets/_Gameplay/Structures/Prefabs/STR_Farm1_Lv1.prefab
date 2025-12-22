@@ -222,6 +222,9 @@ MonoBehaviour:
   vfxSpawnPoint: {fileID: 0}
   workRadius: 2
   workSpots: []
+  workSlots: {fileID: 0}
+  autoCreateWorkSlots: 1
+  autoWorkSlotCount: 4
   constructionVisualMode: 2
   flatStartYScale: 0.05
   constructionOverlayRoot: {fileID: 0}

@@ -55,6 +55,9 @@ MonoBehaviour:
   vfxSpawnPoint: {fileID: 0}
   workRadius: 1.5
   workSpots: []
+  workSlots: {fileID: 0}
+  autoCreateWorkSlots: 1
+  autoWorkSlotCount: 4
   constructionVisualMode: 2
   flatStartYScale: 0.05
   constructionOverlayRoot: {fileID: 0}
@@ -118,6 +121,10 @@ MonoBehaviour:
   capacity: 2
   entryPoint: {fileID: 0}
   exitPoint: {fileID: 0}
+  entranceSlots: {fileID: 0}
+  autoCreateSlots: 1
+  autoSlotCount: 4
+  autoSlotRadius: 0.8
 --- !u!1 &1011498595168640608
 GameObject:
   m_ObjectHideFlags: 0

@@ -68,6 +68,10 @@ namespace WildernessSurvival.Core.Managers
         [FoldoutGroup("Eventi Globali/Game Flow")]
         [SerializeField] private GameEvent onGameOver;
 
+        [TitleGroup("UI References")]
+        [Tooltip("Riferimento al Canvas/Panel Game Over. Se null, verrà solo loggato.")]
+        [SerializeField] private GameObject gameOverUI;
+
         [TitleGroup("Debug")]
         [HorizontalGroup("Debug/Row1")]
         [ToggleLeft]
@@ -304,11 +308,24 @@ namespace WildernessSurvival.Core.Managers
         public void TriggerGameOver(string reason = "Base Destroyed")
         {
             Debug.Log($"<color=red>[GameManager] GAME OVER: {reason}</color>");
+            Debug.Log("GAME OVER: Waystone Destroyed!");
             
+            // Pause the game
             Time.timeScale = 0f;
+            isPaused = true;
+            
+            // Raise the GameEvent for any subscribers
             onGameOver?.Raise();
             
-            // TODO: Mostra schermata game over
+            // Show Game Over UI
+            if (gameOverUI != null)
+            {
+                gameOverUI.SetActive(true);
+            }
+            else
+            {
+                Debug.LogWarning("[GameManager] gameOverUI is not assigned! Cannot show Game Over screen.");
+            }
         }
 
         [ButtonGroup("Game End/Row1")]
