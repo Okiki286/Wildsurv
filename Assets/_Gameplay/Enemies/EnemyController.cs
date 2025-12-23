@@ -102,6 +102,7 @@ namespace WildernessSurvival.Gameplay.Enemies
 
         private NavMeshAgent navAgent;
         private Transform targetTransform;
+        private Transform injectedTarget;  // [PERF] Cached target from spawner
         private float destinationUpdateTimer;
         private bool isInitialized = false;
 
@@ -181,9 +182,16 @@ namespace WildernessSurvival.Gameplay.Enemies
         /// <summary>
         /// Inizializza il nemico con stats scalate (chiamato da EnemySpawner)
         /// </summary>
-        public void Initialize(EnemyData data, float hpMul, float dmgMul, float spdMul, float rwdMul)
+        /// <param name="data">Enemy data asset</param>
+        /// <param name="hpMul">HP multiplier from wave</param>
+        /// <param name="dmgMul">Damage multiplier from wave</param>
+        /// <param name="spdMul">Speed multiplier from wave</param>
+        /// <param name="rwdMul">Reward multiplier from wave</param>
+        /// <param name="cachedTarget">[PERF] Optional pre-cached target from spawner to avoid FindAnyObjectByType</param>
+        public void Initialize(EnemyData data, float hpMul, float dmgMul, float spdMul, float rwdMul, Transform cachedTarget = null)
         {
             enemyData = data;
+            injectedTarget = cachedTarget;  // Store cached target if provided
 
             maxHealth = data.BaseHealth * hpMul;
             baseDamage = data.AttackDamage * dmgMul;
@@ -278,11 +286,23 @@ namespace WildernessSurvival.Gameplay.Enemies
         // ============================================
 
         /// <summary>
-        /// Aggiorna il target dal BaseCenterSystem
+        /// Aggiorna il target dal BaseCenterSystem o injected target
         /// </summary>
         private void UpdateTarget()
         {
-            // Priority: BaseCenterSystem
+            // [PERF] Priority 1: Use injected target from spawner (no runtime search)
+            if (injectedTarget != null)
+            {
+                targetTransform = injectedTarget;
+
+                if (debugMode && targetTransform != null)
+                {
+                    Debug.Log($"<color=red>[EnemyController]</color> {name} using injected target: {targetTransform.name}");
+                }
+                return;
+            }
+
+            // Priority 2: BaseCenterSystem singleton
             if (BaseCenterSystem.Instance != null && BaseCenterSystem.Instance.HasCenter)
             {
                 targetTransform = BaseCenterSystem.Instance.CurrentCenter;
@@ -292,20 +312,8 @@ namespace WildernessSurvival.Gameplay.Enemies
                     Debug.Log($"<color=red>[EnemyController]</color> {name} targeting: {targetTransform.name}");
                 }
             }
-            else
-            {
-                // Fallback: try to find WaystoneDebuffAura
-                var aura = FindAnyObjectByType<WildernessSurvival.Gameplay.Structures.WaystoneDebuffAura>();
-                if (aura != null)
-                {
-                    targetTransform = aura.transform;
-
-                    if (debugMode)
-                    {
-                        Debug.Log($"<color=red>[EnemyController]</color> {name} targeting (fallback): {targetTransform.name}");
-                    }
-                }
-            }
+            // [PERF] REMOVED: FindAnyObjectByType fallback - expensive O(n) search
+            // Enemies without proper initialization will just not move
         }
 
         private void UpdateDestination()

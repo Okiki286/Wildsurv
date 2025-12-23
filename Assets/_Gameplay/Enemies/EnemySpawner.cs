@@ -1,5 +1,7 @@
 using UnityEngine;
 using Sirenix.OdinInspector;
+using WildernessSurvival.Core.Systems;
+using WildernessSurvival.Gameplay.Structures;
 
 namespace WildernessSurvival.Gameplay.Enemies
 {
@@ -40,6 +42,15 @@ namespace WildernessSurvival.Gameplay.Enemies
         private int totalSpawnedEver = 0;
 
         // ============================================
+        // CACHED REFERENCES (PERF OPTIMIZATION)
+        // ============================================
+
+        [TitleGroup("Cached References")]
+        [ShowInInspector]
+        [ReadOnly]
+        private Transform cachedWaystoneTarget;
+
+        // ============================================
         // LIFECYCLE
         // ============================================
 
@@ -67,6 +78,47 @@ namespace WildernessSurvival.Gameplay.Enemies
             if (Instance == this)
             {
                 Instance = null;
+            }
+        }
+
+        private void Start()
+        {
+            // Cache waystone target ONCE at startup to avoid runtime FindObjectByType
+            CacheWaystoneTarget();
+        }
+
+        /// <summary>
+        /// Caches the waystone target transform once at startup.
+        /// Priority: BaseCenterSystem > WaystoneDebuffAura fallback search.
+        /// </summary>
+        private void CacheWaystoneTarget()
+        {
+            // Priority 1: Try BaseCenterSystem
+            if (BaseCenterSystem.Instance != null && BaseCenterSystem.Instance.HasCenter)
+            {
+                cachedWaystoneTarget = BaseCenterSystem.Instance.CurrentCenter;
+                if (debugMode)
+                {
+                    Debug.Log($"<color=red>[EnemySpawner]</color> Cached waystone target from BaseCenterSystem: {cachedWaystoneTarget?.name}");
+                }
+                return;
+            }
+
+            // Priority 2: Fallback search for WaystoneDebuffAura (once at startup, not per-spawn)
+            var aura = FindAnyObjectByType<WaystoneDebuffAura>();
+            if (aura != null)
+            {
+                cachedWaystoneTarget = aura.transform;
+                if (debugMode)
+                {
+                    Debug.Log($"<color=yellow>[EnemySpawner]</color> Cached waystone target from WaystoneDebuffAura: {cachedWaystoneTarget?.name}");
+                }
+                return;
+            }
+
+            if (debugMode)
+            {
+                Debug.LogWarning("[EnemySpawner] Could not find waystone target at startup!");
             }
         }
 
@@ -210,7 +262,8 @@ namespace WildernessSurvival.Gameplay.Enemies
             var enemyController = enemy.GetComponent<EnemyController>();
             if (enemyController != null)
             {
-                enemyController.Initialize(data, hpMul, dmgMul, spdMul, rwdMul);
+                // [PERF] Pass cached target to avoid runtime FindAnyObjectByType
+                enemyController.Initialize(data, hpMul, dmgMul, spdMul, rwdMul, cachedWaystoneTarget);
                 return;
             }
 

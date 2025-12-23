@@ -274,7 +274,7 @@ namespace WildernessSurvival.Gameplay.Workers
             // Gate: block assignment when downed
             if (PhysicalWorker != null)
             {
-                var downedStatus = PhysicalWorker.GetComponent<WorkerDownedStatus>();
+                var downedStatus = PhysicalWorker.DownedStatus;
                 if (downedStatus != null && downedStatus.IsDowned)
                 {
                     Debug.Log($"<color=orange>[WorkerInstance]</color> {CustomName} blocked AssignTo: worker is DOWNED");
@@ -490,7 +490,7 @@ namespace WildernessSurvival.Gameplay.Workers
             WorkerDownedStatus downedStatus = null;
             if (PhysicalWorker != null)
             {
-                downedStatus = PhysicalWorker.GetComponent<WorkerDownedStatus>();
+                downedStatus = PhysicalWorker.DownedStatus;
             }
 
             if (downedStatus != null)
@@ -610,7 +610,7 @@ namespace WildernessSurvival.Gameplay.Workers
             // Check downed status on physical worker
             if (PhysicalWorker != null)
             {
-                var downedStatus = PhysicalWorker.GetComponent<WorkerDownedStatus>();
+                var downedStatus = PhysicalWorker.DownedStatus;
                 if (downedStatus != null && downedStatus.IsDowned)
                 {
                     return false;

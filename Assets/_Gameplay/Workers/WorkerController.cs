@@ -164,6 +164,7 @@ namespace WildernessSurvival.Gameplay.Workers
         public bool IsMoving => isMoving;
         public MovementState CurrentMovementState => currentMovementState;
         public WorkerVisualController VisualController => visualController;
+        public WorkerDownedStatus DownedStatus => downedStatus;
         public bool IsInShelter => isInShelter;
         public bool IsGoingToShelter => isGoingToShelter;
         public bool IsRetreatingToWaystone => isRetreatingToWaystone;

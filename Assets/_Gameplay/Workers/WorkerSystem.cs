@@ -167,7 +167,7 @@ namespace WildernessSurvival.Gameplay.Workers
                 // Skip if worker is downed
                 if (worker.PhysicalWorker != null)
                 {
-                    var downedStatus = worker.PhysicalWorker.GetComponent<WorkerDownedStatus>();
+                    var downedStatus = worker.PhysicalWorker.DownedStatus;
                     if (downedStatus != null && downedStatus.IsDowned) continue;
                 }
 
@@ -432,7 +432,7 @@ namespace WildernessSurvival.Gameplay.Workers
             // Gate: block assignment when worker is downed
             if (worker.PhysicalWorker != null)
             {
-                var downedStatus = worker.PhysicalWorker.GetComponent<WorkerDownedStatus>();
+                var downedStatus = worker.PhysicalWorker.DownedStatus;
                 if (downedStatus != null && downedStatus.IsDowned)
                 {
 #if UNITY_EDITOR
@@ -771,7 +771,7 @@ namespace WildernessSurvival.Gameplay.Workers
             // Gate: don't add downed workers to idle builder queue
             if (worker.PhysicalWorker != null)
             {
-                var downedStatus = worker.PhysicalWorker.GetComponent<WorkerDownedStatus>();
+                var downedStatus = worker.PhysicalWorker.DownedStatus;
                 if (downedStatus != null && downedStatus.IsDowned)
                 {
                     return;
