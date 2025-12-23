@@ -122,9 +122,9 @@ namespace WildernessSurvival.Gameplay.Workers
 
         [BoxGroup("Stuck Detection")]
         [SerializeField]
-        [PropertyRange(1f, 3f)]
+        [PropertyRange(1f, 5f)]
         [Tooltip("Seconds without movement before considering stuck")]
-        private float stuckThresholdSeconds = 1.5f;
+        private float stuckThresholdSeconds = 2.5f;
 
         [BoxGroup("Stuck Detection")]
         [SerializeField]
@@ -133,6 +133,7 @@ namespace WildernessSurvival.Gameplay.Workers
         private float stuckRecoveryOffsetRadius = 1.5f;
 
         private const float MIN_MOVEMENT_DELTA_SQR = 0.01f; // 0.1m squared
+        private const float MIN_VELOCITY_MOVING = 0.1f;     // Velocity > this = agent is moving
         private const int MAX_RECOVERY_ATTEMPTS = 3;
 
         // ============================================
@@ -594,7 +595,8 @@ namespace WildernessSurvival.Gameplay.Workers
 
         /// <summary>
         /// Checks if worker is stuck (not moving while in Traveling state).
-        /// Uses position delta tracking, zero allocations per frame.
+        /// Uses velocity check first (authoritative), then position delta as fallback.
+        /// Zero allocations per frame.
         /// </summary>
         private void CheckIfStuck(float deltaTime)
         {
@@ -602,24 +604,43 @@ namespace WildernessSurvival.Gameplay.Workers
             if (currentMovementState != MovementState.Traveling) return;
             if (agent == null || !agent.hasPath) return;
 
+            // ════════════════════════════════════════════════════════════════════
+            // PRIMARY CHECK: NavMesh velocity (authoritative)
+            // If agent has velocity above threshold, it IS moving - never stuck
+            // ════════════════════════════════════════════════════════════════════
+            float velocityMag = agent.velocity.magnitude;
+            if (velocityMag > MIN_VELOCITY_MOVING)
+            {
+                // Agent is definitely moving - reset all stuck state
+                stuckTimer = 0f;
+                stuckRecoveryAttempts = 0;
+                stuckCheckLastPosition = transform.position;
+                return;
+            }
+
+            // ════════════════════════════════════════════════════════════════════
+            // SECONDARY CHECK: Position delta (for edge cases where velocity == 0
+            // but agent moved via other means, e.g., Warp)
+            // ════════════════════════════════════════════════════════════════════
             Vector3 currentPos = transform.position;
             float deltaSqr = (currentPos - stuckCheckLastPosition).sqrMagnitude;
 
-            if (deltaSqr < MIN_MOVEMENT_DELTA_SQR)
+            if (deltaSqr >= MIN_MOVEMENT_DELTA_SQR)
             {
-                // Not moving - accumulate timer
+                // Position changed - reset timer
+                stuckTimer = 0f;
+                stuckRecoveryAttempts = 0;
+            }
+            else
+            {
+                // Both velocity is near-zero AND position hasn't changed
+                // This is a genuine stuck situation - accumulate timer
                 stuckTimer += deltaTime;
 
                 if (stuckTimer >= stuckThresholdSeconds)
                 {
                     RecoverFromStuck();
                 }
-            }
-            else
-            {
-                // Moving fine - reset timer
-                stuckTimer = 0f;
-                stuckRecoveryAttempts = 0;
             }
 
             stuckCheckLastPosition = currentPos;
