@@ -5,6 +5,7 @@ using Sirenix.OdinInspector;
 using WildernessSurvival.Gameplay.Combat;
 using WildernessSurvival.Gameplay.Resources;
 using WildernessSurvival.Core.Systems;
+using WildernessSurvival.Core;
 
 namespace WildernessSurvival.Gameplay.Enemies
 {
@@ -749,6 +750,9 @@ namespace WildernessSurvival.Gameplay.Enemies
 
             // Infliggi danno
             currentTarget.TakeDamage(effectiveDamage, damageType);
+
+            // [AUDIO] Play melee hit sound
+            AudioManager.Instance?.PlaySwordHit();
 
             // Telemetry
             CombatTelemetry.Instance?.RecordEnemyDamage(effectiveDamage);

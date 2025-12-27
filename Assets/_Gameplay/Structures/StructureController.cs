@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using WildernessSurvival.Core.Systems;
 using WildernessSurvival.Core.Navigation;
+using WildernessSurvival.Core;
 using WildernessSurvival.Gameplay.Combat;
 using WildernessSurvival.Gameplay.Enemies;
 using WildernessSurvival.Gameplay.Resources;
@@ -80,6 +81,10 @@ namespace WildernessSurvival.Gameplay.Structures
 
         // FIX2: Guard per evitare doppia inizializzazione
         private bool _initialized = false;
+
+        // Audio: Timer to avoid spamming build sounds
+        private float _lastBuildSoundTime = -1f;
+        private const float BUILD_SOUND_INTERVAL = 0.4f;
 
         // ============================================
         // HEALTH SYSTEM
@@ -606,6 +611,13 @@ namespace WildernessSurvival.Gameplay.Structures
             buildProgress += progressDelta;
 
             UpdateConstructionProgressVisual(buildProgress);
+
+            // [AUDIO] Play build sound with interval to avoid spam
+            if (currentBuildSpeed > 0 && Time.time > _lastBuildSoundTime + BUILD_SOUND_INTERVAL)
+            {
+                _lastBuildSoundTime = Time.time;
+                AudioManager.Instance?.PlayBuildSound();
+            }
 
             if (currentBuildSpeed > 0)
             {
