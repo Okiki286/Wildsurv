@@ -357,6 +357,35 @@ namespace WildernessSurvival.Gameplay.Resources
         }
 
         /// <summary>
+        /// Imposta direttamente la quantità di una risorsa (per Save/Load)
+        /// </summary>
+        public void SetResourceAmount(string resourceId, float amount)
+        {
+            if (resourceAmounts.ContainsKey(resourceId))
+            {
+                resourceAmounts[resourceId] = amount;
+            }
+            else
+            {
+                resourceAmounts.Add(resourceId, amount);
+            }
+
+            // Notifica cambio per aggiornare UI
+            onResourceChangedLegacy?.Raise(resourceId);
+
+            // Notifica anche il nuovo sistema di eventi
+            var info = new ResourceChangeInfo(
+                resourceId,
+                0, // Delta non disponibile durante load
+                Mathf.RoundToInt(amount),
+                Vector3.zero,
+                false,
+                "SaveLoad"
+            );
+            OnResourceChanged?.Invoke(info);
+        }
+
+        /// <summary>
         /// Ottiene la quantità attuale di una risorsa
         /// </summary>
         public float GetResourceAmount(string resourceId)

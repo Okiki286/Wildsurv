@@ -45,14 +45,21 @@ namespace WildernessSurvival.Gameplay.Structures
         /// Usata per calcolare tutte le celle occupate dal footprint.
         /// </summary>
         [HideInInspector]
-        public Vector2Int OriginCell { get; private set; }
+        public Vector2Int OriginCell { get; internal set; }
 
         /// <summary>
         /// Step di rotazione (0-3) al momento del piazzamento.
         /// 0=0°, 1=90°, 2=180°, 3=270°
         /// </summary>
         [HideInInspector]
-        public int PlacementRotationStep { get; private set; }
+        public int PlacementRotationStep { get; internal set; }
+
+        /// <summary>
+        /// Unique instance identifier for save/load and worker re-assignment.
+        /// Similar to WorkerInstance.InstanceId pattern.
+        /// </summary>
+        [HideInInspector]
+        public string InstanceId { get; internal set; }
 
         [BoxGroup("Setup/Components")]
         [ChildGameObjectsOnly]
@@ -274,17 +281,53 @@ namespace WildernessSurvival.Gameplay.Structures
         // UNITY LIFECYCLE
         // ============================================
 
+        /// <summary>
+        /// CRITICAL FIX: Cache the "finished" state of visualRoot in Awake.
+        /// This is the target scale/position that the structure will have when fully built.
+        /// When loading a completed structure, we'll force-snap to these cached values,
+        /// bypassing the GrowFromFlat animation that starts at flatStartYScale.
+        ///
+        /// FIX: Early InstanceId generation for scene-placed structures.
+        /// This ensures structures have valid IDs BEFORE SaveManager.LoadGame() runs.
+        /// </summary>
         private void Awake()
         {
-            // FIX2: Awake NON deve chiamare InitializeStructure()
-            // L'inizializzazione avviene in:
-            // - Initialize() chiamato da SpawnStructure (spawn runtime)
-            // - Start() per strutture piazzate manualmente in scena
-
             // Se è una preview (build mode), non fare nulla
             if (IsPreview)
             {
                 return;
+            }
+
+            // CRITICAL FIX: Cache visualRoot's initial local transform (the "finished" state)
+            // This must happen in Awake BEFORE any construction visuals are applied.
+            // The cached values represent the structure's final geometry when 100% built.
+            if (visualRoot != null)
+            {
+                initialVisualRootLocalPos = visualRoot.localPosition;
+                initialVisualRootLocalScale = visualRoot.localScale;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.Log($"<color=cyan>[StructureController]</color> [AWAKE-CACHE] {name} cached visualRoot finished state:\n" +
+                    $"  localPosition: {initialVisualRootLocalPos}\n" +
+                    $"  localScale: {initialVisualRootLocalScale}\n" +
+                    $"  Frame: {Time.frameCount}");
+#endif
+            }
+            else
+            {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.LogWarning($"<color=yellow>[StructureController]</color> [AWAKE-CACHE] {name} has no visualRoot! GrowFromFlat will not work.");
+#endif
+            }
+
+            // FIX: Early InstanceId generation for scene-placed structures
+            // This must happen in Awake to ensure the ID exists BEFORE any registration attempts
+            if (structureData != null && string.IsNullOrEmpty(InstanceId))
+            {
+                InstanceId = System.Guid.NewGuid().ToString();
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.Log($"<color=lime>[StructureController]</color> [AWAKE] {name} generated InstanceId: {InstanceId.Substring(0, 8)}... (StructureData: {structureData.StructureId})");
+#endif
             }
 
             InitializeWorkSlots();
@@ -407,6 +450,18 @@ namespace WildernessSurvival.Gameplay.Structures
                 CompleteConstruction();
             }
 
+            // AUTO-REGISTER: Register pre-existing scene structures (e.g., Waystone) with StructureSystem
+            // This ensures manually placed structures get saved/loaded properly
+            if (StructureSystem.Instance != null && !IsPreview)
+            {
+                Debug.Log($"<color=cyan>[STRUCT-DEBUG]</color> {name} attempting auto-register. InstanceID: {InstanceId}. StructureSystem ready: TRUE");
+                StructureSystem.Instance.RegisterSceneStructure(this);
+            }
+            else
+            {
+                Debug.LogWarning($"<color=yellow>[STRUCT-DEBUG]</color> {name} CANNOT auto-register. StructureSystem ready: {StructureSystem.Instance != null}, IsPreview: {IsPreview}");
+            }
+
             // FIX2: Marca come inizializzato
             _initialized = true;
         }
@@ -422,6 +477,12 @@ namespace WildernessSurvival.Gameplay.Structures
 
             structureData = data;
             currentLevel = level;
+
+            // Generate instance ID if not already set (load will set externally)
+            if (string.IsNullOrEmpty(InstanceId))
+            {
+                InstanceId = System.Guid.NewGuid().ToString();
+            }
 
             if (structureData.BuildTime <= 0f)
             {
@@ -1765,6 +1826,16 @@ namespace WildernessSurvival.Gameplay.Structures
             CompleteConstruction();
         }
 
+        [ButtonGroup("Debug Actions/Row3")]
+        [Button("🔧 Test ForceVisualCompletion", ButtonSizes.Medium)]
+        [GUIColor(0.9f, 0.5f, 1f)]
+        [Tooltip("Test the save/load visual snap fix - forces structure to 100% scale immediately")]
+        private void DebugTestForceVisualCompletion()
+        {
+            ForceVisualCompletion();
+            Debug.Log($"<color=magenta>[TEST]</color> ForceVisualCompletion called manually on {name}. Check visualRoot scale!");
+        }
+
         private void OnDrawGizmos()
         {
             if (structureData == null) return;
@@ -1803,6 +1874,127 @@ namespace WildernessSurvival.Gameplay.Structures
                 $"Build Progress: {buildProgress:P0}");
         }
 #endif
+
+        // ============================================
+        // SAVE/LOAD RESTORATION
+        // ============================================
+
+        /// <summary>
+        /// Restore health from save data (internal use only)
+        /// </summary>
+        internal void RestoreHealth(float health)
+        {
+            currentHealth = Mathf.Clamp(health, 0, maxHealth);
+        }
+
+        /// <summary>
+        /// Restore level from save data (internal use only)
+        /// </summary>
+        internal void RestoreLevel(int level)
+        {
+            currentLevel = Mathf.Max(1, level);
+            if (structureData != null)
+            {
+                maxHealth = structureData.MaxHealth * currentLevel;
+            }
+        }
+
+        /// <summary>
+        /// Restore build progress from save data (internal use only)
+        /// </summary>
+        internal void RestoreBuildProgress(float progress)
+        {
+            buildProgress = Mathf.Clamp01(progress);
+            UpdateConstructionProgressVisual(buildProgress);
+        }
+
+        /// <summary>
+        /// Restore operational state from save data (internal use only)
+        /// </summary>
+        internal void RestoreOperationalState(bool operational)
+        {
+            isOperational = operational;
+        }
+
+        /// <summary>
+        /// Restore structure state from save data (internal use only)
+        /// Forces visual completion if structure is operational/built
+        /// CRITICAL: Notifies StructureSystem to update counters correctly
+        /// </summary>
+        internal void RestoreState(int stateEnum)
+        {
+            StructureState restoredState = (StructureState)stateEnum;
+
+            // CRITICAL FIX: Use ChangeState to ensure counters are updated
+            // Don't just set currentState directly - this bypasses NotifyStructureStateChanged
+            StructureState oldState = currentState;
+            currentState = restoredState;
+
+            // Notify system ONLY if state actually changed (avoid double-counting on Initializing->Operating)
+            if (oldState != restoredState)
+            {
+                StructureSystem.Instance?.NotifyStructureStateChanged(oldState, restoredState);
+            }
+
+            // If structure is in Operating state, ensure visual completion
+            if (restoredState == StructureState.Operating)
+            {
+                ForceVisualCompletion();
+            }
+        }
+
+        /// <summary>
+        /// CRITICAL FIX: Forces structure to appear fully built, hiding construction visuals.
+        /// Used during save/load restoration to ensure completed structures display correctly.
+        ///
+        /// PROBLEM: When a completed structure is loaded from save, the visualRoot is still at
+        /// its GrowFromFlat starting state (scale.y = flatStartYScale). UpdateConstructionProgressVisual(1.0f)
+        /// animates the scale but doesn't directly reset it to the cached finished state.
+        ///
+        /// SOLUTION: Force-snap visualRoot to the cached initialVisualRootLocalScale/Pos values
+        /// that were captured in Awake(). This bypasses the animation and ensures the geometry
+        /// appears at 100% scale immediately.
+        /// </summary>
+        internal void ForceVisualCompletion()
+        {
+            Debug.Log($"<color=magenta>[STRUCT-DEBUG]</color> ForceVisualCompletion called on {name}. Progress: {buildProgress}. HasVisualRoot: {visualRoot != null}. HasStructureData: {structureData != null}. RequiresBuilder: {structureData?.RequiresBuilder ?? false}");
+
+            // 1. Set internal state
+            buildProgress = 1.0f;
+            isOperational = true;
+
+            // 2. CRITICAL FIX: Force-snap visualRoot to cached "finished" state
+            // This ensures loaded structures appear at 100% scale, not flatStartYScale.
+            // Must happen BEFORE UpdateConstructionProgressVisual to override any animation.
+            if (visualRoot != null && constructionVisualMode == ConstructionVisualMode.GrowFromFlat)
+            {
+                // Directly set transform to cached values (bypasses animation)
+                visualRoot.localScale = initialVisualRootLocalScale;
+                visualRoot.localPosition = initialVisualRootLocalPos;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.Log($"<color=lime>[STRUCT-DEBUG]</color> [FORCE-SNAP] {name} visualRoot snapped to finished state:\n" +
+                    $"  localScale: {initialVisualRootLocalScale}\n" +
+                    $"  localPosition: {initialVisualRootLocalPos}\n" +
+                    $"  Frame: {Time.frameCount}");
+#endif
+            }
+
+            // 3. Update standard visuals (sets material alpha, etc.)
+            UpdateConstructionProgressVisual(1.0f);
+
+            // 4. If structure has a CompleteConstruction method, call it
+            // This handles hiding construction site objects and showing final mesh
+            if (structureData != null && structureData.RequiresBuilder)
+            {
+                Debug.Log($"<color=magenta>[STRUCT-DEBUG]</color> Calling CompleteConstruction on {name}");
+                CompleteConstruction();
+            }
+            else
+            {
+                Debug.Log($"<color=yellow>[STRUCT-DEBUG]</color> Skipping CompleteConstruction on {name} (RequiresBuilder: {structureData?.RequiresBuilder ?? false})");
+            }
+        }
     }
 
     public enum StructureState

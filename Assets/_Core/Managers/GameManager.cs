@@ -1,22 +1,28 @@
 using UnityEngine;
 using Sirenix.OdinInspector;
+using System.Collections;
 using WildernessSurvival.Core.Events;
 using WildernessSurvival.Core.Systems;
 using WildernessSurvival.Core.StateMachines;
 using WildernessSurvival.Gameplay.Resources;
+using Wilderness.Core;
 
 namespace WildernessSurvival.Core.Managers
 {
     /// <summary>
     /// Manager principale del gioco.
     /// Coordina tutti i sistemi, gestisce stati globali e inizializzazione.
+    ///
+    /// CRITICAL FIX: Boot sequence now uses coroutine to ensure scene objects
+    /// (like Waystone) complete their Start() before SaveManager.LoadGame() runs.
+    /// This prevents duplicate structure spawning.
     /// </summary>
     public class GameManager : MonoBehaviour
     {
         // ============================================
         // SINGLETON
         // ============================================
-        
+
         public static GameManager Instance { get; private set; }
 
         /// <summary>
@@ -36,11 +42,11 @@ namespace WildernessSurvival.Core.Managers
         [BoxGroup("Riferimenti Sistemi/Core")]
         [Required("DayNightSystem è richiesto!")]
         [SerializeField] private DayNightSystem dayNightSystem;
-        
+
         [BoxGroup("Riferimenti Sistemi/Core")]
         [Required("ResourceSystem è richiesto!")]
         [SerializeField] private ResourceSystem resourceSystem;
-        
+
         // [BoxGroup("Riferimenti Sistemi/Gameplay")]
         // [SerializeField] private WaveSystem waveSystem;
         // [BoxGroup("Riferimenti Sistemi/Gameplay")]
@@ -52,7 +58,7 @@ namespace WildernessSurvival.Core.Managers
         [LabelWidth(120)]
         [Tooltip("Target frame rate per mobile")]
         [SerializeField] private int targetFrameRate = 60;
-        
+
         [HorizontalGroup("Performance/Settings/Row1")]
         [ToggleLeft]
         [Tooltip("Disabilita vsync per mobile")]
@@ -76,10 +82,15 @@ namespace WildernessSurvival.Core.Managers
         [HorizontalGroup("Debug/Row1")]
         [ToggleLeft]
         [SerializeField] private bool debugMode = true;
-        
+
         [HorizontalGroup("Debug/Row1")]
         [ToggleLeft]
         [SerializeField] private bool autoStartGame = true;
+
+        [HorizontalGroup("Debug/Row1")]
+        [ToggleLeft]
+        [Tooltip("Enable detailed boot sequence logging (frame-by-frame trace)")]
+        [SerializeField] private bool debugBootSequence = true;
 
         // ============================================
         // STATO
@@ -90,11 +101,17 @@ namespace WildernessSurvival.Core.Managers
         [ReadOnly]
         [HorizontalGroup("Runtime Status/Row1")]
         private bool isInitialized = false;
-        
+
         [ShowInInspector]
         [ReadOnly]
         [HorizontalGroup("Runtime Status/Row1")]
         private bool isPaused = false;
+
+        [ShowInInspector]
+        [ReadOnly]
+        [HorizontalGroup("Runtime Status/Row2")]
+        [Tooltip("Boot sequence completion status")]
+        private bool bootSequenceComplete = false;
 
         // ============================================
         // PROPERTIES
@@ -111,7 +128,10 @@ namespace WildernessSurvival.Core.Managers
 
         private void Awake()
         {
-            Debug.Log($"<color=cyan>[GameManager]</color> Awake called on '{name}' id={GetInstanceID()} scene={gameObject.scene.name} frame={Time.frameCount}");
+            if (debugBootSequence)
+            {
+                Debug.Log($"<color=cyan>[GameManager]</color> [BOOT] Awake called on '{name}' | Frame={Time.frameCount} | SceneObj ID={GetInstanceID()}");
+            }
 
             // Singleton
             if (Instance != null && Instance != this)
@@ -121,24 +141,37 @@ namespace WildernessSurvival.Core.Managers
                 return;
             }
             Instance = this;
-            
+
             // DontDestroyOnLoad only works for root objects
             if (transform.parent == null)
             {
                 DontDestroyOnLoad(gameObject);
-                Debug.Log($"<color=cyan>[GameManager]</color> DontDestroyOnLoad applied");
+                if (debugBootSequence)
+                {
+                    Debug.Log($"<color=cyan>[GameManager]</color> [BOOT] DontDestroyOnLoad applied");
+                }
             }
 
             // Configurazione performance
             SetupPerformanceSettings();
         }
 
-
+        /// <summary>
+        /// CRITICAL FIX: Start() now launches a coroutine instead of calling InitializeGame() directly.
+        /// This ensures all scene objects (Waystone, etc.) complete their Start() methods
+        /// before SaveManager.LoadGame() executes, preventing duplicate structure spawning.
+        /// </summary>
         private void Start()
         {
+            if (debugBootSequence)
+            {
+                Debug.Log($"<color=cyan>[GameManager]</color> [BOOT] Start called | Frame={Time.frameCount}");
+            }
+
             if (autoStartGame)
             {
-                InitializeGame();
+                // Launch boot sequence coroutine instead of immediate initialization
+                StartCoroutine(BootSequence());
             }
         }
 
@@ -157,6 +190,81 @@ namespace WildernessSurvival.Core.Managers
         }
 
         // ============================================
+        // BOOT SEQUENCE (CRITICAL FIX)
+        // ============================================
+
+        /// <summary>
+        /// CRITICAL FIX: Coroutine-based boot sequence to solve race condition.
+        ///
+        /// PROBLEM: Previously, GameManager.Start() called InitializeGame() → LoadGame() immediately.
+        /// This happened BEFORE scene objects (Waystone, etc.) ran their Start() methods to register
+        /// with StructureSystem, causing SaveManager to spawn duplicates.
+        ///
+        /// SOLUTION: Yield WaitForEndOfFrame to ensure ALL Start() methods complete first.
+        ///
+        /// EXECUTION ORDER:
+        /// Frame N:   GameManager.Awake() → Waystone.Awake() → Other.Awake()
+        /// Frame N:   GameManager.Start() → Waystone.Start() → Other.Start()
+        /// Frame N:   [WaitForEndOfFrame - ALL Start() methods complete]
+        /// Frame N+1: InitializeGame() → SaveManager.LoadGame()
+        ///
+        /// Result: Waystone is already registered before LoadGame() runs, preventing duplicates.
+        /// </summary>
+        private IEnumerator BootSequence()
+        {
+            if (debugBootSequence)
+            {
+                Debug.Log($"<color=lime>[GameManager]</color> [BOOT] BootSequence started | Frame={Time.frameCount}");
+            }
+
+            // PHASE 1: System Validation
+            if (debugBootSequence)
+            {
+                Debug.Log($"<color=lime>[GameManager]</color> [BOOT] Phase 1: System Validation | Frame={Time.frameCount}");
+            }
+            ValidateSystems();
+
+            // PHASE 2: Core Initialization (Systems init, no loading yet)
+            if (debugBootSequence)
+            {
+                Debug.Log($"<color=lime>[GameManager]</color> [BOOT] Phase 2: Core Systems Init | Frame={Time.frameCount}");
+            }
+            InitializeCoreSystemsOnly();
+
+            // CRITICAL: Wait for End of Frame
+            // This ensures ALL scene objects (Waystone, Workers, Structures) have completed
+            // their Start() methods and registered themselves with their respective systems.
+            if (debugBootSequence)
+            {
+                Debug.Log($"<color=yellow>[GameManager]</color> [BOOT] Phase 3: Yielding WaitForEndOfFrame... | Frame={Time.frameCount}");
+            }
+
+            yield return new WaitForEndOfFrame();
+
+            // PHASE 3: Load Game (NOW safe - all scene objects registered)
+            if (debugBootSequence)
+            {
+                Debug.Log($"<color=lime>[GameManager]</color> [BOOT] Phase 4: SaveManager.LoadGame() | Frame={Time.frameCount}");
+            }
+
+            if (SaveManager.Instance != null)
+            {
+                SaveManager.Instance.LoadGame();
+            }
+            else
+            {
+                Debug.LogWarning("[GameManager] [BOOT] SaveManager.Instance is null! Skipping load.");
+            }
+
+            // PHASE 4: Finalize
+            bootSequenceComplete = true;
+            if (debugBootSequence)
+            {
+                Debug.Log($"<color=green>[GameManager]</color> [BOOT] ✅ Boot Sequence COMPLETE | Frame={Time.frameCount}");
+            }
+        }
+
+        // ============================================
         // INIZIALIZZAZIONE
         // ============================================
 
@@ -164,7 +272,7 @@ namespace WildernessSurvival.Core.Managers
         {
             // Target framerate
             Application.targetFrameRate = targetFrameRate;
-            
+
             // VSync
             if (disableVSync)
             {
@@ -182,10 +290,11 @@ namespace WildernessSurvival.Core.Managers
             }
         }
 
-        [TitleGroup("Inizializzazione")]
-        [Button("Initialize Game", ButtonSizes.Large)]
-        [GUIColor(0.4f, 0.8f, 0.4f)]
-        public void InitializeGame()
+        /// <summary>
+        /// REFACTORED: Core system initialization WITHOUT loading save data.
+        /// Save loading now happens AFTER WaitForEndOfFrame in BootSequence().
+        /// </summary>
+        private void InitializeCoreSystemsOnly()
         {
             if (isInitialized)
             {
@@ -193,20 +302,52 @@ namespace WildernessSurvival.Core.Managers
                 return;
             }
 
-            Debug.Log("<color=green>[GameManager] === INIZIALIZZAZIONE GIOCO ===</color>");
-
-            // Verifica sistemi
-            ValidateSystems();
+            Debug.Log("<color=green>[GameManager] === CORE SYSTEMS INITIALIZATION ===</color>");
 
             // Inizializza nell'ordine corretto
             // 1. Resources (deve esistere prima degli altri)
             // 2. DayNight (controlla il flusso)
             // 3. Altri sistemi...
+            // NOTE: Systems self-initialize in their Awake/Start, we just validate here
 
             isInitialized = true;
             onGameInitialized?.Raise();
 
-            Debug.Log("<color=green>[GameManager] === GIOCO INIZIALIZZATO ===</color>");
+            Debug.Log("<color=green>[GameManager] === CORE SYSTEMS READY (Load pending) ===</color>");
+        }
+
+        /// <summary>
+        /// DEPRECATED: Use BootSequence() coroutine instead.
+        /// Kept for Odin button backward compatibility.
+        /// </summary>
+        [TitleGroup("Inizializzazione")]
+        [Button("Initialize Game (Legacy)", ButtonSizes.Large)]
+        [GUIColor(0.4f, 0.8f, 0.4f)]
+        public void InitializeGame()
+        {
+            Debug.LogWarning("[GameManager] InitializeGame() called directly (legacy). Use BootSequence() coroutine for proper initialization.");
+
+            if (isInitialized)
+            {
+                Debug.LogWarning("[GameManager] Gioco già inizializzato!");
+                return;
+            }
+
+            Debug.Log("<color=green>[GameManager] === INIZIALIZZAZIONE GIOCO (LEGACY) ===</color>");
+
+            // Verifica sistemi
+            ValidateSystems();
+
+            isInitialized = true;
+            onGameInitialized?.Raise();
+
+            // Carica salvataggio se disponibile
+            if (SaveManager.Instance != null)
+            {
+                SaveManager.Instance.LoadGame();
+            }
+
+            Debug.Log("<color=green>[GameManager] === GIOCO INIZIALIZZATO (LEGACY) ===</color>");
         }
 
         [Button("Auto-Find Systems", ButtonSizes.Medium)]
@@ -267,7 +408,7 @@ namespace WildernessSurvival.Core.Managers
 
             isPaused = true;
             Time.timeScale = 0f;
-            
+
             dayNightSystem?.SetPaused(true);
             onGamePaused?.Raise();
 
@@ -287,7 +428,7 @@ namespace WildernessSurvival.Core.Managers
 
             isPaused = false;
             Time.timeScale = 1f;
-            
+
             dayNightSystem?.SetPaused(false);
             onGameResumed?.Raise();
 
@@ -309,14 +450,14 @@ namespace WildernessSurvival.Core.Managers
         {
             Debug.Log($"<color=red>[GameManager] GAME OVER: {reason}</color>");
             Debug.Log("GAME OVER: Waystone Destroyed!");
-            
+
             // Pause the game
             Time.timeScale = 0f;
             isPaused = true;
-            
+
             // Raise the GameEvent for any subscribers
             onGameOver?.Raise();
-            
+
             // Show Game Over UI
             if (gameOverUI != null)
             {
@@ -334,7 +475,7 @@ namespace WildernessSurvival.Core.Managers
         public void TriggerVictory()
         {
             Debug.Log("<color=green>[GameManager] VITTORIA!</color>");
-            
+
             // TODO: Mostra schermata vittoria
         }
 
@@ -348,11 +489,12 @@ namespace WildernessSurvival.Core.Managers
         public void RestartGame()
         {
             Debug.Log("[GameManager] Riavvio gioco...");
-            
+
             Time.timeScale = 1f;
             isPaused = false;
             isInitialized = false;
-            
+            bootSequenceComplete = false;
+
             // Ricarica scena
             UnityEngine.SceneManagement.SceneManager.LoadScene(
                 UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex
@@ -371,7 +513,7 @@ namespace WildernessSurvival.Core.Managers
             {
                 dayNightSystem?.SkipToNight();
             }
-            
+
             // D = Skip to Day
             if (Input.GetKeyDown(KeyCode.D))
             {
@@ -401,6 +543,7 @@ namespace WildernessSurvival.Core.Managers
         {
             Debug.Log($"=== GAME STATE ===\n" +
                 $"Initialized: {isInitialized}\n" +
+                $"Boot Complete: {bootSequenceComplete}\n" +
                 $"Paused: {isPaused}\n" +
                 $"Day/Night State: {dayNightSystem?.CurrentState}\n" +
                 $"Current Day: {dayNightSystem?.CurrentDayNumber}");
@@ -431,7 +574,11 @@ namespace WildernessSurvival.Core.Managers
         {
             // Salvataggio automatico prima di uscire
             Debug.Log("[GameManager] Applicazione in chiusura...");
-            // TODO: SaveSystem.Save();
+
+            if (SaveManager.Instance != null)
+            {
+                SaveManager.Instance.SaveGame();
+            }
         }
     }
 }

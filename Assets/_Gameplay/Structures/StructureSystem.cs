@@ -5,6 +5,7 @@ using System.Linq;
 using WildernessSurvival.Gameplay.Resources;
 using WildernessSurvival.Gameplay.Workers;
 using WildernessSurvival.UI;
+using Wilderness.Core;
 
 namespace WildernessSurvival.Gameplay.Structures
 {
@@ -651,6 +652,136 @@ namespace WildernessSurvival.Gameplay.Structures
             return null;
         }
 
+        /// <summary>
+        /// Rebuilds a structure from save data, registering it to the Grid and Pathfinding.
+        /// Smart restore: reuses pre-existing structures (e.g., Waystone) if found at the same location.
+        ///
+        /// CRITICAL RESTORATION ORDER:
+        /// 1. Find or spawn structure
+        /// 2. Restore Level (sets MaxHealth)
+        /// 3. Restore Health (clamps to MaxHealth)
+        /// 4. Restore State (notifies StructureSystem counters, forces visual completion if Operating)
+        /// 5. Restore Build Progress (visual state)
+        /// 6. Restore Operational State (production capability)
+        /// 7. Occupy grid cells (pathfinding)
+        ///
+        /// State counters (buildingCount, operationalCount) are automatically updated by RestoreState
+        /// via NotifyStructureStateChanged - no manual list management needed.
+        /// </summary>
+        public StructureController RestoreStructureFromSave(StructureStateData data)
+        {
+            // FIX: Safety check - validate structure ID exists in database
+            if (!structureDataLookup.ContainsKey(data.structureDataId))
+            {
+                Debug.LogError($"<color=red>[StructureSystem] RESTORE FAILED!</color> Structure ID '{data.structureDataId}' not found in database!\n" +
+                    $"Available IDs: {string.Join(", ", structureDataLookup.Keys)}\n" +
+                    $"This save file may be corrupted or from a different game version. Skipping this structure.");
+                return null;
+            }
+
+            // 1. Lookup Data
+            StructureData structureData = GetStructureData(data.structureDataId);
+            if (structureData == null)
+            {
+                Debug.LogError($"[StructureSystem] Failed to restore. Unknown ID: {data.structureDataId}");
+                return null;
+            }
+
+            // 2. Resolve Position (Grid -> World)
+            Vector2Int gridPos = new Vector2Int(data.originCellX, data.originCellY);
+            Vector3 worldPos = CellToWorld(gridPos);
+
+            // 3. Resolve Rotation (Step -> Quaternion)
+            // 0=0°, 1=90°, 2=180°, 3=270°
+            Quaternion rotation = Quaternion.Euler(0, data.rotationStep * 90f, 0);
+
+            // 4. SMART FIND: Check for pre-existing structure (Fix Waystone reload)
+            Debug.Log($"<color=cyan>[SYSTEM-DEBUG]</color> Restoring {data.structureDataId} at {gridPos}. Looking for existing structure...");
+
+            StructureController structure = null;
+            if (TryGetStructureAtCell(gridPos, out StructureController existing))
+            {
+                Debug.Log($"<color=cyan>[SYSTEM-DEBUG]</color> Found existing structure: {existing.name} (ID: {existing.InstanceId}). Type match: {existing.Data.StructureId == structureData.StructureId}");
+
+                // Found existing structure at this location
+                if (existing.Data.StructureId == structureData.StructureId)
+                {
+                    // Same type - reuse it!
+                    structure = existing;
+                    Debug.Log($"<color=yellow>[StructureSystem]</color> Reusing pre-existing {structureData.DisplayName} at {gridPos}");
+                }
+                else
+                {
+                    // Type mismatch - destroy existing and spawn new
+                    Debug.LogWarning($"[StructureSystem] Conflict at {gridPos}. Destroying {existing.Data.DisplayName} to restore {structureData.DisplayName}");
+                    OnStructureDestroyed(existing);
+                    Destroy(existing.gameObject);
+                    structure = null;
+                }
+            }
+            else
+            {
+                Debug.Log($"<color=yellow>[SYSTEM-DEBUG]</color> No existing structure found at {gridPos}. Will spawn new.");
+            }
+
+            // 5. Spawn if no valid structure found
+            if (structure == null)
+            {
+                structure = SpawnStructure(structureData, worldPos, rotation);
+            }
+
+            if (structure != null)
+            {
+                // 6. Inject Identity & Stats (CRITICAL ORDER)
+                // Override InstanceId (critical for Waystone to match saved ID)
+                structure.InstanceId = data.instanceId;
+
+                // A. Restore Level FIRST (sets correct MaxHealth)
+                if (data.currentLevel > 1)
+                {
+                    structure.RestoreLevel(data.currentLevel);
+                }
+
+                // B. Restore Health SECOND (clamps to new MaxHealth)
+                structure.RestoreHealth(data.currentHealth);
+
+                // C. Restore State (notifies StructureSystem counters)
+                structure.RestoreState(data.structureState);
+
+                // D. Restore Progress & Operational State
+                if (data.buildProgress < 1f)
+                {
+                    // Incomplete structure - restore partial progress
+                    structure.RestoreBuildProgress(data.buildProgress);
+                    structure.RestoreOperationalState(false); // Not operational while building
+                }
+                else
+                {
+                    // Fully built - ensure visual completion
+                    // ForceVisualCompletion sets buildProgress=1.0 and isOperational=true
+                    // but we override with saved operational state in case it was manually disabled
+                    structure.ForceVisualCompletion();
+                    structure.RestoreOperationalState(data.isOperational);
+                }
+
+                // F. Ensure grid occupation for pathfinding (critical for operational structures)
+                StructureState restoredState = (StructureState)data.structureState;
+                if (restoredState == StructureState.Operating && data.buildProgress >= 1f)
+                {
+                    // Ensure grid cells are occupied for pathfinding
+                    if (!_occupied.ContainsKey(gridPos))
+                    {
+                        OccupyArea(structure, gridPos, structureData.GridSize, data.rotationStep);
+                        Debug.Log($"<color=lime>[StructureSystem]</color> Occupied grid cells for restored operational structure: {structureData.DisplayName}");
+                    }
+                }
+
+                Debug.Log($"<color=cyan>[StructureSystem]</color> Restored {structureData.DisplayName} at {gridPos} (ID: {data.instanceId.Substring(0, 8)}, State: {restoredState}, Progress: {data.buildProgress:P0})");
+            }
+
+            return structure;
+        }
+
         // ============================================
         // REGISTRAZIONE STRUTTURE
         // ============================================
@@ -694,6 +825,47 @@ namespace WildernessSurvival.Gameplay.Structures
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             Debug.Log($"<color=orange>[StructureSystem]</color> Registered {structure.Data.DisplayName}");
 #endif
+        }
+
+        /// <summary>
+        /// PUBLIC: Allows pre-existing scene structures (e.g., Waystone placed in Editor)
+        /// to register themselves during initialization. Called from StructureController.InitializeStructure().
+        /// </summary>
+        public void RegisterSceneStructure(StructureController structure)
+        {
+            if (structure == null) return;
+
+            Debug.Log($"<color=green>[SYSTEM-DEBUG]</color> RegisterSceneStructure called for {structure.name}. OriginCell: {structure.OriginCell}. InstanceId: {structure.InstanceId}");
+
+            // Ensure grid data is set for scene-placed structures
+            if (structure.OriginCell == Vector2Int.zero)
+            {
+                // Calculate grid position from world position
+                Vector3 worldPos = structure.transform.position;
+                Vector2Int gridPos = WorldToCell(worldPos);
+
+                // Calculate rotation step from transform
+                int rotStep = Mathf.RoundToInt(structure.transform.rotation.eulerAngles.y / 90f) % 4;
+                if (rotStep < 0) rotStep += 4;
+
+                Debug.Log($"<color=green>[SYSTEM-DEBUG]</color> Calculated grid data for {structure.name}: gridPos={gridPos}, rotStep={rotStep}");
+
+                // Set placement data using existing method
+                structure.SetPlacementData(gridPos, rotStep);
+
+                // Occupy grid cells for pathfinding
+                var footprint = structure.Data.GridSize;
+                OccupyArea(structure, gridPos, footprint, rotStep);
+            }
+            else
+            {
+                Debug.Log($"<color=yellow>[SYSTEM-DEBUG]</color> {structure.name} already has OriginCell set: {structure.OriginCell}. Skipping grid calculation.");
+            }
+
+            // Register normally
+            RegisterStructure(structure);
+
+            Debug.Log($"<color=green>[StructureSystem]</color> Scene structure registered: {structure.Data.DisplayName} at {structure.transform.position}. Total structures: {allStructures.Count}");
         }
 
         private void UnregisterStructure(StructureController structure)

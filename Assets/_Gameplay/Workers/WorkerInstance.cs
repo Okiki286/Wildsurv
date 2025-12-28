@@ -20,7 +20,7 @@ namespace WildernessSurvival.Gameplay.Workers
         // ============================================
 
         [ShowInInspector, ReadOnly]
-        public string InstanceId { get; private set; }
+        public string InstanceId { get; internal set; }
 
         [ShowInInspector, ReadOnly]
         public string CustomName { get; set; }
@@ -123,6 +123,34 @@ namespace WildernessSurvival.Gameplay.Workers
 
         [ShowInInspector, ReadOnly]
         public int Level { get; private set; } = 1;
+
+        // ============================================
+        // SAVE/LOAD SUPPORT
+        // ============================================
+
+        /// <summary>
+        /// Sets health for save/load restoration (internal use only)
+        /// </summary>
+        internal void SetHealth(float health)
+        {
+            CurrentHealth = Mathf.Clamp(health, 0f, MaxHealth);
+        }
+
+        /// <summary>
+        /// Sets level for save/load restoration (internal use only)
+        /// </summary>
+        internal void SetLevel(int level)
+        {
+            Level = Mathf.Max(1, level);
+        }
+
+        /// <summary>
+        /// Sets experience for save/load restoration (internal use only)
+        /// </summary>
+        internal void SetExperience(float xp)
+        {
+            Experience = Mathf.Max(0f, xp);
+        }
 
         // ============================================
         // CONSTRUCTOR

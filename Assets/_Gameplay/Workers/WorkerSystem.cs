@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using WildernessSurvival.Gameplay.Structures;
 using WildernessSurvival.Core.Events;
 using System.Linq;
+using Wilderness.Core;
 
 namespace WildernessSurvival.Gameplay.Workers
 {
@@ -407,6 +408,65 @@ namespace WildernessSurvival.Gameplay.Workers
                 return hit.position;
             }
             return center;
+        }
+
+        /// <summary>
+        /// Reconstructs a worker from save data without cost/notification overhead.
+        /// </summary>
+        public WorkerInstance RestoreWorkerFromSave(WorkerStateData data)
+        {
+            // 1. Find the correct WorkerData (ScriptableObject)
+            WorkerData workerData = availableWorkerTypes.Find(w => w.name == data.workerDataId || w.WorkerId == data.workerDataId);
+
+            if (workerData == null)
+            {
+                Debug.LogError($"[WorkerSystem] Could not restore worker. Unknown Data ID: {data.workerDataId}");
+                return null;
+            }
+
+            // 2. Create Data Instance & Restore Stats
+            WorkerInstance instance = new WorkerInstance(workerData);
+
+            // Use the new Internal Setters created in WorkerInstance
+            instance.InstanceId = data.instanceId;
+            instance.CustomName = data.customName;
+            instance.SetHealth(data.currentHealth);
+            instance.SetLevel(data.level);
+            instance.SetExperience(data.experience);
+            instance.SetState((WorkerState)data.currentState);
+
+            // 3. Instantiate Visuals (Prefab)
+            if (workerData.Prefab != null)
+            {
+                Vector3 position = new Vector3(data.posX, data.posY, data.posZ);
+                GameObject go = Instantiate(workerData.Prefab, position, Quaternion.identity);
+                go.name = $"Worker_{data.customName}_{data.instanceId.Substring(0, 4)}";
+
+                // Link Controller
+                WorkerController controller = go.GetComponent<WorkerController>();
+                if (controller != null)
+                {
+                    instance.PhysicalWorker = controller;
+                    controller.LinkToInstance(instance);
+
+                    // Add to physical tracking list
+                    if (physicalWorkers == null) physicalWorkers = new List<WorkerController>();
+                    physicalWorkers.Add(controller);
+                }
+            }
+
+            // 4. Update System Lists
+            if (allWorkerInstances == null) allWorkerInstances = new List<WorkerInstance>();
+            allWorkerInstances.Add(instance);
+
+            // Add to available/assigned lists based on state (logic simplified for restoration)
+            // We assume they are available until Job System restores assignments in Phase 3
+            if (availableWorkers == null) availableWorkers = new List<WorkerInstance>();
+            availableWorkers.Add(instance);
+
+            Debug.Log($"<color=cyan>[WorkerSystem]</color> Restored worker: {data.customName} (ID: {data.instanceId.Substring(0, 8)})");
+
+            return instance;
         }
 
         // ============================================

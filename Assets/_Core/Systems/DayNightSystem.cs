@@ -416,6 +416,19 @@ namespace WildernessSurvival.Core.Systems
         }
 
         /// <summary>
+        /// Imposta il giorno corrente (per Save/Load)
+        /// </summary>
+        public void SetDay(int dayNumber)
+        {
+            currentDayNumber = Mathf.Max(1, dayNumber);
+
+            if (debugMode)
+            {
+                Debug.Log($"[DayNight] Giorno impostato a: {currentDayNumber}");
+            }
+        }
+
+        /// <summary>
         /// Mette in pausa/riprende il ciclo
         /// </summary>
         public void SetPaused(bool paused)
