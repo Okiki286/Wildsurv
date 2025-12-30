@@ -137,6 +137,26 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         /// <summary>
+        /// Ottiene il WorkerJobData tramite string ID.
+        /// </summary>
+        public WorkerJobData GetJobData(string jobId)
+        {
+            if (string.IsNullOrEmpty(jobId)) return null;
+            if (allJobs == null) return null;
+
+            // Simple search (can be optimized with cache if needed)
+            for (int i = 0; i < allJobs.Count; i++)
+            {
+                if (allJobs[i] != null && allJobs[i].JobId == jobId)
+                {
+                    return allJobs[i];
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Verifica se esiste un job per il ruolo specificato.
         /// </summary>
         public bool HasJobForRole(WorkerRole role)

@@ -179,7 +179,7 @@ namespace WildernessSurvival.EditorTools
             tmp.fontSize = 18;
             tmp.color = DEEP_BROWN;
             tmp.alignment = TextAlignmentOptions.MidlineLeft;
-            tmp.enableWordWrapping = false;
+            tmp.textWrappingMode = TextWrappingModes.NoWrap;
 
             if (fontAsset != null)
             {

@@ -113,6 +113,8 @@ namespace WildernessSurvival.Core.Managers
         [Tooltip("Boot sequence completion status")]
         private bool bootSequenceComplete = false;
 
+        public bool IsBooting => !bootSequenceComplete;
+
         // ============================================
         // PROPERTIES
         // ============================================
@@ -231,6 +233,12 @@ namespace WildernessSurvival.Core.Managers
             }
             InitializeCoreSystemsOnly();
 
+            // Ensure DayNightSystem is paused during boot to prevent "Day 1" race conditions
+            if (dayNightSystem != null)
+            {
+                dayNightSystem.SetPaused(true);
+            }
+
             // CRITICAL: Wait for End of Frame
             // This ensures ALL scene objects (Waystone, Workers, Structures) have completed
             // their Start() methods and registered themselves with their respective systems.
@@ -241,23 +249,62 @@ namespace WildernessSurvival.Core.Managers
 
             yield return new WaitForEndOfFrame();
 
-            // PHASE 3: Load Game (NOW safe - all scene objects registered)
+            // PHASE 3: BRANCHING LOGIC - Load Game OR Initialize New Game
+            // CRITICAL FIX: This prevents ghost workers by checking for save file BEFORE spawning.
+            // Branch A: Save file exists → Load saved workers
+            // Branch B: No save file → Spawn starting workers
             if (debugBootSequence)
             {
-                Debug.Log($"<color=lime>[GameManager]</color> [BOOT] Phase 4: SaveManager.LoadGame() | Frame={Time.frameCount}");
+                Debug.Log($"<color=lime>[GameManager]</color> [BOOT] Phase 4: Save/New Game Branch | Frame={Time.frameCount}");
             }
 
             if (SaveManager.Instance != null)
             {
-                SaveManager.Instance.LoadGame();
+                bool hasSaveFile = SaveManager.Instance.HasSaveFile();
+
+                if (hasSaveFile)
+                {
+                    // BRANCH A: Load Game (restore workers from save)
+                    if (debugBootSequence)
+                    {
+                        Debug.Log($"<color=cyan>[GameManager]</color> [BOOT] Branch A: Loading from save file...");
+                    }
+                    SaveManager.Instance.LoadGame();
+                }
+                else
+                {
+                    // BRANCH B: New Game (spawn starting workers)
+                    if (debugBootSequence)
+                    {
+                        Debug.Log($"<color=yellow>[GameManager]</color> [BOOT] Branch B: No save file - Initializing new game...");
+                    }
+
+                    // Spawn starting workers via WorkerSystem
+                    if (WildernessSurvival.Gameplay.Workers.WorkerSystem.Instance != null)
+                    {
+                        WildernessSurvival.Gameplay.Workers.WorkerSystem.Instance.InitializeNewGame();
+                        Debug.Log($"<color=green>[GameManager]</color> [BOOT] Starting workers spawned for new game");
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[GameManager] [BOOT] WorkerSystem.Instance is null! Cannot spawn starting workers.");
+                    }
+                }
             }
             else
             {
-                Debug.LogWarning("[GameManager] [BOOT] SaveManager.Instance is null! Skipping load.");
+                Debug.LogWarning("[GameManager] [BOOT] SaveManager.Instance is null! Skipping load/spawn.");
             }
 
             // PHASE 4: Finalize
             bootSequenceComplete = true;
+
+            // Unpause DayNightSystem after boot is complete
+            if (dayNightSystem != null)
+            {
+                dayNightSystem.SetPaused(false);
+            }
+
             if (debugBootSequence)
             {
                 Debug.Log($"<color=green>[GameManager]</color> [BOOT] ✅ Boot Sequence COMPLETE | Frame={Time.frameCount}");
@@ -572,13 +619,14 @@ namespace WildernessSurvival.Core.Managers
 
         private void OnApplicationQuit()
         {
-            // Salvataggio automatico prima di uscire
-            Debug.Log("[GameManager] Applicazione in chiusura...");
+            // Auto-save on quit DISABLED (user preference)
+            Debug.Log("[GameManager] Applicazione in chiusura... (auto-save disabilitato)");
 
-            if (SaveManager.Instance != null)
-            {
-                SaveManager.Instance.SaveGame();
-            }
+            // DISABLED: Auto-save on application quit
+            // if (SaveManager.Instance != null)
+            // {
+            //     SaveManager.Instance.SaveGame();
+            // }
         }
     }
 }

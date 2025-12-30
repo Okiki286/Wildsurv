@@ -12,14 +12,42 @@ namespace Wilderness.Core
     public class SaveManager : MonoBehaviour
     {
         public static SaveManager Instance { get; private set; }
+
+        // Manual Save
         private const string SAVE_FILENAME = "savegame.json";
         private string SaveFilePath => Path.Combine(Application.persistentDataPath, SAVE_FILENAME);
+
+        // Rolling Auto-Save (3 Slots)
+        private const int AUTO_SAVE_SLOT_COUNT = 3;
+        private const string AUTO_SAVE_PREFIX = "autosave_";
+        private const string AUTO_SAVE_INDEX_KEY = "LastAutoSaveIndex"; // PlayerPrefs key
 
         void Awake()
         {
             if (Instance != null && Instance != this) { Destroy(gameObject); return; }
             Instance = this;
             DontDestroyOnLoad(gameObject);
+        }
+
+        /// <summary>
+        /// Check if a valid save file exists.
+        /// Used by GameManager.BootSequence() to determine whether to load or start new game.
+        /// </summary>
+        /// <returns>True if save file exists, false otherwise</returns>
+        public bool HasSaveFile()
+        {
+            bool exists = File.Exists(SaveFilePath);
+
+            if (exists)
+            {
+                Debug.Log($"<color=cyan>[SaveManager]</color> Save file found at: {SaveFilePath}");
+            }
+            else
+            {
+                Debug.Log($"<color=yellow>[SaveManager]</color> No save file found at: {SaveFilePath}");
+            }
+
+            return exists;
         }
 
         public void SaveGame()
@@ -109,23 +137,213 @@ namespace Wilderness.Core
         }
 
         /// <summary>
+        /// Performs a rolling auto-save across 3 slots.
+        /// Cycles through autosave_0.json, autosave_1.json, autosave_2.json.
+        /// Index is persisted via PlayerPrefs to survive game sessions.
+        /// </summary>
+        /// <returns>The slot index (0-2) that was written, or -1 on failure</returns>
+        public int PerformRollingAutoSave()
+        {
+            try
+            {
+                // 1. Get current index from PlayerPrefs (default: 0)
+                int currentIndex = PlayerPrefs.GetInt(AUTO_SAVE_INDEX_KEY, 0);
+
+                // 2. Generate filename for this slot
+                string filename = $"{AUTO_SAVE_PREFIX}{currentIndex}.json";
+                string filePath = Path.Combine(Application.persistentDataPath, filename);
+
+                // 3. Collect game state data (same as SaveGame)
+                GameSaveData data = new GameSaveData();
+
+                // Save Global State (Time)
+                if (DayNightSystem.Instance != null)
+                {
+                    data.globalState.currentDay = DayNightSystem.Instance.CurrentDayNumber;
+                    data.globalState.currentDayPhase = (int)DayNightSystem.Instance.CurrentDayPhase;
+                }
+
+                // Save Resources
+                if (ResourceSystem.Instance != null)
+                {
+                    foreach (var res in ResourceSystem.Instance.GetAllResourceData())
+                    {
+                        float amount = ResourceSystem.Instance.GetResourceAmount(res.ResourceId);
+                        data.resources.resourceAmounts.Add(new ResourceAmountEntry { resourceId = res.ResourceId, amount = amount });
+                    }
+                }
+
+                // Save Workers
+                if (WorkerSystem.Instance != null)
+                {
+                    var allWorkers = WorkerSystem.Instance.AllWorkerInstances;
+                    var workerList = new List<WorkerStateData>();
+
+                    foreach (var w in allWorkers)
+                    {
+                        var state = new WorkerStateData
+                        {
+                            instanceId = w.InstanceId,
+                            customName = w.CustomName,
+                            workerDataId = w.Data.WorkerId,
+                            currentHealth = w.CurrentHealth,
+                            maxHealth = w.MaxHealth,
+                            level = w.Level,
+                            experience = w.Experience,
+                            currentState = (int)w.CurrentState,
+                            isAtWorksite = w.IsAtWorksite,
+                            currentJobId = w.CurrentJob?.JobId ?? "",
+                            assignedStructureId = "",
+                            assignedHomeId = ""
+                        };
+
+                        if (w.PhysicalWorker != null)
+                        {
+                            Vector3 pos = w.PhysicalWorker.transform.position;
+                            state.posX = pos.x;
+                            state.posY = pos.y;
+                            state.posZ = pos.z;
+                        }
+
+                        workerList.Add(state);
+                    }
+                    data.workers = workerList.ToArray();
+                }
+                else
+                {
+                    data.workers = new WorkerStateData[0];
+                }
+
+                // Save Structures
+                if (StructureSystem.Instance != null)
+                {
+                    var allStructures = StructureSystem.Instance.AllStructures;
+                    var structList = new List<StructureStateData>();
+
+                    foreach (var s in allStructures)
+                    {
+                        structList.Add(new StructureStateData
+                        {
+                            instanceId = s.InstanceId,
+                            structureDataId = s.Data.StructureId,
+                            originCellX = s.OriginCell.x,
+                            originCellY = s.OriginCell.y,
+                            rotationStep = s.PlacementRotationStep,
+                            currentHealth = s.CurrentHealth,
+                            currentLevel = s.CurrentLevel,
+                            buildProgress = s.BuildProgress,
+                            isOperational = s.IsOperational,
+                            structureState = (int)s.State,
+                            assignedWorkerIds = new string[0]
+                        });
+                    }
+                    data.structures = structList.ToArray();
+                }
+                else
+                {
+                    data.structures = new StructureStateData[0];
+                }
+
+                // 4. Write to file
+                string json = JsonUtility.ToJson(data, true);
+                File.WriteAllText(filePath, json);
+
+                // 5. Calculate next index using modulo (0 → 1 → 2 → 0)
+                int nextIndex = (currentIndex + 1) % AUTO_SAVE_SLOT_COUNT;
+                PlayerPrefs.SetInt(AUTO_SAVE_INDEX_KEY, nextIndex);
+                PlayerPrefs.Save(); // Force write to disk
+
+                Debug.Log($"<color=green>[SaveManager]</color> ✅ Rolling Auto-Save to Slot {currentIndex}: {filePath}");
+                Debug.Log($"<color=cyan>[SaveManager]</color> Next auto-save will use Slot {nextIndex}");
+
+                return currentIndex;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"<color=red>[SaveManager]</color> Rolling Auto-Save Failed: {e.Message}\n{e.StackTrace}");
+                return -1;
+            }
+        }
+
+        /// <summary>
+        /// Gets information about all auto-save slots.
+        /// Useful for building a Load Game UI that shows all available saves.
+        /// </summary>
+        /// <returns>Array of tuples (slotIndex, filePath, exists, dayNumber). Day is -1 if file doesn't exist.</returns>
+        public (int slotIndex, string filePath, bool exists, int dayNumber)[] GetAutoSaveSlotInfo()
+        {
+            var slotInfo = new (int, string, bool, int)[AUTO_SAVE_SLOT_COUNT];
+
+            for (int i = 0; i < AUTO_SAVE_SLOT_COUNT; i++)
+            {
+                string filename = $"{AUTO_SAVE_PREFIX}{i}.json";
+                string filePath = Path.Combine(Application.persistentDataPath, filename);
+                bool exists = File.Exists(filePath);
+                int dayNumber = -1;
+
+                // Try to read day number from file if it exists
+                if (exists)
+                {
+                    try
+                    {
+                        string json = File.ReadAllText(filePath);
+                        GameSaveData data = JsonUtility.FromJson<GameSaveData>(json);
+                        dayNumber = data.globalState.currentDay;
+                    }
+                    catch
+                    {
+                        // If we can't read the file, just mark it as corrupt (day -1)
+                        dayNumber = -1;
+                    }
+                }
+
+                slotInfo[i] = (i, filePath, exists, dayNumber);
+            }
+
+            return slotInfo;
+        }
+
+        /// <summary>
         /// Loads game state from save file.
         /// Relies on GameManager's BootSequence to ensure all scene objects
         /// have registered themselves before this is called.
         /// </summary>
-        public void LoadGame()
+        /// <param name="customFilename">Optional: Specific filename to load (e.g., "autosave_0.json"). If null, loads default "savegame.json"</param>
+        public void LoadGame(string customFilename = null)
         {
-            if (!File.Exists(SaveFilePath))
+            // Determine which file to load
+            string fileToLoad;
+            if (string.IsNullOrEmpty(customFilename))
             {
-                Debug.Log($"<color=yellow>[SaveManager]</color> No save file found at {SaveFilePath}. Starting new game.");
+                fileToLoad = SaveFilePath; // Default: savegame.json
+            }
+            else
+            {
+                fileToLoad = Path.Combine(Application.persistentDataPath, customFilename);
+            }
+
+            if (!File.Exists(fileToLoad))
+            {
+                Debug.Log($"<color=yellow>[SaveManager]</color> No save file found at {fileToLoad}. Starting new game.");
                 return;
             }
 
             try {
-                Debug.Log($"<color=cyan>[SaveManager]</color> Loading game from {SaveFilePath}...");
+                Debug.Log($"<color=cyan>[SaveManager]</color> Loading game from {fileToLoad}...");
 
-                string json = File.ReadAllText(SaveFilePath);
+                string json = File.ReadAllText(fileToLoad);
                 GameSaveData data = JsonUtility.FromJson<GameSaveData>(json);
+
+                // [CRITICAL FIX] Clear existing status before loading to prevent duplication
+                if (WorkerSystem.Instance != null)
+                {
+                    WorkerSystem.Instance.ClearAllWorkers();
+                }
+
+                if (PopulationSystem.Instance != null)
+                {
+                    PopulationSystem.Instance.ResetRecruits();
+                }
 
                 // 1. Load Global State
                 if (DayNightSystem.Instance != null)

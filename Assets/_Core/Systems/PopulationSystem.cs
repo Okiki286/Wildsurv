@@ -6,6 +6,7 @@ using WildernessSurvival.Core.Events;
 using WildernessSurvival.Gameplay.Workers;
 using WildernessSurvival.Gameplay.Structures.Housing;
 using WildernessSurvival.Gameplay.Resources;
+using WildernessSurvival.Core.Managers;
 
 namespace WildernessSurvival.Core.Systems
 {
@@ -405,6 +406,13 @@ namespace WildernessSurvival.Core.Systems
 
         private void HandleDayStarted()
         {
+            // [NEW] Skip spawning if game is still booting/loading
+            if (GameManager.Instance != null && GameManager.Instance.IsBooting)
+            {
+                if (debugMode) Debug.Log("<color=yellow>[Population]</color> HandleDayStarted skipped: Game is booting.");
+                return;
+            }
+
             // Reset daily counters
             recruitsSpawnedToday = 0;
 
@@ -667,5 +675,10 @@ namespace WildernessSurvival.Core.Systems
             }
         }
 #endif
+        public void ResetRecruits()
+        {
+            queuedRecruits = 0;
+            if (debugMode) Debug.Log("<color=red>[Population]</color> Recruits reset to 0.");
+        }
     }
 }

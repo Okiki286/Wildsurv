@@ -210,7 +210,9 @@ namespace WildernessSurvival.Gameplay.Workers
                 TryAutoFindDayEvent();
             }
 
-            SpawnStartingWorkers();
+            // CRITICAL FIX: Worker spawning moved to GameManager.BootSequence()
+            // Start() now only initializes systems, does NOT spawn workers automatically.
+            // This prevents ghost workers when loading from save.
         }
 
         private void TryAutoFindDayEvent()
@@ -316,7 +318,12 @@ namespace WildernessSurvival.Gameplay.Workers
         // SPAWN LOGIC
         // ============================================
 
-        private void SpawnStartingWorkers()
+        /// <summary>
+        /// Initialize a new game by spawning starting workers.
+        /// Called by GameManager.BootSequence() for new games (no save file).
+        /// IMPORTANT: Only call this for NEW games, NOT when loading from save.
+        /// </summary>
+        public void InitializeNewGame()
         {
             if (availableWorkerTypes == null || availableWorkerTypes.Count == 0)
             {
@@ -327,7 +334,7 @@ namespace WildernessSurvival.Gameplay.Workers
             }
 
 #if UNITY_EDITOR
-            Debug.Log($"<color=cyan>[WorkerSystem]</color> Spawning {startingWorkerCount} starting workers...");
+            Debug.Log($"<color=cyan>[WorkerSystem]</color> InitializeNewGame: Spawning {startingWorkerCount} starting workers...");
 #endif
 
             for (int i = 0; i < startingWorkerCount; i++)
@@ -435,6 +442,16 @@ namespace WildernessSurvival.Gameplay.Workers
             instance.SetExperience(data.experience);
             instance.SetState((WorkerState)data.currentState);
 
+            // Restore Job
+            if (!string.IsNullOrEmpty(data.currentJobId))
+            {
+                var jobData = JobDatabase.Instance?.GetJobData(data.currentJobId);
+                if (jobData != null)
+                {
+                    instance.SetJob(jobData);
+                }
+            }
+
             // 3. Instantiate Visuals (Prefab)
             if (workerData.Prefab != null)
             {
@@ -451,7 +468,7 @@ namespace WildernessSurvival.Gameplay.Workers
 
                     // Add to physical tracking list
                     if (physicalWorkers == null) physicalWorkers = new List<WorkerController>();
-                    physicalWorkers.Add(controller);
+                    // physicalWorkers.Add(controller); // REMOVED: Controller.Awake calls RegisterWorker which already adds it safely
                 }
             }
 
@@ -997,6 +1014,37 @@ namespace WildernessSurvival.Gameplay.Workers
         public void UnregisterWorker(WorkerController worker)
         {
             if (physicalWorkers.Contains(worker)) physicalWorkers.Remove(worker);
+        }
+
+        /// <summary>
+        /// Completamente distrugge tutti i worker e pulisce le liste interne.
+        /// Chiamato da SaveManager prima di caricare un salvataggio.
+        /// </summary>
+        public void ClearAllWorkers()
+        {
+            Debug.Log("<color=red>[WorkerSystem]</color> ClearAllWorkers: destroying all worker gameobjects and clearing lists.");
+
+            // 1. Distruggi i gameobject fisici
+            foreach (var worker in physicalWorkers)
+            {
+                if (worker != null && worker.gameObject != null)
+                {
+                    Destroy(worker.gameObject);
+                }
+            }
+
+            // 2. Pulisci tutte le liste
+            allWorkerInstances.Clear();
+            physicalWorkers.Clear();
+            availableWorkers.Clear();
+            assignedWorkers.Clear();
+            _idleBuilders.Clear();
+            _pendingBuildStructures.Clear();
+
+            // 3. Reset flag foreman
+            _autoAssignDirty = false;
+
+            Debug.Log("<color=red>[WorkerSystem]</color> ClearAllWorkers: cleanup complete.");
         }
 
         // ============================================
