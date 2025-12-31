@@ -29,3 +29,13 @@ Assets/PolygonParticleFX/
 Assets/Synty/
 Assets/polyperfect/
 Assets/Universal Sound FX/
+
+# Android temporary build files
+**/.utmp/
+
+# Backup files
+*.backup
+*.backup.meta
+
+# Dummy file
+nul

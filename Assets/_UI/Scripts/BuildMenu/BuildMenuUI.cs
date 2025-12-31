@@ -75,6 +75,13 @@ namespace WildernessSurvival.UI
         [TitleGroup("Debug")]
         [SerializeField] private bool debugMode = true;
 
+        [TitleGroup("Mobile Build Fallback")]
+        [InfoBox("Se Resources.LoadAll fallisce, usa questa lista manuale (assegna nell'Inspector)", InfoMessageType.Warning)]
+        [SerializeField]
+        [AssetsOnly]
+        [Tooltip("Lista manuale di StructureData per Android build - RIEMPI QUESTA LISTA NELL'INSPECTOR!")]
+        private List<StructureData> manualStructuresList = new List<StructureData>();
+
         // ============================================
         // RUNTIME
         // ============================================
@@ -163,45 +170,103 @@ namespace WildernessSurvival.UI
         // CARICAMENTO STRUTTURE
         // ============================================
 
+        /// <summary>
+        /// Carica le strutture con strategia multi-fallback per Android.
+        /// 1. Resources.LoadAll("Data/Structures") - Percorso specifico
+        /// 2. Resources.LoadAll("") - Cerca in TUTTE le cartelle Resources
+        /// 3. manualStructuresList - Lista manuale dall'Inspector
+        /// 4. AssetDatabase (solo Editor) - Ultimo fallback
+        /// </summary>
         private void LoadStructures()
         {
             allStructures.Clear();
-            
-            // Carica tutte le StructureData dagli asset
+
+            Debug.Log("<color=cyan>[BuildMenu]</color> === LOADING STRUCTURES ===");
+
+            // STRATEGIA 1: Carica da Resources.LoadAll("Data/Structures")
             StructureData[] loaded = Resources.LoadAll<StructureData>("Data/Structures");
-            
-            if (loaded == null || loaded.Length == 0)
+            Debug.Log($"<color=cyan>[BuildMenu]</color> Strategy 1 (Data/Structures): Found {loaded?.Length ?? 0} structures");
+
+            if (loaded != null && loaded.Length > 0)
             {
-                // Fallback: cerca in tutto il progetto (solo Editor)
-                #if UNITY_EDITOR
-                string[] guids = UnityEditor.AssetDatabase.FindAssets("t:StructureData");
-                foreach (string guid in guids)
-                {
-                    string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
-                    StructureData data = UnityEditor.AssetDatabase.LoadAssetAtPath<StructureData>(path);
-                    if (data != null)
-                    {
-                        allStructures.Add(data);
-                    }
-                }
-                #endif
+                allStructures.AddRange(loaded);
+                Debug.Log($"<color=green>[BuildMenu]</color> ✓ Loaded {loaded.Length} structures from Resources/Data/Structures");
             }
             else
             {
-                allStructures.AddRange(loaded);
+                // STRATEGIA 2: Cerca in TUTTE le cartelle Resources (fallback per Android)
+                Debug.LogWarning("<color=yellow>[BuildMenu]</color> Strategy 1 failed, trying Strategy 2 (all Resources folders)...");
+                StructureData[] allResources = Resources.LoadAll<StructureData>("");
+                Debug.Log($"<color=cyan>[BuildMenu]</color> Strategy 2 (all Resources): Found {allResources?.Length ?? 0} structures");
+
+                if (allResources != null && allResources.Length > 0)
+                {
+                    allStructures.AddRange(allResources);
+                    Debug.Log($"<color=green>[BuildMenu]</color> ✓ Loaded {allResources.Length} structures from ALL Resources folders");
+                }
+                else
+                {
+                    // STRATEGIA 3: Lista manuale dall'Inspector (Android build fallback)
+                    Debug.LogWarning("<color=yellow>[BuildMenu]</color> Strategy 2 failed, trying Strategy 3 (manual list)...");
+                    if (manualStructuresList != null && manualStructuresList.Count > 0)
+                    {
+                        allStructures.AddRange(manualStructuresList);
+                        Debug.Log($"<color=green>[BuildMenu]</color> ✓ Loaded {manualStructuresList.Count} structures from MANUAL LIST (Inspector)");
+                    }
+                    else
+                    {
+                        // STRATEGIA 4: AssetDatabase (solo Editor)
+                        #if UNITY_EDITOR
+                        Debug.LogWarning("<color=yellow>[BuildMenu]</color> Strategy 3 failed, trying Strategy 4 (AssetDatabase - EDITOR ONLY)...");
+                        string[] guids = UnityEditor.AssetDatabase.FindAssets("t:StructureData");
+                        Debug.Log($"<color=cyan>[BuildMenu]</color> Strategy 4 (AssetDatabase): Found {guids?.Length ?? 0} GUIDs");
+
+                        foreach (string guid in guids)
+                        {
+                            string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
+                            StructureData data = UnityEditor.AssetDatabase.LoadAssetAtPath<StructureData>(path);
+                            if (data != null)
+                            {
+                                allStructures.Add(data);
+                            }
+                        }
+
+                        if (allStructures.Count > 0)
+                        {
+                            Debug.Log($"<color=green>[BuildMenu]</color> ✓ Loaded {allStructures.Count} structures from AssetDatabase (EDITOR)");
+                        }
+                        #else
+                        Debug.LogError("<color=red>[BuildMenu]</color> ✗ ALL STRATEGIES FAILED! NO STRUCTURES LOADED!");
+                        Debug.LogError("<color=red>[BuildMenu]</color> ANDROID BUILD FIX REQUIRED:");
+                        Debug.LogError("<color=red>[BuildMenu]</color> 1. Move StructureData files to: Assets/Resources/Data/Structures/");
+                        Debug.LogError("<color=red>[BuildMenu]</color> 2. OR assign structures manually in BuildMenuUI Inspector (manualStructuresList)");
+                        #endif
+                    }
+                }
             }
 
             // Ordina per tier e poi per nome
-            allStructures.Sort((a, b) => 
+            allStructures.Sort((a, b) =>
             {
                 int tierCompare = a.Tier.CompareTo(b.Tier);
                 if (tierCompare != 0) return tierCompare;
                 return a.DisplayName.CompareTo(b.DisplayName);
             });
 
-            if (debugMode)
+            // FINAL DEBUG LOG (critical for Android logcat)
+            Debug.Log($"<color=cyan>[BuildMenu]</color> === FINAL RESULT: {allStructures.Count} STRUCTURES LOADED ===");
+
+            if (allStructures.Count == 0)
             {
-                Debug.Log($"<color=cyan>[BuildMenuUI]</color> Caricate {allStructures.Count} strutture");
+                Debug.LogError("<color=red>[BuildMenu]</color> ⚠️ WARNING: BUILD MENU WILL BE EMPTY!");
+            }
+            else
+            {
+                // Log structure names for debugging
+                for (int i = 0; i < allStructures.Count; i++)
+                {
+                    Debug.Log($"<color=cyan>[BuildMenu]</color>   [{i}] {allStructures[i].DisplayName} ({allStructures[i].Category}) - Tier {allStructures[i].Tier}");
+                }
             }
         }
 

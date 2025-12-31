@@ -17,6 +17,7 @@ namespace WildernessSurvival.Core.Managers
         [Header("UI References")]
         [SerializeField] private TextMeshProUGUI subtitleText;
         [SerializeField] private Button restartButton;
+        [SerializeField] private Button mainMenuButton;
 
         // ============================================
         // LIFECYCLE
@@ -29,6 +30,12 @@ namespace WildernessSurvival.Core.Managers
             {
                 restartButton.onClick.AddListener(OnRestartClicked);
             }
+
+            // Setup main menu button
+            if (mainMenuButton != null)
+            {
+                mainMenuButton.onClick.AddListener(OnMainMenuClicked);
+            }
         }
 
         private void OnDestroy()
@@ -36,6 +43,11 @@ namespace WildernessSurvival.Core.Managers
             if (restartButton != null)
             {
                 restartButton.onClick.RemoveListener(OnRestartClicked);
+            }
+
+            if (mainMenuButton != null)
+            {
+                mainMenuButton.onClick.RemoveListener(OnMainMenuClicked);
             }
         }
 
@@ -85,20 +97,36 @@ namespace WildernessSurvival.Core.Managers
         private void OnRestartClicked()
         {
             Debug.Log("[GameOverUI] Restart button clicked!");
-            
-            // Usa GameManager per riavviare
-            if (GameManager.Instance != null)
+
+            if (GameFlowManager.Instance != null)
+            {
+                GameFlowManager.Instance.RestartGame();
+            }
+            else if (GameManager.Instance != null)
             {
                 GameManager.Instance.RestartGame();
             }
             else
             {
-                // Fallback: ricarica scena direttamente
-                Debug.LogWarning("[GameOverUI] GameManager.Instance is null, reloading scene directly.");
+                Debug.LogWarning("[GameOverUI] No manager found, reloading scene directly.");
                 Time.timeScale = 1f;
                 UnityEngine.SceneManagement.SceneManager.LoadScene(
                     UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex
                 );
+            }
+        }
+
+        private void OnMainMenuClicked()
+        {
+            Debug.Log("[GameOverUI] Main Menu button clicked!");
+
+            if (GameFlowManager.Instance != null)
+            {
+                GameFlowManager.Instance.LoadMainMenu();
+            }
+            else
+            {
+                Debug.LogError("[GameOverUI] GameFlowManager not found! Cannot load Main Menu.");
             }
         }
     }

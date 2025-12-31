@@ -1543,7 +1543,7 @@ namespace WildernessSurvival.Gameplay.Structures
                 }
 
                 // Release any work slot the worker may have reserved
-                ReleaseWorkSlot(worker);
+                this.ReleaseWorkSlot(worker);
 
                 worker.Unassign();
 
@@ -1649,6 +1649,7 @@ namespace WildernessSurvival.Gameplay.Structures
             if (buildProgress >= 0.5f) return Color.yellow;
             return Color.red;
         }
+#endif
 
         // ============================================
         // WORKER POSITIONING
@@ -1873,7 +1874,6 @@ namespace WildernessSurvival.Gameplay.Structures
                 $"Production Rate: {currentProductionRate:F1}/min\n" +
                 $"Build Progress: {buildProgress:P0}");
         }
-#endif
 
         // ============================================
         // SAVE/LOAD RESTORATION

@@ -646,7 +646,14 @@ namespace WildernessSurvival.Core.Managers
             {
                 Debug.LogWarning("[GameManager] victoryUI is not assigned! Cannot show Victory screen.");
             }
-        }
+        
+
+            // Delegate to GameFlowManager for global state
+            if (GameFlowManager.Instance != null)
+            {
+                GameFlowManager.Instance.TriggerVictory();
+            }
+}
 
         // ============================================
         // RESET / RESTART

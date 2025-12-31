@@ -53,6 +53,32 @@ namespace WildernessSurvival.Core.Managers
             OnStateChanged = null;
         }
 
+        /// <summary>
+        /// Auto-crea il GameFlowManager prima del caricamento di qualsiasi scena.
+        /// Questo garantisce che persista anche quando si ricarica la scena corrente.
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void AutoCreate()
+        {
+            // Se già esiste un'istanza (es. da GameObject in scena), usa quella
+            if (Instance != null)
+            {
+                return;
+            }
+
+            // Cerca se esiste già un GameFlowManager nella scena
+            GameFlowManager existing = FindFirstObjectByType<GameFlowManager>();
+            if (existing != null)
+            {
+                return; // Verrà inizializzato tramite Awake()
+            }
+
+            // Auto-crea se non esiste
+            GameObject go = new GameObject("--- GAME FLOW --- (Auto)");
+            go.AddComponent<GameFlowManager>();
+            Debug.Log("<color=cyan>[GameFlowManager]</color> ⚙️ Auto-created before scene load (persistent)");
+        }
+
         // ============================================
         // EVENTS
         // ============================================
@@ -79,7 +105,7 @@ namespace WildernessSurvival.Core.Managers
         [SerializeField] private string mainMenuSceneName = "MainMenu";
 
         [Tooltip("Nome della scena Gameplay. Se vuoto, usa gameplaySceneIndex.")]
-        [SerializeField] private string gameplaySceneName = "Game";
+        [SerializeField] private string gameplaySceneName = "test2";
 
         [Header("Scene Indices (Fallback if names empty)")]
         [Tooltip("Build index della scena Main Menu (tipicamente 0)")]
@@ -388,6 +414,27 @@ namespace WildernessSurvival.Core.Managers
             }
 
             isTransitioning = false;
+        }
+
+        /// <summary>
+        /// Esce dall'applicazione.
+        /// In editor: stoppa Play Mode.
+        /// In build: chiude l'applicazione.
+        /// </summary>
+        public void QuitGame()
+        {
+            if (debugMode)
+            {
+                Debug.Log("[GameFlowManager] Quitting game...");
+            }
+
+#if UNITY_EDITOR
+            Debug.Log("[GameFlowManager] Stopping Play Mode (Editor)");
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Debug.Log("[GameFlowManager] Quitting application");
+            Application.Quit();
+#endif
         }
 
         // ============================================
