@@ -4,7 +4,9 @@ using System.Collections;
 using WildernessSurvival.Core.Events;
 using WildernessSurvival.Core.Systems;
 using WildernessSurvival.Core.StateMachines;
+using WildernessSurvival.Core.Utils;
 using WildernessSurvival.Gameplay.Resources;
+using WildernessSurvival.Gameplay.Core;
 using Wilderness.Core;
 
 namespace WildernessSurvival.Core.Managers
@@ -78,6 +80,9 @@ namespace WildernessSurvival.Core.Managers
         [Tooltip("Riferimento al Canvas/Panel Game Over. Se null, verrà solo loggato.")]
         [SerializeField] private GameObject gameOverUI;
 
+        [Tooltip("Riferimento al Canvas/Panel Victory. Se null, verrà solo loggato.")]
+        [SerializeField] private GameObject victoryUI;
+
         [TitleGroup("Debug")]
         [HorizontalGroup("Debug/Row1")]
         [ToggleLeft]
@@ -109,9 +114,17 @@ namespace WildernessSurvival.Core.Managers
 
         [ShowInInspector]
         [ReadOnly]
+        [HorizontalGroup("Runtime Status/Row1")]
+        private bool isGameOver = false;
+
+        [ShowInInspector]
+        [ReadOnly]
         [HorizontalGroup("Runtime Status/Row2")]
         [Tooltip("Boot sequence completion status")]
         private bool bootSequenceComplete = false;
+
+        // Waystone reference for event subscription
+        private WaystoneBeaconController waystoneBeacon;
 
         public bool IsBooting => !bootSequenceComplete;
 
@@ -121,6 +134,7 @@ namespace WildernessSurvival.Core.Managers
 
         public bool IsInitialized => isInitialized;
         public bool IsPaused => isPaused;
+        public bool IsGameOver => isGameOver;
         public DayNightSystem DayNight => dayNightSystem;
         public ResourceSystem Resources => resourceSystem;
 
@@ -247,9 +261,18 @@ namespace WildernessSurvival.Core.Managers
                 Debug.Log($"<color=yellow>[GameManager]</color> [BOOT] Phase 3: Yielding WaitForEndOfFrame... | Frame={Time.frameCount}");
             }
 
-            yield return new WaitForEndOfFrame();
+            // ✅ OPTIMIZATION: Use cached WaitForEndOfFrame (zero allocation)
+            yield return CoroutineCache.WaitEndOfFrame;
 
-            // PHASE 3: BRANCHING LOGIC - Load Game OR Initialize New Game
+            // PHASE 3.5: Wire Waystone OnDestroyed Event
+            // Now that all Start() methods have completed, we can safely access the Waystone
+            if (debugBootSequence)
+            {
+                Debug.Log($"<color=lime>[GameManager]</color> [BOOT] Phase 3.5: Wiring Waystone Event | Frame={Time.frameCount}");
+            }
+            WireWaystoneEvents();
+
+            // PHASE 4: BRANCHING LOGIC - Load Game OR Initialize New Game
             // CRITICAL FIX: This prevents ghost workers by checking for save file BEFORE spawning.
             // Branch A: Save file exists → Load saved workers
             // Branch B: No save file → Spawn starting workers
@@ -429,6 +452,78 @@ namespace WildernessSurvival.Core.Managers
         }
 
         // ============================================
+        // WAYSTONE EVENT WIRING
+        // ============================================
+
+        /// <summary>
+        /// Wire Waystone OnDestroyed event to GameManager's TriggerGameOver
+        /// </summary>
+        private void WireWaystoneEvents()
+        {
+            // Get Waystone reference from CoreTargetProvider
+            waystoneBeacon = CoreTargetProvider.GetCoreController();
+
+            if (waystoneBeacon != null)
+            {
+                // Subscribe to OnDestroyed event
+                waystoneBeacon.OnDestroyed += OnWaystoneDestroyed;
+
+                if (debugMode)
+                {
+                    Debug.Log($"<color=green>[GameManager]</color> Waystone event wired: {waystoneBeacon.name}");
+                }
+            }
+            else
+            {
+                Debug.LogWarning("[GameManager] Waystone not found at boot! Will attempt late binding when Waystone is built.");
+            }
+        }
+
+        /// <summary>
+        /// Public method to allow late binding when Waystone is constructed at runtime
+        /// </summary>
+        public void TryWireWaystone(WaystoneBeaconController waystone)
+        {
+            if (waystone == null) return;
+
+            // Unwire previous if any
+            UnwireWaystoneEvents();
+
+            // Wire new waystone
+            waystoneBeacon = waystone;
+            waystoneBeacon.OnDestroyed += OnWaystoneDestroyed;
+
+            if (debugMode)
+            {
+                Debug.Log($"<color=green>[GameManager]</color> Late-bound Waystone event: {waystoneBeacon.name}");
+            }
+        }
+
+        /// <summary>
+        /// Unwire Waystone events (cleanup)
+        /// </summary>
+        private void UnwireWaystoneEvents()
+        {
+            if (waystoneBeacon != null)
+            {
+                waystoneBeacon.OnDestroyed -= OnWaystoneDestroyed;
+
+                if (debugMode)
+                {
+                    Debug.Log("<color=gray>[GameManager]</color> Waystone event unwired.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Event handler for Waystone destruction
+        /// </summary>
+        private void OnWaystoneDestroyed()
+        {
+            TriggerGameOver("Waystone Destroyed");
+        }
+
+        // ============================================
         // PAUSA
         // ============================================
 
@@ -495,12 +590,19 @@ namespace WildernessSurvival.Core.Managers
         [GUIColor(0.9f, 0.3f, 0.3f)]
         public void TriggerGameOver(string reason = "Base Destroyed")
         {
+            if (isGameOver) return; // Prevent multiple triggers
+
             Debug.Log($"<color=red>[GameManager] GAME OVER: {reason}</color>");
-            Debug.Log("GAME OVER: Waystone Destroyed!");
+
+            // Set game over state
+            isGameOver = true;
+            isPaused = true;
 
             // Pause the game
             Time.timeScale = 0f;
-            isPaused = true;
+
+            // Pause DayNightSystem
+            dayNightSystem?.SetPaused(true);
 
             // Raise the GameEvent for any subscribers
             onGameOver?.Raise();
@@ -521,9 +623,29 @@ namespace WildernessSurvival.Core.Managers
         [GUIColor(0.4f, 0.9f, 0.4f)]
         public void TriggerVictory()
         {
-            Debug.Log("<color=green>[GameManager] VITTORIA!</color>");
+            if (isGameOver) return; // Prevent multiple triggers
 
-            // TODO: Mostra schermata vittoria
+            Debug.Log("<color=green>[GameManager] 🏆 VICTORY! You survived!</color>");
+
+            // Set game over state (victory is also a game end state)
+            isGameOver = true;
+            isPaused = true;
+
+            // Pause the game
+            Time.timeScale = 0f;
+
+            // Pause DayNightSystem
+            dayNightSystem?.SetPaused(true);
+
+            // Show Victory UI
+            if (victoryUI != null)
+            {
+                victoryUI.SetActive(true);
+            }
+            else
+            {
+                Debug.LogWarning("[GameManager] victoryUI is not assigned! Cannot show Victory screen.");
+            }
         }
 
         // ============================================
@@ -539,6 +661,7 @@ namespace WildernessSurvival.Core.Managers
 
             Time.timeScale = 1f;
             isPaused = false;
+            isGameOver = false;
             isInitialized = false;
             bootSequenceComplete = false;
 
@@ -611,6 +734,9 @@ namespace WildernessSurvival.Core.Managers
 
         private void OnDestroy()
         {
+            // Cleanup event subscriptions
+            UnwireWaystoneEvents();
+
             if (Instance == this)
             {
                 Instance = null;

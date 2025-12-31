@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using UnityEngine.Pool; // ✨ Native pooling API (Unity 2021+)
 using Sirenix.OdinInspector;
 using System.Collections.Generic;
 using WildernessSurvival.Gameplay.Structures;
@@ -11,6 +12,7 @@ namespace WildernessSurvival.Gameplay.Workers
     /// <summary>
     /// Sistema centrale per la gestione dei worker.
     /// Gestisce spawn, assegnazione, job e tick loop.
+    /// OPTIMIZATION: Uses UnityEngine.Pool for zero-allocation worker lifecycle.
     /// </summary>
     public class WorkerSystem : MonoBehaviour
     {
@@ -28,6 +30,29 @@ namespace WildernessSurvival.Gameplay.Workers
         [SerializeField]
         [Range(1, 10)]
         private int startingWorkerCount = 3;
+
+        // ============================================
+        // OBJECT POOLING (GC OPTIMIZATION)
+        // ============================================
+
+        [TitleGroup("Pooling Settings")]
+        [SerializeField]
+        [Tooltip("Parent transform per worker pooled (mantiene gerarchia pulita)")]
+        private Transform workerPoolContainer;
+
+        [SerializeField]
+        [Range(0, 20)]
+        [Tooltip("Numero di worker pre-allocati per tipo all'avvio (riduce spike iniziali)")]
+        private int poolPrewarmCount = 5;
+
+        [SerializeField]
+        [Range(10, 200)]
+        [Tooltip("Limite massimo di worker nel pool per tipo (safety cap)")]
+        private int poolMaxSize = 100;
+
+        [ShowInInspector, ReadOnly]
+        [InfoBox("Native Unity ObjectPool per ogni WorkerData. Zero-allocation lifecycle.", InfoMessageType.None)]
+        private Dictionary<string, ObjectPool<WorkerController>> workerPools = new Dictionary<string, ObjectPool<WorkerController>>();
 
         // ============================================
         // JOB DATABASE
@@ -112,6 +137,115 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             if (Instance == null) Instance = this;
             else Destroy(gameObject);
+
+            // Initialize worker pools
+            InitializeWorkerPools();
+        }
+
+        /// <summary>
+        /// Inizializza i pool nativi Unity per ogni tipo di worker.
+        /// Pre-alloca worker se poolPrewarmCount > 0.
+        /// </summary>
+        private void InitializeWorkerPools()
+        {
+            // Create pool container if not assigned
+            if (workerPoolContainer == null)
+            {
+                GameObject poolObj = new GameObject("_WorkerPools");
+                poolObj.transform.SetParent(transform);
+                workerPoolContainer = poolObj.transform;
+            }
+
+            if (availableWorkerTypes == null || availableWorkerTypes.Count == 0)
+            {
+                Debug.LogWarning("[WorkerSystem] No worker types configured for pooling!");
+                return;
+            }
+
+            foreach (var workerData in availableWorkerTypes)
+            {
+                if (workerData == null || workerData.Prefab == null) continue;
+
+                // Validate prefab has WorkerController
+                var prefabController = workerData.Prefab.GetComponent<WorkerController>();
+                if (prefabController == null)
+                {
+                    Debug.LogError($"[WorkerSystem] WorkerData '{workerData.WorkerId}' prefab missing WorkerController! Skipping pool.");
+                    continue;
+                }
+
+                // Create native Unity ObjectPool
+                var pool = new ObjectPool<WorkerController>(
+                    createFunc: () => CreateWorkerGameObject(workerData.Prefab),
+                    actionOnGet: (worker) => OnGetWorkerFromPool(worker),
+                    actionOnRelease: (worker) => OnReleaseWorkerToPool(worker),
+                    actionOnDestroy: (worker) => OnDestroyPooledWorker(worker),
+                    collectionCheck: false, // Disable duplicate check in Release builds for performance
+                    defaultCapacity: poolPrewarmCount,
+                    maxSize: poolMaxSize
+                );
+
+                workerPools.Add(workerData.WorkerId, pool);
+
+                // Pre-warm pool if configured
+                if (poolPrewarmCount > 0)
+                {
+                    List<WorkerController> tempList = new List<WorkerController>(poolPrewarmCount);
+                    for (int i = 0; i < poolPrewarmCount; i++)
+                    {
+                        tempList.Add(pool.Get());
+                    }
+                    foreach (var worker in tempList)
+                    {
+                        pool.Release(worker);
+                    }
+                    Debug.Log($"<color=cyan>[WorkerSystem]</color> Pre-warmed pool for '{workerData.WorkerId}' with {poolPrewarmCount} workers");
+                }
+            }
+
+            Debug.Log($"<color=green>[WorkerSystem]</color> Initialized {workerPools.Count} worker pools (capacity: {poolPrewarmCount}, max: {poolMaxSize})");
+        }
+
+        /// <summary>
+        /// Factory method per creare il GameObject fisico del worker.
+        /// Chiamato dal pool quando serve una nuova istanza.
+        /// </summary>
+        private WorkerController CreateWorkerGameObject(GameObject prefab)
+        {
+            GameObject workerObj = Instantiate(prefab, workerPoolContainer);
+            workerObj.SetActive(false); // Inattivo finché non viene Get()
+            return workerObj.GetComponent<WorkerController>();
+        }
+
+        /// <summary>
+        /// Callback chiamato quando un worker viene preso dal pool.
+        /// </summary>
+        private void OnGetWorkerFromPool(WorkerController worker)
+        {
+            worker.gameObject.SetActive(true);
+            // Position/rotation impostati dal chiamante (CreateWorkerInstance)
+        }
+
+        /// <summary>
+        /// Callback chiamato quando un worker viene rilasciato al pool.
+        /// </summary>
+        private void OnReleaseWorkerToPool(WorkerController worker)
+        {
+            worker.gameObject.SetActive(false);
+            worker.transform.SetParent(workerPoolContainer);
+            worker.transform.localPosition = Vector3.zero;
+            worker.transform.localRotation = Quaternion.identity;
+        }
+
+        /// <summary>
+        /// Callback chiamato quando un worker supera il pool maxSize e viene distrutto.
+        /// </summary>
+        private void OnDestroyPooledWorker(WorkerController worker)
+        {
+            if (worker != null && worker.gameObject != null)
+            {
+                Destroy(worker.gameObject);
+            }
         }
 
         private void OnEnable()
@@ -132,8 +266,20 @@ namespace WildernessSurvival.Gameplay.Workers
             }
         }
 
+        /// <summary>
+        /// Clears all worker pools and destroys pooled objects.
+        /// Called on application quit or scene unload.
+        /// </summary>
         private void OnDestroy()
         {
+            // Clear worker pools
+            foreach (var pool in workerPools.Values)
+            {
+                pool.Clear();
+            }
+            workerPools.Clear();
+
+            // Clear event queues
             _pendingBuildStructures.Clear();
             _idleBuilders.Clear();
             _autoAssignDirty = false;
@@ -359,6 +505,10 @@ namespace WildernessSurvival.Gameplay.Workers
             }
         }
 
+        /// <summary>
+        /// Creates a new worker instance using object pooling.
+        /// OPTIMIZATION: Uses UnityEngine.Pool instead of Instantiate/Destroy.
+        /// </summary>
         public WorkerInstance CreateWorkerInstance(WorkerData data)
         {
             if (data == null) return null;
@@ -372,11 +522,24 @@ namespace WildernessSurvival.Gameplay.Workers
             if (data.Prefab != null)
             {
                 Vector3 spawnPos = GetRandomSpawnPosition();
-                GameObject workerObj = Instantiate(data.Prefab, spawnPos, Quaternion.identity);
-                workerObj.name = $"Worker_{data.DisplayName}_{newWorker.InstanceId.Substring(0, 4)}";
 
+                // ✅ GET FROM POOL instead of Instantiate
+                WorkerController controller = null;
+                if (workerPools.TryGetValue(data.WorkerId, out var pool))
+                {
+                    controller = pool.Get();
+                    controller.transform.SetPositionAndRotation(spawnPos, Quaternion.identity);
+                    controller.gameObject.name = $"Worker_{data.DisplayName}_{newWorker.InstanceId.Substring(0, 4)}";
+                }
+                else
+                {
+                    // Fallback: pool non trovato, usa Instantiate (non dovrebbe succedere)
+                    Debug.LogWarning($"[WorkerSystem] Pool not found for '{data.WorkerId}', falling back to Instantiate");
+                    GameObject workerObj = Instantiate(data.Prefab, spawnPos, Quaternion.identity);
+                    workerObj.name = $"Worker_{data.DisplayName}_{newWorker.InstanceId.Substring(0, 4)}";
+                    controller = workerObj.GetComponent<WorkerController>();
+                }
 
-                WorkerController controller = workerObj.GetComponent<WorkerController>();
                 if (controller != null)
                 {
                     newWorker.PhysicalWorker = controller;
@@ -385,7 +548,7 @@ namespace WildernessSurvival.Gameplay.Workers
                     spawnSuccessful = true;
 
 #if UNITY_EDITOR
-                    Debug.Log($"<color=green>[WorkerSystem]</color> Spawned {data.DisplayName} at {spawnPos}");
+                    Debug.Log($"<color=green>[WorkerSystem]</color> Spawned {data.DisplayName} at {spawnPos} (pooled)");
 #endif
                 }
                 else
@@ -1017,19 +1180,64 @@ namespace WildernessSurvival.Gameplay.Workers
         }
 
         /// <summary>
+        /// Destroys a single worker instance and returns it to the pool.
+        /// OPTIMIZATION: Uses pool.Release() instead of Destroy().
+        /// </summary>
+        /// <param name="worker">Worker instance to destroy</param>
+        public void DestroyWorkerInstance(WorkerInstance worker)
+        {
+            if (worker == null) return;
+
+            // Unregister from all lists
+            allWorkerInstances.Remove(worker);
+            availableWorkers.Remove(worker);
+            assignedWorkers.Remove(worker);
+            _idleBuilders.Remove(worker);
+
+            if (worker.PhysicalWorker != null)
+            {
+                UnregisterWorker(worker.PhysicalWorker);
+
+                // ✅ RELEASE TO POOL instead of Destroy
+                if (worker.Data != null && workerPools.TryGetValue(worker.Data.WorkerId, out var pool))
+                {
+                    pool.Release(worker.PhysicalWorker);
+#if UNITY_EDITOR
+                    Debug.Log($"<color=cyan>[WorkerSystem]</color> Released {worker.CustomName} to pool");
+#endif
+                }
+                else
+                {
+                    // Fallback: pool non trovato, usa Destroy
+                    Debug.LogWarning($"[WorkerSystem] Pool not found for worker, falling back to Destroy");
+                    Destroy(worker.PhysicalWorker.gameObject);
+                }
+            }
+        }
+
+        /// <summary>
         /// Completamente distrugge tutti i worker e pulisce le liste interne.
         /// Chiamato da SaveManager prima di caricare un salvataggio.
+        /// OPTIMIZATION: Returns workers to pools instead of destroying them.
         /// </summary>
         public void ClearAllWorkers()
         {
-            Debug.Log("<color=red>[WorkerSystem]</color> ClearAllWorkers: destroying all worker gameobjects and clearing lists.");
+            Debug.Log("<color=red>[WorkerSystem]</color> ClearAllWorkers: clearing all workers and returning to pools.");
 
-            // 1. Distruggi i gameobject fisici
-            foreach (var worker in physicalWorkers)
+            // 1. Return all workers to their respective pools
+            foreach (var workerInstance in allWorkerInstances)
             {
-                if (worker != null && worker.gameObject != null)
+                if (workerInstance?.PhysicalWorker != null && workerInstance.Data != null)
                 {
-                    Destroy(worker.gameObject);
+                    if (workerPools.TryGetValue(workerInstance.Data.WorkerId, out var pool))
+                    {
+                        pool.Release(workerInstance.PhysicalWorker);
+                    }
+                    else
+                    {
+                        // Fallback: destroy if pool not found
+                        Destroy(workerInstance.PhysicalWorker.gameObject);
+                    }
                 }
             }
 

@@ -5,19 +5,21 @@ using System.Collections.Generic;
 using Sirenix.OdinInspector;
 using WildernessSurvival.Gameplay.Structures;
 using WildernessSurvival.Gameplay.Resources;
+using WildernessSurvival.UI.Pooling;
 
 namespace WildernessSurvival.UI
 {
     /// <summary>
     /// UI principale per il menu di costruzione.
     /// Mostra strutture disponibili, costi, e gestisce selezione.
+    /// OPTIMIZATION: Uses UIElementPool for button lifecycle (zero-allocation menu open/close).
     /// </summary>
     public class BuildMenuUI : MonoBehaviour
     {
         // ============================================
         // SINGLETON
         // ============================================
-        
+
         public static BuildMenuUI Instance { get; private set; }
 
         // ============================================
@@ -27,12 +29,19 @@ namespace WildernessSurvival.UI
         [TitleGroup("Riferimenti UI")]
         [Required]
         [SerializeField] private GameObject buildMenuPanel;
-        
+
         [Required]
         [SerializeField] private Transform structureButtonsContainer;
-        
+
         [Required]
         [SerializeField] private GameObject structureButtonPrefab;
+
+        [TitleGroup("Pooling (GC Optimization)")]
+        [InfoBox("UIElementPool elimina allocazioni GC quando ricarichi strutture o filtri categorie", InfoMessageType.Info)]
+        [SerializeField]
+        [ChildGameObjectsOnly]
+        [Tooltip("Pool component per i bottoni (auto-created se non assegnato)")]
+        private UIElementPool buttonPool;
 
         [TitleGroup("Tooltip")]
         [SerializeField] private GameObject tooltipPanel;
@@ -200,15 +209,31 @@ namespace WildernessSurvival.UI
         // CREAZIONE BOTTONI
         // ============================================
 
+        /// <summary>
+        /// Creates or reuses buttons from pool for all structures.
+        /// OPTIMIZATION: Uses UIElementPool instead of Destroy + Instantiate.
+        /// </summary>
         private void CreateButtons()
         {
-            // Pulisci bottoni esistenti
-            foreach (var btn in structureButtons)
+            // Initialize pool if not assigned
+            if (buttonPool == null)
             {
-                if (btn != null)
+                // Check if pool component already exists on container
+                buttonPool = structureButtonsContainer.GetComponent<UIElementPool>();
+                if (buttonPool == null)
                 {
-                    Destroy(btn.gameObject);
+                    // Create pool component automatically
+                    GameObject poolObj = new GameObject("ButtonPool");
+                    poolObj.transform.SetParent(structureButtonsContainer, false);
+                    buttonPool = poolObj.AddComponent<UIElementPool>();
+                    Debug.Log("<color=yellow>[BuildMenuUI]</color> Auto-created UIElementPool for buttons");
                 }
+            }
+
+            // ✅ RETURN ALL BUTTONS TO POOL (instead of Destroy)
+            if (buttonPool != null)
+            {
+                buttonPool.ReturnAll();
             }
             structureButtons.Clear();
 
@@ -224,27 +249,40 @@ namespace WildernessSurvival.UI
                 return;
             }
 
-            // Crea bottone per ogni struttura
+            // ✅ GET BUTTONS FROM POOL (instead of Instantiate)
             for (int i = 0; i < allStructures.Count; i++)
             {
                 StructureData data = allStructures[i];
-                GameObject buttonObj = Instantiate(structureButtonPrefab, structureButtonsContainer);
-                buttonObj.SetActive(true);
-                buttonObj.name = $"Btn_{data.DisplayName}";
-                
-                BuildMenuButton button = buttonObj.GetComponent<BuildMenuButton>();
-                if (button == null)
+
+                // Get from pool
+                BuildMenuButton button = null;
+                if (buttonPool != null)
                 {
-                    button = buttonObj.AddComponent<BuildMenuButton>();
+                    button = buttonPool.Get<BuildMenuButton>();
+                }
+                else
+                {
+                    // Fallback to Instantiate if pool unavailable
+                    GameObject buttonObj = Instantiate(structureButtonPrefab, structureButtonsContainer);
+                    button = buttonObj.GetComponent<BuildMenuButton>();
                 }
 
-                button.Initialize(data, i + 1, OnStructureSelected, OnStructureHover, OnStructureHoverExit);
-                structureButtons.Add(button);
+                if (button != null)
+                {
+                    button.gameObject.SetActive(true);
+                    button.gameObject.name = $"Btn_{data.DisplayName}";
+                    button.Initialize(data, i + 1, OnStructureSelected, OnStructureHover, OnStructureHoverExit);
+                    structureButtons.Add(button);
+                }
+                else
+                {
+                    Debug.LogError($"[BuildMenuUI] Failed to create button for {data.DisplayName}");
+                }
             }
 
             if (debugMode)
             {
-                Debug.Log($"<color=cyan>[BuildMenuUI]</color> Creati {structureButtons.Count} bottoni");
+                Debug.Log($"<color=cyan>[BuildMenuUI]</color> Created {structureButtons.Count} buttons (pooled)");
             }
         }
 

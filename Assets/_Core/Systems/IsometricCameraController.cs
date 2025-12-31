@@ -1,4 +1,5 @@
 using UnityEngine;
+using WildernessSurvival.Core.Managers;
 
 namespace WildernessSurvival.Core.Systems
 {
@@ -147,6 +148,15 @@ namespace WildernessSurvival.Core.Systems
 
         private void HandleInput()
         {
+            // Guard Clause: Block input when game is paused or game over
+            if (GameManager.Instance != null)
+            {
+                if (GameManager.Instance.IsPaused || GameManager.Instance.IsGameOver)
+                {
+                    return;
+                }
+            }
+
             // Determina se siamo su mobile o PC
             bool isMobile = Input.touchCount > 0;
 

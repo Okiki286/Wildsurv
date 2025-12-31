@@ -112,12 +112,26 @@ namespace WildernessSurvival.Gameplay.Core
         {
             // Cache riferimenti visuali se esistono
             CacheVisualReferences();
-            
+
             // Sottoscrivi ai GameEvent se assegnati
             SubscribeToEvents();
-            
+
             // Imposta stato iniziale (assume giorno)
             SetDayMode();
+
+            // Late binding: Register with GameManager if it exists
+            TryRegisterWithGameManager();
+        }
+
+        /// <summary>
+        /// Attempts to register this Waystone with the GameManager for Game Over event wiring
+        /// </summary>
+        private void TryRegisterWithGameManager()
+        {
+            if (GameManager.Instance != null)
+            {
+                GameManager.Instance.TryWireWaystone(this);
+            }
         }
 
         private void OnDestroy()
@@ -370,36 +384,27 @@ namespace WildernessSurvival.Gameplay.Core
         private void Die()
         {
             if (isDestroyed) return;
-            
+
             isDestroyed = true;
-            
-            Debug.Log("<color=red>[WaystoneBeacon]</color> ⚠️ BEACON DISTRUTTO! Game Over imminente...");
-            
+
+            Debug.Log("<color=red>[WaystoneBeacon]</color> ⚠️ BEACON DISTRUTTO!");
+
+            // Notify subscribers via event (GameManager will subscribe to this)
             OnDestroyed?.Invoke();
-            
-            // Trigger Game Over via GameManager
-            if (GameManager.Instance != null)
-            {
-                GameManager.Instance.TriggerGameOver("Waystone Destroyed");
-            }
-            else
-            {
-                Debug.LogError("[WaystoneBeacon] GameManager.Instance is null! Cannot trigger Game Over.");
-            }
-            
+
             // Disabilita collider
             Collider col = GetComponent<Collider>();
             if (col != null)
             {
                 col.enabled = false;
             }
-            
+
             // Spegni luce
             if (beaconLight != null)
             {
                 beaconLight.enabled = false;
             }
-            
+
             // Riduci scala cristallo (effetto "distruzione")
             if (crystalTransform != null)
             {
