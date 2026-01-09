@@ -247,7 +247,8 @@ MonoBehaviour:
   background: {fileID: 4237356657312417939}
   fill: {fileID: 4788075035612232599}
   percentageText: {fileID: 5753985755128487968}
-  heightOffset: 1.5
+  heightOffset: 0.25
+  forwardOffset: 2.65
   barWidth: 150
   barHeight: 15
   backgroundColor: {r: 0, g: 0, b: 0, a: 0.8}

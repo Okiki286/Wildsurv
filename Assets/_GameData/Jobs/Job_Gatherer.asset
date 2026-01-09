@@ -19,15 +19,20 @@ MonoBehaviour:
   role: 1
   jobColor: {r: 1, g: 1, b: 1, a: 1}
   visualSet:
-    fullBodyMesh: {fileID: 4300026, guid: 9d545e43681431348908eab98e78aa45, type: 3}
-    fullBodyAnimatorOverride: {fileID: 9100000, guid: 6937849fa19d2aa43bf484d3b5acda1e, type: 2}
-    headMesh: {fileID: 0}
-    bodyMesh: {fileID: 0}
+    fullBodyMesh: {fileID: 0}
+    fullBodyAnimatorOverride: {fileID: 9100000, guid: 39aa1412544a0644284f02765d54b1d8, type: 2}
+    headMesh: {fileID: -7466175063336164215, guid: bcbe34929ca3a8c4ea71ebd20a5e21fd, type: 3}
+    bodyMesh: {fileID: 667887365956100694, guid: eea597ad4cc900640a65634ba85bca2b, type: 3}
     legsMesh: {fileID: 0}
-    toolPrefab: {fileID: 203093951140853599, guid: 02233d3c799d9b746bcfa1a8b34a3ade, type: 3}
+    leftLegMesh: {fileID: 3330980711516836329, guid: eea597ad4cc900640a65634ba85bca2b, type: 3}
+    rightLegMesh: {fileID: 3330980711516836329, guid: eea597ad4cc900640a65634ba85bca2b, type: 3}
+    leftArmMesh: {fileID: -7485045898510330406, guid: eea597ad4cc900640a65634ba85bca2b, type: 3}
+    rightArmMesh: {fileID: -1285621575422218753, guid: eea597ad4cc900640a65634ba85bca2b, type: 3}
+    accessoryMesh: {fileID: 7981414054652206969, guid: eaadf767585fdf94fbb88ddccfcac126, type: 3}
+    toolPrefab: {fileID: 919132149155446097, guid: 219f895202bebcb4d81d24c0bd326ec7, type: 3}
     toolPositionOffset: {x: 0, y: 0, z: 0}
     toolRotationOffset: {x: 0, y: 0, z: 0}
-    animatorController: {fileID: 9100000, guid: 6937849fa19d2aa43bf484d3b5acda1e, type: 2}
+    animatorController: {fileID: 9100000, guid: 39aa1412544a0644284f02765d54b1d8, type: 2}
     roleColorTint: {r: 1, g: 1, b: 1, a: 1}
     bodyMaterialOverride: {fileID: 0}
     accessoryMaterialOverride: {fileID: 0}

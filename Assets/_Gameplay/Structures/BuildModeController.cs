@@ -166,7 +166,14 @@ namespace WildernessSurvival.Gameplay.Structures
             // Place structure
             if (Input.GetMouseButtonDown(0)) // Left click
             {
-                TryPlaceStructure();
+                // ═══════════════════════════════════════════════════════════
+                // CRITICAL FIX: Ignore clicks on UI elements
+                // Previene placement quando si clicca sul button Cancel
+                // ═══════════════════════════════════════════════════════════
+                if (!UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
+                {
+                    TryPlaceStructure();
+                }
             }
 
             // Cancel build mode

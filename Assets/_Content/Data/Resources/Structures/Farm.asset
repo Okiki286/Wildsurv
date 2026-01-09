@@ -21,6 +21,7 @@ MonoBehaviour:
   tier: 1
   maxLevel: 3
   isUnique: 0
+  isBaseCenter: 0
   buildCosts:
   - resourceId: warmwood
     amount: 60

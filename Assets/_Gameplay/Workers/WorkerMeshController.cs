@@ -53,8 +53,30 @@ namespace WildernessSurvival.Gameplay.Workers
         private SkinnedMeshRenderer bodyRenderer;
 
         [SerializeField]
-        [Tooltip("SkinnedMeshRenderer per le gambe (opzionale, solo se usi sistema modulare)")]
+        [Tooltip("SkinnedMeshRenderer per le gambe (opzionale, solo se usi sistema modulare - DEPRECATED, usare leftLeg/rightLeg)")]
         private SkinnedMeshRenderer legsRenderer;
+
+        [TitleGroup("Mesh Components/Split Body Parts")]
+        [SerializeField]
+        [Tooltip("SkinnedMeshRenderer per la gamba sinistra (opzionale)")]
+        private SkinnedMeshRenderer leftLegRenderer;
+
+        [SerializeField]
+        [Tooltip("SkinnedMeshRenderer per la gamba destra (opzionale)")]
+        private SkinnedMeshRenderer rightLegRenderer;
+
+        [SerializeField]
+        [Tooltip("SkinnedMeshRenderer per il braccio sinistro (opzionale)")]
+        private SkinnedMeshRenderer leftArmRenderer;
+
+        [SerializeField]
+        [Tooltip("SkinnedMeshRenderer per il braccio destro (opzionale)")]
+        private SkinnedMeshRenderer rightArmRenderer;
+
+        [TitleGroup("Mesh Components/Accessories")]
+        [SerializeField]
+        [Tooltip("SkinnedMeshRenderer per accessori (zaini, mantelli, etc.)")]
+        private SkinnedMeshRenderer accessoryRenderer;
 
         // ============================================
         // COLOR TINT CONFIGURATION
@@ -84,6 +106,8 @@ namespace WildernessSurvival.Gameplay.Workers
         [Tooltip("Applica tint anche ai renderer nei LOD")]
         private bool applyTintToLODs = true;
 
+
+
         // ============================================
         // RUNTIME CACHE (no allocations)
         // ============================================
@@ -93,10 +117,20 @@ namespace WildernessSurvival.Gameplay.Workers
         private Mesh originalHeadMesh;
         private Mesh originalBodyMesh;
         private Mesh originalLegsMesh;
+        private Mesh originalLeftLegMesh;
+        private Mesh originalRightLegMesh;
+        private Mesh originalLeftArmMesh;
+        private Mesh originalRightArmMesh;
+        private Mesh originalAccessoryMesh;
         private Material[] originalFullBodyMaterials;
         private Material[] originalBodyMaterials;
         private Material[] originalHeadMaterials;
         private Material[] originalLegsMaterials;
+        private Material[] originalLeftLegMaterials;
+        private Material[] originalRightLegMaterials;
+        private Material[] originalLeftArmMaterials;
+        private Material[] originalRightArmMaterials;
+        private Material[] originalAccessoryMaterials;
 
         // All renderers cache (per color tint)
         private List<Renderer> allRenderersCache = new List<Renderer>(8);
@@ -115,6 +149,11 @@ namespace WildernessSurvival.Gameplay.Workers
         public SkinnedMeshRenderer HeadRenderer => headRenderer;
         public SkinnedMeshRenderer BodyRenderer => bodyRenderer;
         public SkinnedMeshRenderer LegsRenderer => legsRenderer;
+        public SkinnedMeshRenderer LeftLegRenderer => leftLegRenderer;
+        public SkinnedMeshRenderer RightLegRenderer => rightLegRenderer;
+        public SkinnedMeshRenderer LeftArmRenderer => leftArmRenderer;
+        public SkinnedMeshRenderer RightArmRenderer => rightArmRenderer;
+        public SkinnedMeshRenderer AccessoryRenderer => accessoryRenderer;
         public bool IsInitialized => isInitialized;
         public bool IsFullBodyMode => fullBodyRenderer != null;
 
@@ -147,9 +186,6 @@ namespace WildernessSurvival.Gameplay.Workers
 
             // 2. Cache original state
             CacheOriginalState();
-
-            // 3. Detect LOD group
-            DetectLODGroup();
 
             // 4. Build renderers cache
             BuildRenderersCache();
@@ -237,10 +273,44 @@ namespace WildernessSurvival.Gameplay.Workers
                     continue;
                 }
 
-                // Legs detection
-                if (legsRenderer == null && (name.Contains("leg") || name.Contains("gamba") || name.Contains("pant")))
+                // Legs detection (split legs have priority)
+                if (leftLegRenderer == null && (name.Contains("leftleg") || name.Contains("leg_l") || name.Contains("l_leg") || name.Contains("gamba_sx")))
+                {
+                    leftLegRenderer = smr;
+                    continue;
+                }
+
+                if (rightLegRenderer == null && (name.Contains("rightleg") || name.Contains("leg_r") || name.Contains("r_leg") || name.Contains("gamba_dx")))
+                {
+                    rightLegRenderer = smr;
+                    continue;
+                }
+
+                // Fallback: unified legs (deprecated)
+                if (legsRenderer == null && leftLegRenderer == null && rightLegRenderer == null &&
+                    (name.Contains("leg") || name.Contains("gamba") || name.Contains("pant")))
                 {
                     legsRenderer = smr;
+                    continue;
+                }
+
+                // Arm detection
+                if (leftArmRenderer == null && (name.Contains("leftarm") || name.Contains("arm_l") || name.Contains("l_arm") || name.Contains("braccio_sx")))
+                {
+                    leftArmRenderer = smr;
+                    continue;
+                }
+
+                if (rightArmRenderer == null && (name.Contains("rightarm") || name.Contains("arm_r") || name.Contains("r_arm") || name.Contains("braccio_dx")))
+                {
+                    rightArmRenderer = smr;
+                    continue;
+                }
+
+                // Accessory detection
+                if (accessoryRenderer == null && (name.Contains("accessory") || name.Contains("accessori") || name.Contains("backpack") || name.Contains("zaino") || name.Contains("cape") || name.Contains("mantello")))
+                {
+                    accessoryRenderer = smr;
                     continue;
                 }
             }
@@ -268,7 +338,24 @@ namespace WildernessSurvival.Gameplay.Workers
             }
             else
             {
-                Debug.Log($"[WorkerMeshController] Modular mode: Head={headRenderer?.name}, Body={bodyRenderer?.name}, Legs={legsRenderer?.name}", this);
+                string modularInfo = $"[WorkerMeshController] Modular mode: Head={headRenderer?.name}, Body={bodyRenderer?.name}";
+                if (leftLegRenderer != null || rightLegRenderer != null)
+                {
+                    modularInfo += $", LeftLeg={leftLegRenderer?.name}, RightLeg={rightLegRenderer?.name}";
+                }
+                else if (legsRenderer != null)
+                {
+                    modularInfo += $", Legs={legsRenderer?.name} (unified)";
+                }
+                if (leftArmRenderer != null || rightArmRenderer != null)
+                {
+                    modularInfo += $", LeftArm={leftArmRenderer?.name}, RightArm={rightArmRenderer?.name}";
+                }
+                if (accessoryRenderer != null)
+                {
+                    modularInfo += $", Accessory={accessoryRenderer?.name}";
+                }
+                Debug.Log(modularInfo, this);
             }
 #endif
         }
@@ -302,6 +389,36 @@ namespace WildernessSurvival.Gameplay.Workers
             {
                 originalLegsMesh = legsRenderer.sharedMesh;
                 originalLegsMaterials = legsRenderer.sharedMaterials;
+            }
+
+            if (leftLegRenderer != null)
+            {
+                originalLeftLegMesh = leftLegRenderer.sharedMesh;
+                originalLeftLegMaterials = leftLegRenderer.sharedMaterials;
+            }
+
+            if (rightLegRenderer != null)
+            {
+                originalRightLegMesh = rightLegRenderer.sharedMesh;
+                originalRightLegMaterials = rightLegRenderer.sharedMaterials;
+            }
+
+            if (leftArmRenderer != null)
+            {
+                originalLeftArmMesh = leftArmRenderer.sharedMesh;
+                originalLeftArmMaterials = leftArmRenderer.sharedMaterials;
+            }
+
+            if (rightArmRenderer != null)
+            {
+                originalRightArmMesh = rightArmRenderer.sharedMesh;
+                originalRightArmMaterials = rightArmRenderer.sharedMaterials;
+            }
+
+            if (accessoryRenderer != null)
+            {
+                originalAccessoryMesh = accessoryRenderer.sharedMesh;
+                originalAccessoryMaterials = accessoryRenderer.sharedMaterials;
             }
         }
 
@@ -364,6 +481,11 @@ namespace WildernessSurvival.Gameplay.Workers
                 if (headRenderer != null) allRenderersCache.Add(headRenderer);
                 if (bodyRenderer != null) allRenderersCache.Add(bodyRenderer);
                 if (legsRenderer != null) allRenderersCache.Add(legsRenderer);
+                if (leftLegRenderer != null) allRenderersCache.Add(leftLegRenderer);
+                if (rightLegRenderer != null) allRenderersCache.Add(rightLegRenderer);
+                if (leftArmRenderer != null) allRenderersCache.Add(leftArmRenderer);
+                if (rightArmRenderer != null) allRenderersCache.Add(rightArmRenderer);
+                if (accessoryRenderer != null) allRenderersCache.Add(accessoryRenderer);
 
                 // Aggiungi renderer figli (accessori, fasce, mantelli, ecc.)
                 Renderer[] childRenderers = GetComponentsInChildren<Renderer>(true);
@@ -386,10 +508,6 @@ namespace WildernessSurvival.Gameplay.Workers
         // PUBLIC API - MESH SWAP
         // ============================================
 
-        /// <summary>
-        /// Applica un WorkerVisualSet: mesh swap + material override + color tint.
-        /// MOBILE OPTIMIZED: zero allocazioni, solo sharedMesh e sharedMaterial.
-        /// </summary>
         public void ApplyMeshSwap(WorkerVisualSet visualSet)
         {
             if (!isInitialized)
@@ -455,7 +573,7 @@ namespace WildernessSurvival.Gameplay.Workers
             }
 
             // ═══════════════════════════════════════════════════════════
-            // PRIORITÀ 2: MODULAR MESH SWAP (Head/Body/Legs)
+            // PRIORITÀ 2: MODULAR MESH SWAP (Head/Body/Legs/Arms/Accessory)
             // ═══════════════════════════════════════════════════════════
 
             // Assicurati che i renderer modulari siano visibili
@@ -489,14 +607,93 @@ namespace WildernessSurvival.Gameplay.Workers
                 }
             }
 
-            // Legs mesh (opzionale)
+            // Legs mesh handling: priorità a split legs, fallback a unified
+            bool usingSplitLegs = false;
+
+            // Left leg
+            if (leftLegRenderer != null)
+            {
+                if (visualSet.leftLegMesh != null)
+                {
+                    leftLegRenderer.sharedMesh = visualSet.leftLegMesh;
+                    leftLegRenderer.enabled = true;
+                    usingSplitLegs = true;
+                }
+                else if (originalLeftLegMesh != null)
+                {
+                    leftLegRenderer.enabled = false; // Nascondi se non c'è mesh
+                }
+            }
+
+            // Right leg
+            if (rightLegRenderer != null)
+            {
+                if (visualSet.rightLegMesh != null)
+                {
+                    rightLegRenderer.sharedMesh = visualSet.rightLegMesh;
+                    rightLegRenderer.enabled = true;
+                    usingSplitLegs = true;
+                }
+                else if (originalRightLegMesh != null)
+                {
+                    rightLegRenderer.enabled = false; // Nascondi se non c'è mesh
+                }
+            }
+
+            // Unified legs (fallback, deprecated)
             if (legsRenderer != null)
             {
-                if (visualSet.legsMesh != null)
+                if (!usingSplitLegs && visualSet.legsMesh != null)
                 {
                     legsRenderer.sharedMesh = visualSet.legsMesh;
+                    legsRenderer.enabled = true;
                 }
-                // else: mantieni mesh corrente
+                else if (usingSplitLegs)
+                {
+                    legsRenderer.enabled = false; // Nascondi unified se usiamo split
+                }
+            }
+
+            // Left arm
+            if (leftArmRenderer != null)
+            {
+                if (visualSet.leftArmMesh != null)
+                {
+                    leftArmRenderer.sharedMesh = visualSet.leftArmMesh;
+                    leftArmRenderer.enabled = true;
+                }
+                else
+                {
+                    leftArmRenderer.enabled = false;
+                }
+            }
+
+            // Right arm
+            if (rightArmRenderer != null)
+            {
+                if (visualSet.rightArmMesh != null)
+                {
+                    rightArmRenderer.sharedMesh = visualSet.rightArmMesh;
+                    rightArmRenderer.enabled = true;
+                }
+                else
+                {
+                    rightArmRenderer.enabled = false;
+                }
+            }
+
+            // Accessory
+            if (accessoryRenderer != null)
+            {
+                if (visualSet.accessoryMesh != null)
+                {
+                    accessoryRenderer.sharedMesh = visualSet.accessoryMesh;
+                    accessoryRenderer.enabled = true;
+                }
+                else
+                {
+                    accessoryRenderer.enabled = false; // Nascondi se non c'è mesh accessorio
+                }
             }
 
             // ═══════════════════════════════════════════════════════════
@@ -676,6 +873,31 @@ namespace WildernessSurvival.Gameplay.Workers
                 legsRenderer.sharedMesh = originalLegsMesh;
             }
 
+            if (leftLegRenderer != null && originalLeftLegMesh != null)
+            {
+                leftLegRenderer.sharedMesh = originalLeftLegMesh;
+            }
+
+            if (rightLegRenderer != null && originalRightLegMesh != null)
+            {
+                rightLegRenderer.sharedMesh = originalRightLegMesh;
+            }
+
+            if (leftArmRenderer != null && originalLeftArmMesh != null)
+            {
+                leftArmRenderer.sharedMesh = originalLeftArmMesh;
+            }
+
+            if (rightArmRenderer != null && originalRightArmMesh != null)
+            {
+                rightArmRenderer.sharedMesh = originalRightArmMesh;
+            }
+
+            if (accessoryRenderer != null && originalAccessoryMesh != null)
+            {
+                accessoryRenderer.sharedMesh = originalAccessoryMesh;
+            }
+
             // Reset materials
             if (bodyRenderer != null && originalBodyMaterials != null && originalBodyMaterials.Length > 0)
             {
@@ -690,6 +912,31 @@ namespace WildernessSurvival.Gameplay.Workers
             if (legsRenderer != null && originalLegsMaterials != null && originalLegsMaterials.Length > 0)
             {
                 legsRenderer.sharedMaterials = originalLegsMaterials;
+            }
+
+            if (leftLegRenderer != null && originalLeftLegMaterials != null && originalLeftLegMaterials.Length > 0)
+            {
+                leftLegRenderer.sharedMaterials = originalLeftLegMaterials;
+            }
+
+            if (rightLegRenderer != null && originalRightLegMaterials != null && originalRightLegMaterials.Length > 0)
+            {
+                rightLegRenderer.sharedMaterials = originalRightLegMaterials;
+            }
+
+            if (leftArmRenderer != null && originalLeftArmMaterials != null && originalLeftArmMaterials.Length > 0)
+            {
+                leftArmRenderer.sharedMaterials = originalLeftArmMaterials;
+            }
+
+            if (rightArmRenderer != null && originalRightArmMaterials != null && originalRightArmMaterials.Length > 0)
+            {
+                rightArmRenderer.sharedMaterials = originalRightArmMaterials;
+            }
+
+            if (accessoryRenderer != null && originalAccessoryMaterials != null && originalAccessoryMaterials.Length > 0)
+            {
+                accessoryRenderer.sharedMaterials = originalAccessoryMaterials;
             }
 
             // Reset tint to white
@@ -709,9 +956,15 @@ namespace WildernessSurvival.Gameplay.Workers
         /// </summary>
         public void HideRenderers()
         {
+            if (fullBodyRenderer != null) fullBodyRenderer.enabled = false;
             if (headRenderer != null) headRenderer.enabled = false;
             if (bodyRenderer != null) bodyRenderer.enabled = false;
             if (legsRenderer != null) legsRenderer.enabled = false;
+            if (leftLegRenderer != null) leftLegRenderer.enabled = false;
+            if (rightLegRenderer != null) rightLegRenderer.enabled = false;
+            if (leftArmRenderer != null) leftArmRenderer.enabled = false;
+            if (rightArmRenderer != null) rightArmRenderer.enabled = false;
+            if (accessoryRenderer != null) accessoryRenderer.enabled = false;
         }
 
         /// <summary>
@@ -719,24 +972,61 @@ namespace WildernessSurvival.Gameplay.Workers
         /// </summary>
         public void ShowRenderers(WorkerVisualSet visualSet)
         {
-            // Body: sempre visibile
-            if (bodyRenderer != null)
+            if (visualSet == null) return;
+
+            // Full body mode
+            if (fullBodyRenderer != null && (visualSet.fullBodyMesh != null || originalFullBodyMesh != null))
+            {
+                fullBodyRenderer.enabled = true;
+            }
+
+            // Modular mode
+            if (headRenderer != null && visualSet.headMesh != null)
+            {
+                headRenderer.enabled = true;
+            }
+            if (bodyRenderer != null && visualSet.bodyMesh != null)
             {
                 bodyRenderer.enabled = true;
             }
 
-            // Head: visibile solo se c'è mesh
-            if (headRenderer != null && visualSet?.headMesh != null)
+            // Split legs (priority)
+            bool hasLeftLeg = leftLegRenderer != null && visualSet.leftLegMesh != null;
+            bool hasRightLeg = rightLegRenderer != null && visualSet.rightLegMesh != null;
+
+            if (hasLeftLeg)
             {
-                headRenderer.enabled = true;
+                leftLegRenderer.enabled = true;
+            }
+            if (hasRightLeg)
+            {
+                rightLegRenderer.enabled = true;
             }
 
-            // Legs: visibile solo se c'è mesh
-            if (legsRenderer != null && visualSet?.legsMesh != null)
+            // Unified legs (fallback)
+            if (!hasLeftLeg && !hasRightLeg && legsRenderer != null && visualSet.legsMesh != null)
             {
                 legsRenderer.enabled = true;
             }
+
+            // Arms
+            if (leftArmRenderer != null && visualSet.leftArmMesh != null)
+            {
+                leftArmRenderer.enabled = true;
+            }
+            if (rightArmRenderer != null && visualSet.rightArmMesh != null)
+            {
+                rightArmRenderer.enabled = true;
+            }
+
+            // Accessory
+            if (accessoryRenderer != null && visualSet.accessoryMesh != null)
+            {
+                accessoryRenderer.enabled = true;
+            }
         }
+
+
 
         // ============================================
         // DEBUG TOOLS (EDITOR ONLY)
@@ -755,9 +1045,15 @@ namespace WildernessSurvival.Gameplay.Workers
 
             string state = "=== WORKER MESH STATE ===\n";
             state += $"Initialized: {isInitialized}\n";
+            state += $"Full Body: {(fullBodyRenderer?.sharedMesh?.name ?? "None")}\n";
             state += $"Head Mesh: {(headRenderer?.sharedMesh?.name ?? "None")}\n";
             state += $"Body Mesh: {(bodyRenderer?.sharedMesh?.name ?? "None")}\n";
-            state += $"Legs Mesh: {(legsRenderer?.sharedMesh?.name ?? "None")}\n";
+            state += $"Legs Mesh (unified): {(legsRenderer?.sharedMesh?.name ?? "None")}\n";
+            state += $"Left Leg Mesh: {(leftLegRenderer?.sharedMesh?.name ?? "None")}\n";
+            state += $"Right Leg Mesh: {(rightLegRenderer?.sharedMesh?.name ?? "None")}\n";
+            state += $"Left Arm Mesh: {(leftArmRenderer?.sharedMesh?.name ?? "None")}\n";
+            state += $"Right Arm Mesh: {(rightArmRenderer?.sharedMesh?.name ?? "None")}\n";
+            state += $"Accessory Mesh: {(accessoryRenderer?.sharedMesh?.name ?? "None")}\n";
             state += $"Renderers Cache: {allRenderersCache.Count}\n";
             state += $"LOD Renderers Cache: {lodRenderersCache.Count}\n";
             state += $"LODGroup: {(lodGroup != null ? lodGroup.name : "None")}\n";

@@ -80,7 +80,8 @@ MonoBehaviour:
   background: {fileID: 2245137138095011360}
   fill: {fileID: 4517220663128894655}
   percentageText: {fileID: 4841747827908137247}
-  heightOffset: 1.5
+  heightOffset: 0.25
+  forwardOffset: 2.65
   barWidth: 150
   barHeight: 15
   backgroundColor: {r: 0, g: 0, b: 0, a: 0.8}
@@ -104,7 +105,7 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.6, y: 0.6, z: 0.6}
+  m_Size: {x: 3.5, y: 5.34, z: 2.31}
   m_Center: {x: 0, y: 0.3, z: 0}
 --- !u!114 &4889448911382845401
 MonoBehaviour:

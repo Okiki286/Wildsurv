@@ -21,7 +21,7 @@ MonoBehaviour:
   tier: 1
   maxLevel: 3
   isUnique: 1
-  isBaseCenter: 0
+  isBaseCenter: 1
   buildCosts: []
   buildTime: 5
   requiresBuilder: 1

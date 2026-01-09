@@ -15,7 +15,7 @@ MonoBehaviour:
   enemyId: enemy_default
   displayName: Enemy Default
   icon: {fileID: 0}
-  prefab: {fileID: 6941636638358845230, guid: ae93071f902389d468b1a79bdde36980, type: 3}
+  prefab: {fileID: 2229348838788835980, guid: 6bd5294a92180274da25b0921de9238a, type: 3}
   description: Un nemico base.
   enemyType: 0
   tier: 1

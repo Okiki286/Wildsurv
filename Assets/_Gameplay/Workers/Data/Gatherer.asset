@@ -15,7 +15,7 @@ MonoBehaviour:
   workerId: gatherer
   displayName: Gatherer
   portrait: {fileID: 0}
-  prefab: {fileID: 4346258105231051208, guid: ee7a6822108253f48aeadc1f29d18409, type: 3}
+  prefab: {fileID: 919132149155446097, guid: 93dcf3e1d678002459f1bc4d482228d5, type: 3}
   icon: {fileID: 0}
   description: 
   workerType: 0

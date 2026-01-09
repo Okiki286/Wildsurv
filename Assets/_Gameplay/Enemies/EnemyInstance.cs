@@ -1,11 +1,13 @@
 using UnityEngine;
 using UnityEngine.AI;
 using System.Collections;
+using System.Collections.Generic;
 using Sirenix.OdinInspector;
 using WildernessSurvival.Gameplay.Combat;
 using WildernessSurvival.Gameplay.Resources;
 using WildernessSurvival.Core.Systems;
 using WildernessSurvival.Core;
+using WildernessSurvival.Core.Events;
 
 namespace WildernessSurvival.Gameplay.Enemies
 {
@@ -50,8 +52,15 @@ namespace WildernessSurvival.Gameplay.Enemies
         [ShowInInspector, ReadOnly]
         private Transform currentTargetTransform;
 
+        // Collider del target per calcoli ClosestPoint (evita compenetrazione strutture grandi)
+        private Collider currentTargetCollider;
+
         [ShowInInspector, ReadOnly]
         private float attackCooldown;
+
+        // Animation-driven attack state
+        private bool isAttacking = false;  // True mentre esegue animazione attacco
+        private bool hasDealtDamage = false;  // Guard per evitare danno multiplo in 1 attacco
 
         private float targetScanTimer;
         private const float TARGET_SCAN_INTERVAL = 0.5f;
@@ -101,12 +110,27 @@ namespace WildernessSurvival.Gameplay.Enemies
         // ============================================
 
         private NavMeshAgent agent;
+        private EnemyAnimatorController animatorController;
 
         // Buffer per OverlapSphereNonAlloc (riuso per evitare GC)
         private static readonly Collider[] scanBuffer = new Collider[32];
 
         // Flag di inizializzazione
         private bool isInitialized = false;
+
+        // Corpse cleanup system
+        private bool isCorpse = false;  // True quando nemico è morto e aspetta cleanup
+        private GameEvent onDayStartedEvent;  // Riferimento a evento giorno (per cleanup)
+
+        [TitleGroup("Corpse VFX")]
+        [Tooltip("Durata del fade out quando il cadavere sparisce all'alba (secondi)")]
+        [SerializeField] private float corpseFadeDuration = 2.0f;
+
+        [Tooltip("Velocità di affondamento nel terreno durante fade (unità/secondo)")]
+        [SerializeField] private float corpseSinkSpeed = 0.5f;
+
+        [Tooltip("Se true, prova a fare fade alpha sui materiali (potrebbe non funzionare con shader Opaque)")]
+        [SerializeField] private bool tryAlphaFade = true;
 
         [TitleGroup("Debug")]
         [SerializeField] private bool debugMode = true;
@@ -129,6 +153,7 @@ namespace WildernessSurvival.Gameplay.Enemies
         private void Awake()
         {
             agent = GetComponent<NavMeshAgent>();
+            animatorController = GetComponent<EnemyAnimatorController>();
         }
 
         // [NEW] POOLING-SAFE: Register with telemetry on enable + RESET STATE
@@ -159,11 +184,14 @@ namespace WildernessSurvival.Gameplay.Enemies
             // ===== RESET COMBAT STATE =====
             currentHealth = maxHealth;  // ✅ Reset HP
             attackCooldown = 0f;
-            targetScanTimer = hasInitializedScanDelay 
-                ? UnityEngine.Random.Range(0f, TARGET_SCAN_INTERVAL) 
+            isAttacking = false;
+            hasDealtDamage = false;
+            targetScanTimer = hasInitializedScanDelay
+                ? UnityEngine.Random.Range(0f, TARGET_SCAN_INTERVAL)
                 : 0f;
             currentTarget = null;
             currentTargetTransform = null;
+            currentTargetCollider = null;
             lastSetDestination = Vector3.positiveInfinity;
 
             // ===== RESET DEBUFF STATE =====
@@ -174,6 +202,15 @@ namespace WildernessSurvival.Gameplay.Enemies
             // ===== RESET FLAGS =====
             hasDroppedRewards = false;  // ✅ Permette drop rewards
             stuckTimer = 0f;
+
+            // ===== RESET ANIMATOR =====
+            if (animatorController != null)
+            {
+                animatorController.SetDead(false);
+                animatorController.SetSpeed(0f);
+                animatorController.SetMoving(false);
+                animatorController.SetAttacking(false);
+            }
 
             // ===== RESET NAVMESH AGENT =====
             if (agent != null && agent.isOnNavMesh)
@@ -192,7 +229,7 @@ namespace WildernessSurvival.Gameplay.Enemies
 
         private void Update()
         {
-            if (!IsAlive || !isInitialized) return;
+            if (!IsAlive || !isInitialized || isCorpse) return;  // Skip Update if corpse
 
             // Update cooldown
             if (attackCooldown > 0f)
@@ -211,8 +248,9 @@ namespace WildernessSurvival.Gameplay.Enemies
             // Combat logic - MELEE ATTACK SYSTEM
             if (currentTargetTransform != null && currentTarget != null)
             {
-                // Calculate real distance using sqrMagnitude (more performant)
-                Vector3 toTarget = currentTargetTransform.position - transform.position;
+                // Calculate distance to EDGE of target (ClosestPoint), not center
+                Vector3 targetEdgePos = GetTargetEdgePosition(currentTargetTransform);
+                Vector3 toTarget = targetEdgePos - transform.position;
                 float sqrDistanceToTarget = toTarget.sqrMagnitude;
                 float effectiveAttackRange = enemyData != null ? enemyData.AttackRange : 1.0f;  // Fallback 1m melee
                 float attackRangeWithTolerance = effectiveAttackRange + MELEE_RANGE_TOLERANCE;
@@ -229,8 +267,8 @@ namespace WildernessSurvival.Gameplay.Enemies
                 // Debug logging for combat diagnostics
                 if (debugCombat)
                 {
-                    float realDist = Mathf.Sqrt(sqrDistanceToTarget);
-                    Debug.Log($"<color=magenta>[Combat]</color> {name}: dist={realDist:F2}m, remaining={agentRemainingDist:F2}m, range={effectiveAttackRange:F1}m, inRange={isInMeleeRange}, cooldown={attackCooldown:F2}s");
+                    float distToEdge = Mathf.Sqrt(sqrDistanceToTarget);
+                    Debug.Log($"<color=magenta>[Combat]</color> {name}: distToEdge={distToEdge:F2}m, remaining={agentRemainingDist:F2}m, range={effectiveAttackRange:F1}m, inRange={isInMeleeRange}, cooldown={attackCooldown:F2}s");
                 }
 
                 if (isInMeleeRange)
@@ -257,7 +295,7 @@ namespace WildernessSurvival.Gameplay.Enemies
                     }
 
                     // Try melee attack (respects cooldown)
-                    TryAttack();
+                    StartAttack();
                 }
                 else
                 {
@@ -267,14 +305,15 @@ namespace WildernessSurvival.Gameplay.Enemies
                         agent.isStopped = false;
 
                         // OPTIMIZATION: Only update destination if target moved significantly
-                        Vector3 targetPos = currentTargetTransform.position;
-                        float sqrDistToLastDest = (targetPos - lastSetDestination).sqrMagnitude;
+                        // USA ClosestPoint per evitare di entrare nelle strutture grandi
+                        Vector3 targetEdgePosition = GetTargetEdgePosition(currentTargetTransform);
+                        float sqrDistToLastDest = (targetEdgePosition - lastSetDestination).sqrMagnitude;
                         float threshold = DESTINATION_UPDATE_THRESHOLD * DESTINATION_UPDATE_THRESHOLD;
 
                         if (sqrDistToLastDest > threshold)
                         {
-                            agent.SetDestination(targetPos);
-                            lastSetDestination = targetPos;
+                            agent.SetDestination(targetEdgePosition);
+                            lastSetDestination = targetEdgePosition;
                         }
                     }
                 }
@@ -285,8 +324,28 @@ namespace WildernessSurvival.Gameplay.Enemies
                 FallbackToWaystone();
             }
 
+            // Update animator based on NavMeshAgent velocity
+            UpdateAnimator();
+
             // Stuck detection - ALWAYS runs for recovery
             DetectAndRecoverFromStuck();
+        }
+
+        // ============================================
+        // ANIMATION
+        // ============================================
+
+        /// <summary>
+        /// Aggiorna parametri animator basato su velocità NavMeshAgent.
+        /// </summary>
+        private void UpdateAnimator()
+        {
+            if (animatorController == null || agent == null || !agent.isOnNavMesh)
+                return;
+
+            float speed = agent.velocity.magnitude;
+            animatorController.SetSpeed(speed);
+            animatorController.SetMoving(speed > 0.1f);
         }
 
         // ============================================
@@ -634,9 +693,14 @@ namespace WildernessSurvival.Gameplay.Enemies
             currentTarget = target;
             currentTargetTransform = targetTransform;
 
+            // Cache collider per calcoli ClosestPoint (evita GetComponent ogni frame)
+            currentTargetCollider = targetTransform != null ? targetTransform.GetComponent<Collider>() : null;
+
             if (agent != null && agent.isActiveAndEnabled && agent.isOnNavMesh && targetTransform != null)
             {
-                bool success = agent.SetDestination(targetTransform.position);
+                // Calcola destinazione verso il bordo del collider, non il centro
+                Vector3 destination = GetTargetEdgePosition(targetTransform);
+                bool success = agent.SetDestination(destination);
                 if (debugMode && !success)
                 {
                     Debug.LogWarning($"<color=orange>[EnemyInstance]</color> {name} SetDestination failed to {targetTransform.name}");
@@ -646,6 +710,36 @@ namespace WildernessSurvival.Gameplay.Enemies
 #if UNITY_EDITOR
             Debug.Log($"<color=red>[Enemy]</color> {gameObject.name} target: {targetTransform?.name ?? "None"}");
 #endif
+        }
+
+        /// <summary>
+        /// Calcola il punto sul bordo del collider del target più vicino al nemico.
+        /// Previene compenetrazione in strutture grandi (House, ecc.).
+        /// </summary>
+        private Vector3 GetTargetEdgePosition(Transform targetTransform)
+        {
+            if (currentTargetCollider != null)
+            {
+                // USA CLOSESTPOINT: Punto sul collider più vicino al nemico
+                return currentTargetCollider.ClosestPoint(transform.position);
+            }
+            else
+            {
+                // Fallback: Target senza collider (raro) → usa centro
+                return targetTransform.position;
+            }
+        }
+
+        /// <summary>
+        /// Calcola distanza reale tra nemico e bordo del target.
+        /// Per strutture grandi, usa ClosestPoint invece del centro.
+        /// </summary>
+        private float GetDistanceToTarget()
+        {
+            if (currentTargetTransform == null) return Mathf.Infinity;
+
+            Vector3 targetPoint = GetTargetEdgePosition(currentTargetTransform);
+            return Vector3.Distance(transform.position, targetPoint);
         }
 
         private void FallbackToWaystone()
@@ -732,50 +826,151 @@ namespace WildernessSurvival.Gameplay.Enemies
 
 
         // ============================================
-        // COMBAT (B2)
+        // COMBAT (B2) - Animation Event System
         // ============================================
 
-        private void TryAttack()
+        /// <summary>
+        /// FASE 1: Inizia attacco (trigger animazione).
+        /// Chiamato da Update() quando in melee range e cooldown pronto.
+        /// </summary>
+        private void StartAttack()
         {
             if (attackCooldown > 0f) return;
             if (currentTarget == null || !currentTarget.IsAlive) return;
+            if (isAttacking) return;  // Previeni attacco multiplo durante animazione
 
-            // Calcola danno effettivo
-            float effectiveDamage = damage * attackMultiplier;
+            isAttacking = true;
+            hasDealtDamage = false;
 
-            // Determina tipo danno (usa quello dell'EnemyData se disponibile, altrimenti Physical)
-            DamageType damageType = DamageType.Physical;
-            // Nota: EnemyData non ha un campo DamageType di attacco, solo weaknesses/resistances
-            // Per ora usiamo Physical di default
+            // Trigger animation
+            if (animatorController != null)
+            {
+                animatorController.SetAttacking(true);
+            }
 
-            // Infliggi danno
-            currentTarget.TakeDamage(effectiveDamage, damageType);
+            if (debugCombat)
+            {
+                Debug.Log($"<color=yellow>[Combat]</color> {name} START attack on {currentTargetTransform?.name}");
+            }
+        }
 
-            // [AUDIO] Play melee hit sound
-            AudioManager.Instance?.PlaySwordHit();
+        /// <summary>
+        /// FASE 2: Frame di impatto (infligge danno).
+        /// Chiamato da Animation Event sulla clip di attacco al momento esatto del colpo.
+        /// MUST BE PUBLIC per essere chiamato da Animation Event!
+        /// </summary>
+        public void OnAttackHit()
+        {
+            // === DEBUG: Verifica che il metodo sia chiamato ===
+            Debug.Log($"<color=magenta>═══ OnAttackHit() CALLED on {name} ═══</color>");
+            Debug.Log($"  hasDealtDamage: {hasDealtDamage}");
+            Debug.Log($"  currentTarget: {(currentTarget != null ? "NOT NULL" : "NULL")}");
+            Debug.Log($"  IsAlive: {currentTarget?.IsAlive}");
 
-            // Telemetry
-            CombatTelemetry.Instance?.RecordEnemyDamage(effectiveDamage);
+            // Guard: infliggi danno solo 1 volta per attacco
+            if (hasDealtDamage)
+            {
+                Debug.LogWarning($"<color=orange>[OnAttackHit]</color> Already dealt damage! Skipping.");
+                return;
+            }
 
-            // Reset cooldown
+            if (currentTarget == null || !currentTarget.IsAlive)
+            {
+                Debug.LogError($"<color=red>[OnAttackHit]</color> No valid target! currentTarget={(currentTarget != null ? "exists" : "NULL")}, IsAlive={currentTarget?.IsAlive}");
+                return;
+            }
+
+            hasDealtDamage = true;
+
+            // Valida se il target è ancora in range
+            Debug.Log($"  Calling ValidateAttackHit()...");
+            bool hitValid = ValidateAttackHit();
+            Debug.Log($"  ValidateAttackHit() returned: {hitValid}");
+
+            if (hitValid)
+            {
+                // Calcola danno effettivo
+                float effectiveDamage = damage * attackMultiplier;
+                DamageType damageType = DamageType.Physical;
+
+                Debug.Log($"  Damage calculation: {damage} × {attackMultiplier} = {effectiveDamage}");
+                Debug.Log($"  Calling currentTarget.TakeDamage({effectiveDamage}, {damageType})");
+
+                // ✅ INFLIGGI DANNO AL FRAME CORRETTO
+                currentTarget.TakeDamage(effectiveDamage, damageType);
+
+                Debug.Log($"<color=green>✅ DAMAGE DEALT!</color>");
+
+                // [AUDIO] Play melee hit sound
+                AudioManager.Instance?.PlaySwordHit();
+
+                // Telemetry
+                CombatTelemetry.Instance?.RecordEnemyDamage(effectiveDamage);
+
+                if (debugCombat)
+                {
+                    Debug.Log($"<color=red>[Combat]</color> {name} HIT {currentTargetTransform?.name} for {effectiveDamage:F1} damage " +
+                        $"(baseDmg={damage:F1} × atkMult={attackMultiplier:F2})");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"<color=orange>[MISS]</color> ValidateAttackHit() failed!");
+
+                if (debugCombat)
+                {
+                    Debug.LogWarning($"<color=orange>[Combat]</color> {name} attack MISSED (target out of range)");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Valida se l'attacco può colpire il target.
+        /// Usa semplice distance check (performante, sufficiente per melee vs workers statici).
+        /// </summary>
+        private bool ValidateAttackHit()
+        {
+            if (currentTargetTransform == null) return false;
+
+            // USA ClosestPoint: Distanza reale al bordo del collider, non al centro
+            float distanceToEdge = GetDistanceToTarget();
+            float effectiveAttackRange = enemyData != null ? enemyData.AttackRange : 1.0f;
+            float maxRange = effectiveAttackRange + 0.5f;  // Tolleranza per movimento
+
+            return distanceToEdge <= maxRange;
+        }
+
+        /// <summary>
+        /// FASE 3: Fine attacco (reset stato).
+        /// Chiamato da Animation Event alla fine della clip di attacco.
+        /// MUST BE PUBLIC per essere chiamato da Animation Event!
+        /// </summary>
+        public void OnAttackEnd()
+        {
+            isAttacking = false;
+
+            // Reset animator
+            if (animatorController != null)
+            {
+                animatorController.SetAttacking(false);
+            }
+
+            // Imposta cooldown SOLO alla fine dell'animazione
             float interval = enemyData != null ? enemyData.AttackInterval : 1.5f;
             attackCooldown = interval;
 
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
             if (debugCombat)
             {
-                Debug.Log($"<color=red>[Enemy]</color> {gameObject.name} attacked {currentTargetTransform?.name} | " +
-                    $"baseDmg={damage:F1} × atkMult={attackMultiplier:F2} = finalDmg={effectiveDamage:F1} | " +
-                    $"debuffed={HasWaystoneDebuff}");
+                Debug.Log($"<color=green>[Combat]</color> {name} END attack (cooldown={attackCooldown:F1}s)");
             }
-#endif
 
             // Se target è morto, rescan
-            if (!currentTarget.IsAlive)
+            if (currentTarget != null && !currentTarget.IsAlive)
             {
                 currentTarget = null;
                 currentTargetTransform = null;
-                targetScanTimer = 0f; // Force immediate rescan
+                currentTargetCollider = null;
+                targetScanTimer = 0f;
             }
         }
 
@@ -824,21 +1019,160 @@ namespace WildernessSurvival.Gameplay.Enemies
                 // [REMOVED] UnregisterEnemy - now handled by OnDisable (pooling-safe)
             }
 
-            // Stop NavMesh
+            // Set death animation
+            if (animatorController != null)
+            {
+                animatorController.SetDead(true);
+            }
+
+            // ========== CORPSE SYSTEM: Disabilita gameplay ma mantieni visibile ==========
+            // Stop movement
             if (agent != null)
             {
                 agent.isStopped = true;
                 agent.enabled = false;
             }
 
-            // [POOLING] Return to pool instead of destroying
+            // Disabilita collider per non bloccare passaggio
+            Collider col = GetComponent<Collider>();
+            if (col != null)
+            {
+                col.enabled = false;
+            }
+
+            // Disabilita script di combattimento (Update non girerà più)
+            isCorpse = true;  // Flag per impedire Update logic
+
+            // ========== SUBSCRIBE TO DAY CLEANUP EVENT ==========
+            if (DayNightSystem.Instance != null && DayNightSystem.Instance.OnDayStartedEvent != null)
+            {
+                onDayStartedEvent = DayNightSystem.Instance.OnDayStartedEvent;
+                onDayStartedEvent.AddListener(DespawnCorpse);
+
+                if (debugMode)
+                {
+                    Debug.Log($"<color=purple>[Corpse]</color> {name} will be cleaned up at dawn (Day {DayNightSystem.Instance.CurrentDayNumber + 1})");
+                }
+            }
+            else
+            {
+                // Fallback: Se DayNightSystem non esiste, cleanup immediato
+                if (debugMode)
+                {
+                    Debug.LogWarning($"<color=orange>[Corpse]</color> {name} DayNightSystem not found! Immediate cleanup.");
+                }
+                DespawnCorpse();
+            }
+        }
+
+        /// <summary>
+        /// Cleanup cadavere all'inizio del giorno.
+        /// Chiamato da GameEvent quando inizia nuovo giorno.
+        /// </summary>
+        private void DespawnCorpse()
+        {
+            // Unsubscribe from event per evitare memory leak
+            if (onDayStartedEvent != null)
+            {
+                onDayStartedEvent.RemoveListener(DespawnCorpse);
+                onDayStartedEvent = null;
+            }
+
+            if (debugMode)
+            {
+                int currentDay = DayNightSystem.Instance != null ? DayNightSystem.Instance.CurrentDayNumber : 0;
+                Debug.Log($"<color=purple>[Corpse]</color> {name} starting fade out at dawn (Day {currentDay})");
+            }
+
+            // Avvia coroutine fade out invece di distruggere immediatamente
+            StartCoroutine(FadeAndDestroy());
+        }
+
+        /// <summary>
+        /// Coroutine: Fade out graduale del cadavere con effetto affondamento.
+        /// Combina alpha fade (se supportato) e sink nel terreno per rimozione smooth.
+        /// </summary>
+        private IEnumerator FadeAndDestroy()
+        {
+            // ===== SETUP: Raccogli tutti i renderer e materiali =====
+            SkinnedMeshRenderer[] skinnedRenderers = GetComponentsInChildren<SkinnedMeshRenderer>();
+            MeshRenderer[] meshRenderers = GetComponentsInChildren<MeshRenderer>();
+
+            // Cache materiali originali per alpha fade
+            List<Material> materialsToFade = new List<Material>();
+            List<Color> originalColors = new List<Color>();
+
+            if (tryAlphaFade)
+            {
+                // Raccogli materiali da SkinnedMeshRenderer (character body)
+                foreach (var smr in skinnedRenderers)
+                {
+                    foreach (var mat in smr.materials)
+                    {
+                        materialsToFade.Add(mat);
+                        originalColors.Add(mat.color);
+                    }
+                }
+
+                // Raccogli materiali da MeshRenderer (weapons, accessories)
+                foreach (var mr in meshRenderers)
+                {
+                    foreach (var mat in mr.materials)
+                    {
+                        materialsToFade.Add(mat);
+                        originalColors.Add(mat.color);
+                    }
+                }
+
+                if (debugMode)
+                {
+                    Debug.Log($"<color=purple>[Corpse]</color> {name} found {materialsToFade.Count} materials to fade");
+                }
+            }
+
+            // Cache posizione iniziale per sink effect
+            Vector3 startPosition = transform.position;
+            float elapsed = 0f;
+
+            // ===== LOOP: Fade + Sink per corpseFadeDuration secondi =====
+            while (elapsed < corpseFadeDuration)
+            {
+                elapsed += Time.deltaTime;
+                float t = elapsed / corpseFadeDuration;  // 0 → 1
+
+                // ALPHA FADE: Riduci alpha verso 0
+                if (tryAlphaFade && materialsToFade.Count > 0)
+                {
+                    for (int i = 0; i < materialsToFade.Count; i++)
+                    {
+                        if (materialsToFade[i] != null)
+                        {
+                            Color newColor = originalColors[i];
+                            newColor.a = Mathf.Lerp(1f, 0f, t);  // Alpha: 1 → 0
+                            materialsToFade[i].color = newColor;
+                        }
+                    }
+                }
+
+                // SINK EFFECT: Affonda nel terreno
+                float sinkAmount = corpseSinkSpeed * elapsed;
+                transform.position = startPosition - new Vector3(0f, sinkAmount, 0f);
+
+                yield return null;  // Aspetta prossimo frame
+            }
+
+            // ===== CLEANUP: Distruggi o ritorna al pool =====
+            if (debugMode)
+            {
+                Debug.Log($"<color=purple>[Corpse]</color> {name} fade complete, destroying");
+            }
+
             if (EnemyPooler.Instance != null)
             {
                 EnemyPooler.Instance.ReturnEnemy(gameObject);
             }
             else
             {
-                // Fallback: Destroy if pooler not available
                 Destroy(gameObject);
             }
         }
@@ -1075,8 +1409,20 @@ namespace WildernessSurvival.Gameplay.Enemies
             // Draw line to current target (only if debugCombat enabled)
             if (debugCombat && currentTargetTransform != null)
             {
+                // Mostra ClosestPoint: Punto sul bordo del collider
+                Vector3 targetEdge = GetTargetEdgePosition(currentTargetTransform);
+
+                // Linea verso il bordo (non il centro!)
                 Gizmos.color = Color.red;
-                Gizmos.DrawLine(transform.position, currentTargetTransform.position);
+                Gizmos.DrawLine(transform.position, targetEdge);
+
+                // Sfera sul punto di destinazione
+                Gizmos.color = Color.yellow;
+                Gizmos.DrawWireSphere(targetEdge, 0.3f);
+
+                // Linea tratteggiata verso il centro (per confronto)
+                Gizmos.color = new Color(1f, 0.5f, 0f, 0.3f);
+                Gizmos.DrawLine(targetEdge, currentTargetTransform.position);
             }
         }
 #endif

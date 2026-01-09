@@ -158,6 +158,18 @@ namespace WildernessSurvival.UI
             }
         }
 
+        private void OnEnable()
+        {
+            // ═══════════════════════════════════════════════════════════
+            // REFRESH: Rigenera bottoni ogni volta che il menu viene abilitato
+            // Questo assicura che le strutture uniche già piazzate vengano nascoste
+            // ═══════════════════════════════════════════════════════════
+            if (allStructures != null && allStructures.Count > 0)
+            {
+                CreateButtons();
+            }
+        }
+
         private void OnDestroy()
         {
             if (Instance == this)
@@ -315,9 +327,22 @@ namespace WildernessSurvival.UI
             }
 
             // ✅ GET BUTTONS FROM POOL (instead of Instantiate)
+            int hotkeyIndex = 1; // Counter for hotkey numbering (only visible buttons get numbers)
             for (int i = 0; i < allStructures.Count; i++)
             {
                 StructureData data = allStructures[i];
+
+                // ═══════════════════════════════════════════════════════════
+                // UNIQUE STRUCTURE FILTER: Skip unique structures already built
+                // ═══════════════════════════════════════════════════════════
+                if (data.IsUnique && StructureSystem.Instance != null && StructureSystem.Instance.HasStructure(data))
+                {
+                    if (debugMode)
+                    {
+                        Debug.Log($"<color=yellow>[BuildMenuUI]</color> Skipping unique structure already built: {data.DisplayName}");
+                    }
+                    continue; // Skip this button - don't create it
+                }
 
                 // Get from pool
                 BuildMenuButton button = null;
@@ -336,8 +361,9 @@ namespace WildernessSurvival.UI
                 {
                     button.gameObject.SetActive(true);
                     button.gameObject.name = $"Btn_{data.DisplayName}";
-                    button.Initialize(data, i + 1, OnStructureSelected, OnStructureHover, OnStructureHoverExit);
+                    button.Initialize(data, hotkeyIndex, OnStructureSelected, OnStructureHover, OnStructureHoverExit);
                     structureButtons.Add(button);
+                    hotkeyIndex++; // Increment only for visible buttons
                 }
                 else
                 {
@@ -407,6 +433,12 @@ namespace WildernessSurvival.UI
             if (buildMenuPanel != null)
             {
                 buildMenuPanel.SetActive(true);
+
+                // ═══════════════════════════════════════════════════════════
+                // REFRESH: Rigenera bottoni per nascondere strutture uniche
+                // ═══════════════════════════════════════════════════════════
+                CreateButtons();
+
                 UpdateButtonAffordability();
                 PlaySound(openSound);
 

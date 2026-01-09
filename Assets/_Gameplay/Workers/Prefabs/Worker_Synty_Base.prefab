@@ -144,6 +144,14 @@ PrefabInstance:
       propertyPath: m_Controller
       value: 
       objectReference: {fileID: 9100000, guid: 6937849fa19d2aa43bf484d3b5acda1e, type: 2}
+    - target: {fileID: 9500000, guid: 9d545e43681431348908eab98e78aa45, type: 3}
+      propertyPath: m_ApplyRootMotion
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 13700028, guid: 9d545e43681431348908eab98e78aa45, type: 3}
+      propertyPath: m_Enabled
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 13700028, guid: 9d545e43681431348908eab98e78aa45, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
@@ -330,6 +338,8 @@ MonoBehaviour:
   navMeshSampleDistance: 2
   workAnimationSpeedThreshold: 0.1
   lookAtRotationSpeed: 5
+  stuckThresholdSeconds: 2.5
+  stuckRecoveryOffsetRadius: 1.5
 --- !u!114 &8406708663151394134
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -363,16 +373,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4dbfb7735d29e704082db7ac6cbacf5d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
---- !u!137 &4346258105234162880 stripped
-SkinnedMeshRenderer:
-  m_CorrespondingSourceObject: {fileID: 13700028, guid: 9d545e43681431348908eab98e78aa45, type: 3}
-  m_PrefabInstance: {fileID: 4346258105230954364}
-  m_PrefabAsset: {fileID: 0}
---- !u!95 &4346258105238354460 stripped
-Animator:
-  m_CorrespondingSourceObject: {fileID: 9500000, guid: 9d545e43681431348908eab98e78aa45, type: 3}
-  m_PrefabInstance: {fileID: 4346258105230954364}
-  m_PrefabAsset: {fileID: 0}
 --- !u!136 &1234567890123456789
 CapsuleCollider:
   m_ObjectHideFlags: 0
@@ -396,3 +396,13 @@ CapsuleCollider:
   m_Height: 2
   m_Direction: 1
   m_Center: {x: 0, y: 1, z: 0}
+--- !u!137 &4346258105234162880 stripped
+SkinnedMeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 13700028, guid: 9d545e43681431348908eab98e78aa45, type: 3}
+  m_PrefabInstance: {fileID: 4346258105230954364}
+  m_PrefabAsset: {fileID: 0}
+--- !u!95 &4346258105238354460 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 9500000, guid: 9d545e43681431348908eab98e78aa45, type: 3}
+  m_PrefabInstance: {fileID: 4346258105230954364}
+  m_PrefabAsset: {fileID: 0}

@@ -80,7 +80,8 @@ MonoBehaviour:
   background: {fileID: 1380668353915109724}
   fill: {fileID: 8710357245338169902}
   percentageText: {fileID: 8992405559023314815}
-  heightOffset: 1.5
+  heightOffset: 0.25
+  forwardOffset: 2.65
   barWidth: 150
   barHeight: 15
   backgroundColor: {r: 0, g: 0, b: 0, a: 0.8}
@@ -156,7 +157,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 1.5}
+  m_AnchoredPosition: {x: 0, y: 1}
   m_SizeDelta: {x: 150, y: 15}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!223 &8693023179032324909

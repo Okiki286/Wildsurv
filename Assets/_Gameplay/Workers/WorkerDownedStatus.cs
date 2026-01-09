@@ -80,6 +80,7 @@ namespace WildernessSurvival.Gameplay.Workers
         private WorkerController workerController;
         private WorkerInstance workerInstance;
         private NavMeshAgent navAgent;
+        private WorkerAnimatorController animatorController;
 
         // ============================================
         // PROPERTIES
@@ -122,6 +123,7 @@ namespace WildernessSurvival.Gameplay.Workers
             // Cache references
             workerController = GetComponent<WorkerController>();
             navAgent = GetComponent<NavMeshAgent>();
+            animatorController = GetComponent<WorkerAnimatorController>();
         }
 
         private void Start()
@@ -186,6 +188,16 @@ namespace WildernessSurvival.Gameplay.Workers
             // Disabilita lavoro/assegnazioni
             DisableWorkerFunctions();
 
+            // TASK 3: Trigger death animation
+            if (animatorController != null)
+            {
+                animatorController.SetDead(true);
+            }
+            else
+            {
+                Debug.LogWarning($"<color=orange>[WorkerDowned]</color> WorkerAnimatorController not found - death animation will not play!", this);
+            }
+
             // Nome per log
             string workerName = GetWorkerName();
             Debug.Log($"<color=red>[WorkerDowned]</color> {workerName} DOWNED");
@@ -215,6 +227,12 @@ namespace WildernessSurvival.Gameplay.Workers
 
             // Ripristina stato a Idle
             EnableWorkerFunctions();
+
+            // TASK 3: Reset death animation
+            if (animatorController != null)
+            {
+                animatorController.SetDead(false);
+            }
 
             string workerName = GetWorkerName();
             Debug.Log($"<color=green>[WorkerDowned]</color> {workerName} REVIVED at dawn");
@@ -283,6 +301,12 @@ namespace WildernessSurvival.Gameplay.Workers
             ClearInjury();
             EnableWorkerMovement();
             EnableWorkerFunctions();
+
+            // Reset death animation
+            if (animatorController != null)
+            {
+                animatorController.SetDead(false);
+            }
 
             string workerName = GetWorkerName();
             Debug.Log($"<color=lime>[WorkerDowned]</color> {workerName} FORCE RECOVERED");

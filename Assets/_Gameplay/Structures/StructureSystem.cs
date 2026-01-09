@@ -1049,6 +1049,20 @@ namespace WildernessSurvival.Gameplay.Structures
             return structuresById.ContainsKey(structureId) && structuresById[structureId].Count > 0;
         }
 
+        /// <summary>
+        /// Verifica se una struttura è già stata costruita (overload per StructureData).
+        /// Usato dal BuildMenuUI per nascondere strutture uniche già piazzate.
+        /// </summary>
+        /// <param name="data">StructureData da verificare</param>
+        /// <returns>True se almeno una struttura di questo tipo esiste nel mondo</returns>
+        public bool HasStructure(StructureData data)
+        {
+            if (data == null)
+                return false;
+
+            return IsStructureBuilt(data.StructureId);
+        }
+
         // ============================================
         // PLACEMENT VALIDATION
         // ============================================

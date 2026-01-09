@@ -493,9 +493,45 @@ namespace WildernessSurvival.Gameplay.Workers
         public void TakeDamage(float damage, DamageType damageType)
         {
             if (!IsAlive) return;
+
             // Workers non hanno resistenze per ora, ignora damageType
+            float previousHealth = CurrentHealth;
             CurrentHealth = Mathf.Max(0, CurrentHealth - damage);
-            if (!IsAlive) OnDeath();
+
+            // Check se il worker è morto DOPO il danno
+            bool isDying = !IsAlive;
+
+            if (isDying)
+            {
+                // Morte ha priorità - chiama OnDeath (che gestisce animazione morte)
+                OnDeath();
+            }
+            else
+            {
+                // Worker è ancora vivo - trigger hit reaction animation
+                TriggerHitReaction();
+            }
+        }
+
+        /// <summary>
+        /// Trigger dell'animazione di hit reaction (chiamata quando subisce danno ma non muore).
+        /// </summary>
+        private void TriggerHitReaction()
+        {
+            // Accedi al VisualController tramite PhysicalWorker
+            if (PhysicalWorker != null &&
+                PhysicalWorker.VisualController != null &&
+                PhysicalWorker.VisualController.AnimatorController != null)
+            {
+                PhysicalWorker.VisualController.AnimatorController.TriggerHitReaction();
+            }
+#if UNITY_EDITOR
+            else
+            {
+                // WorkerInstance è Serializable, non MonoBehaviour - non può essere usato come context
+                Debug.LogWarning($"<color=orange>[WorkerInstance]</color> {CustomName} cannot play hit reaction: VisualController or AnimatorController not found");
+            }
+#endif
         }
 
         public void Heal(float amount)

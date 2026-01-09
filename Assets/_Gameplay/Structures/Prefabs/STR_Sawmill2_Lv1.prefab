@@ -384,7 +384,8 @@ MonoBehaviour:
   background: {fileID: 3732901504212297310}
   fill: {fileID: 1291107651153049701}
   percentageText: {fileID: 1885129710599883833}
-  heightOffset: 1.5
+  heightOffset: 0.25
+  forwardOffset: 2.65
   barWidth: 150
   barHeight: 15
   backgroundColor: {r: 0, g: 0, b: 0, a: 0.8}
@@ -544,6 +545,10 @@ PrefabInstance:
     - target: {fileID: 4039086074664710, guid: 871736051670df6409b1c54e9710effe, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 64571974194889048, guid: 871736051670df6409b1c54e9710effe, type: 3}
+      propertyPath: m_Enabled
+      value: 1
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

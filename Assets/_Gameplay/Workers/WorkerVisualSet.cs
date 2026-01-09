@@ -42,8 +42,31 @@ namespace WildernessSurvival.Gameplay.Workers
         public Mesh bodyMesh;
 
         [PreviewField(50)]
-        [Tooltip("Mesh per le gambe (opzionale se il modello è unificato)")]
+        [Tooltip("DEPRECATED: Mesh per le gambe unificate (usare leftLegMesh/rightLegMesh per modularità)")]
         public Mesh legsMesh;
+
+        [TitleGroup("Modular Mesh/Split Body Parts")]
+        [InfoBox("Supporto per parti del corpo separate (maggiore modularità per customizzazione)", InfoMessageType.Info)]
+        [PreviewField(50)]
+        [Tooltip("Mesh per la gamba sinistra (opzionale)")]
+        public Mesh leftLegMesh;
+
+        [PreviewField(50)]
+        [Tooltip("Mesh per la gamba destra (opzionale)")]
+        public Mesh rightLegMesh;
+
+        [PreviewField(50)]
+        [Tooltip("Mesh per il braccio sinistro (opzionale)")]
+        public Mesh leftArmMesh;
+
+        [PreviewField(50)]
+        [Tooltip("Mesh per il braccio destro (opzionale)")]
+        public Mesh rightArmMesh;
+
+        [TitleGroup("Modular Mesh/Accessories")]
+        [PreviewField(50)]
+        [Tooltip("Mesh per accessori (zaini, mantelli, borse, etc.)")]
+        public Mesh accessoryMesh;
 
         // ============================================
         // TOOL
@@ -101,9 +124,10 @@ namespace WildernessSurvival.Gameplay.Workers
 
         /// <summary>
         /// Verifica se il visual set ha almeno una mesh valida.
-        /// Priorità: fullBodyMesh > modular (head/body/legs)
+        /// Priorità: fullBodyMesh > modular (head/body/legs/arms/accessory)
         /// </summary>
-        public bool HasValidMesh => fullBodyMesh != null || bodyMesh != null || headMesh != null || legsMesh != null;
+        public bool HasValidMesh => fullBodyMesh != null || bodyMesh != null || headMesh != null || legsMesh != null ||
+                                     leftLegMesh != null || rightLegMesh != null || leftArmMesh != null || rightArmMesh != null || accessoryMesh != null;
 
         /// <summary>
         /// Verifica se il visual set usa full body mesh (Synty style).

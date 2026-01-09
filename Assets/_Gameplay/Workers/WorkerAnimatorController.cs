@@ -62,6 +62,10 @@ namespace WildernessSurvival.Gameplay.Workers
         [Tooltip("Nome del parametro Bool per arma equipaggiata (es. 'HasWeapon')")]
         private string hasWeaponParamName = "HasWeapon";
 
+        [SerializeField]
+        [Tooltip("Nome del parametro Bool per morte (es. 'IsDead')")]
+        private string isDeadParamName = "IsDead";
+
         // ============================================
         // CACHED PARAMETER HASHES (MOBILE OPTIMIZATION)
         // ============================================
@@ -71,6 +75,7 @@ namespace WildernessSurvival.Gameplay.Workers
         private int isWorkingHash;
         private int isAttackingHash;
         private int hasWeaponHash;
+        private int isDeadHash;
 
         // Parameter existence flags (to avoid setting non-existent params)
         private bool hasSpeedParam = false;
@@ -78,6 +83,7 @@ namespace WildernessSurvival.Gameplay.Workers
         private bool hasIsWorkingParam = false;
         private bool hasIsAttackingParam = false;
         private bool hasWeaponParam = false;
+        private bool hasIsDeadParam = false;
 
         // ============================================
         // STATE
@@ -181,6 +187,9 @@ namespace WildernessSurvival.Gameplay.Workers
 
             if (!string.IsNullOrEmpty(hasWeaponParamName))
                 hasWeaponHash = Animator.StringToHash(hasWeaponParamName);
+
+            if (!string.IsNullOrEmpty(isDeadParamName))
+                isDeadHash = Animator.StringToHash(isDeadParamName);
         }
 
         /// <summary>
@@ -194,6 +203,7 @@ namespace WildernessSurvival.Gameplay.Workers
             hasIsWorkingParam = false;
             hasIsAttackingParam = false;
             hasWeaponParam = false;
+            hasIsDeadParam = false;
 
             if (animator == null || animator.runtimeAnimatorController == null) return;
 
@@ -208,6 +218,7 @@ namespace WildernessSurvival.Gameplay.Workers
                 else if (hash == isWorkingHash) hasIsWorkingParam = true;
                 else if (hash == isAttackingHash) hasIsAttackingParam = true;
                 else if (hash == hasWeaponHash) hasWeaponParam = true;
+                else if (hash == isDeadHash) hasIsDeadParam = true;
             }
         }
 
@@ -369,6 +380,45 @@ namespace WildernessSurvival.Gameplay.Workers
                 animator.SetBool(hasWeaponHash, hasWeapon);
         }
 
+        /// <summary>
+        /// Imposta lo stato di morte del worker.
+        /// </summary>
+        public void SetDead(bool isDead)
+        {
+            if (animator == null) return;
+
+            if (hasIsDeadParam)
+            {
+                animator.SetBool(isDeadHash, isDead);
+
+#if UNITY_EDITOR
+                if (Application.isPlaying)
+                {
+                    Debug.Log($"<color=red>[WorkerAnimatorController]</color> SetDead: {isDead}", this);
+                }
+#endif
+            }
+        }
+
+        /// <summary>
+        /// Trigger hit reaction animation quando il worker subisce danno (ma non muore).
+        /// Usa il trigger "OnHit" nell'Animator Controller.
+        /// </summary>
+        public void TriggerHitReaction()
+        {
+            if (animator == null || !isInitialized) return;
+
+            // Usa PlayOneShotTrigger per sicurezza (check esistenza parametro)
+            PlayOneShotTrigger("OnHit");
+
+#if UNITY_EDITOR
+            if (Application.isPlaying)
+            {
+                Debug.Log($"<color=yellow>[WorkerAnimatorController]</color> TriggerHitReaction: OnHit", this);
+            }
+#endif
+        }
+
         // ============================================
         // TRIGGERS (ONE-SHOT ANIMATIONS)
         // ============================================
@@ -434,6 +484,9 @@ namespace WildernessSurvival.Gameplay.Workers
 
             if (hasIsAttackingParam)
                 animator.SetBool(isAttackingHash, false);
+
+            if (hasIsDeadParam)
+                animator.SetBool(isDeadHash, false);
 
             // Force update to apply changes immediately
             animator.Update(0f);
@@ -505,12 +558,25 @@ namespace WildernessSurvival.Gameplay.Workers
                 : "None";
 
             string paramInfo = $"Speed: {hasSpeedParam}, IsMoving: {hasIsMovingParam}, IsWorking: {hasIsWorkingParam}, " +
-                             $"IsAttacking: {hasIsAttackingParam}, HasWeapon: {hasWeaponParam}";
+                             $"IsAttacking: {hasIsAttackingParam}, HasWeapon: {hasWeaponParam}, IsDead: {hasIsDeadParam}";
+
+            // Read current values from animator
+            string currentValues = "";
+            if (animator.runtimeAnimatorController != null)
+            {
+                if (hasSpeedParam) currentValues += $"  Speed = {animator.GetFloat(speedHash)}\n";
+                if (hasIsMovingParam) currentValues += $"  IsMoving = {animator.GetBool(isMovingHash)}\n";
+                if (hasIsWorkingParam) currentValues += $"  IsWorking = {animator.GetBool(isWorkingHash)}\n";
+                if (hasIsAttackingParam) currentValues += $"  IsAttacking = {animator.GetBool(isAttackingHash)}\n";
+                if (hasWeaponParam) currentValues += $"  HasWeapon = {animator.GetBool(hasWeaponHash)}\n";
+                if (hasIsDeadParam) currentValues += $"  IsDead = {animator.GetBool(isDeadHash)}\n";
+            }
 
             Debug.Log($"=== ANIMATOR STATE ===\n" +
                      $"Controller: {controllerName}\n" +
                      $"Root Motion: {animator.applyRootMotion}\n" +
-                     $"Parameters: {paramInfo}\n" +
+                     $"Parameters Available: {paramInfo}\n" +
+                     $"Current Values:\n{currentValues}" +
                      $"Is Valid: {IsValid}", this);
         }
 
@@ -528,6 +594,24 @@ namespace WildernessSurvival.Gameplay.Workers
         {
             SetAttacking(true);
             Debug.Log("[WorkerAnimatorController] Set IsAttacking = true", this);
+        }
+
+        [TitleGroup("Debug")]
+        [Button("Test Set Dead", ButtonSizes.Small)]
+        [GUIColor(1f, 0.3f, 0.3f)]
+        private void DebugTestDead()
+        {
+            SetDead(true);
+            Debug.Log("[WorkerAnimatorController] Set IsDead = true", this);
+        }
+
+        [TitleGroup("Debug")]
+        [Button("Test Hit Reaction", ButtonSizes.Small)]
+        [GUIColor(1f, 0.8f, 0.3f)]
+        private void DebugTestHitReaction()
+        {
+            TriggerHitReaction();
+            Debug.Log("[WorkerAnimatorController] Triggered OnHit", this);
         }
 
         [TitleGroup("Debug")]

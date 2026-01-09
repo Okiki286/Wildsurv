@@ -133,6 +133,9 @@ namespace WildernessSurvival.Core.Systems
         public bool IsNight => currentState == GameState.Night;
         public bool IsTransitioning => currentState == GameState.DayToNight || currentState == GameState.NightToDay;
 
+        /// <summary>Evento invocato quando inizia un nuovo giorno (per cleanup cadaveri, ecc.)</summary>
+        public GameEvent OnDayStartedEvent => onDayStarted;
+
         /// <summary>Tempo rimanente nella fase corrente</summary>
         public float TimeRemaining => Mathf.Max(0, currentPhaseDuration - phaseTimer);
 

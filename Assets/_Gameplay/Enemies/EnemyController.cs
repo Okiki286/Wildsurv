@@ -101,6 +101,7 @@ namespace WildernessSurvival.Gameplay.Enemies
         // ============================================
 
         private NavMeshAgent navAgent;
+        private EnemyAnimatorController animatorController;
         private Transform targetTransform;
         private Transform injectedTarget;  // [PERF] Cached target from spawner
         private float destinationUpdateTimer;
@@ -123,6 +124,7 @@ namespace WildernessSurvival.Gameplay.Enemies
         private void Awake()
         {
             navAgent = GetComponent<NavMeshAgent>();
+            animatorController = GetComponent<EnemyAnimatorController>();
 
             // Ensure layer is correct
             if (gameObject.layer != 11)
@@ -166,6 +168,31 @@ namespace WildernessSurvival.Gameplay.Enemies
             {
                 UpdateDestination();
                 destinationUpdateTimer = 0f;
+            }
+
+            // Update animator
+            if (animatorController != null && navAgent != null && navAgent.isOnNavMesh)
+            {
+                float speed = navAgent.velocity.magnitude;
+                animatorController.SetSpeed(speed);
+                animatorController.SetMoving(speed > 0.1f);
+
+#if UNITY_EDITOR
+                if (debugMode && Time.frameCount % 60 == 0) // Log ogni 60 frame
+                {
+                    Debug.Log($"<color=red>[EnemyController]</color> {name} Animator Update: Speed={speed:F2}, IsMoving={speed > 0.1f}, Velocity={navAgent.velocity}", this);
+                }
+#endif
+            }
+            else
+            {
+#if UNITY_EDITOR
+                if (debugMode && Time.frameCount % 120 == 0) // Log ogni 120 frame se qualcosa è null
+                {
+                    Debug.LogWarning($"<color=orange>[EnemyController]</color> {name} Animator NOT updated: " +
+                        $"animatorController={animatorController != null}, navAgent={navAgent != null}, isOnNavMesh={navAgent?.isOnNavMesh}", this);
+                }
+#endif
             }
 
             // If not using NavMesh, do manual movement
@@ -444,6 +471,12 @@ namespace WildernessSurvival.Gameplay.Enemies
             if (navAgent != null && navAgent.isOnNavMesh)
             {
                 navAgent.isStopped = true;
+            }
+
+            // Set death animation
+            if (animatorController != null)
+            {
+                animatorController.SetDead(true);
             }
 
             // Calculate rewards
